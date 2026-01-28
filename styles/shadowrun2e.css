@@ -5624,11 +5624,18 @@ header.window-header.flexrow.draggable.resizable {
   text-transform: uppercase;
   letter-spacing: 2px;
   font-weight: bold;
+  align-items: center;
 }
 
 .shadowrun2e .window-title {
   color: var(--cyber-accent-cyan);
   text-shadow: var(--cyber-glow-cyan);
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  line-height: 1;
 }
 
 .shadowrun2e .close {
