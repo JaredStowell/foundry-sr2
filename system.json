@@ -5,7 +5,7 @@
   "version": "1.0.21",
   "compatibility": {
     "minimum": "11",
-    "verified": "12"
+    "verified": "13"
   },
   "authors": [
     {
@@ -113,9 +113,9 @@
   },
   "primaryTokenAttribute": "health",
   "secondaryTokenAttribute": "stun",
-  "url": "https://github.com/criticalfault/foundry-sr2",
-  "manifest": "https://raw.githubusercontent.com/criticalfault/foundry-sr2/main/system.json",
-  "download": "https://github.com/criticalfault/foundry-sr2/archive/refs/tags/v1.0.21.zip",
+  "url": "https://github.com/JaredStowell/foundry-sr2",
+  "manifest": "https://raw.githubusercontent.com/JaredStowell/foundry-sr2/main/system.json",
+  "download": "https://github.com/JaredStowell/foundry-sr2/archive/refs/tags/v1.0.21.zip",
   "license": "LICENSE",
   "readme": "README.md"
 }
