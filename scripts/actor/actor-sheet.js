@@ -175,15 +175,17 @@ export class SR2ActorSheet extends ActorSheet {
     // Find selected totem
     context.selectedTotem = totems.find(t => t.system.isSelected);
 
+    const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+
     // Calculate essence loss from installed cyberware
     const installedCyberware = cyberware.filter(c => c.system.installed);
-    const totalEssenceLoss = installedCyberware.reduce((total, cyber) => {
+    const totalEssenceLoss = round2(installedCyberware.reduce((total, cyber) => {
       return total + (parseFloat(cyber.system.essence) || 0);
-    }, 0);
+    }, 0));
 
     // Calculate current essence (base essence - cyberware essence loss)
     const baseEssence = this.actor.system.attributes.essence.max || 6;
-    const currentEssence = Math.max(0, baseEssence - totalEssenceLoss);
+    const currentEssence = round2(Math.max(0, baseEssence - totalEssenceLoss));
 
     // Update the actor's current essence value
     if (this.actor.system.attributes.essence.value !== currentEssence) {
@@ -194,7 +196,7 @@ export class SR2ActorSheet extends ActorSheet {
       base: baseEssence,
       current: currentEssence,
       loss: totalEssenceLoss,
-      available: Math.max(0, currentEssence - 0.01) // Must keep at least 0.01 essence
+      available: currentEssence
     };
 
     // Calculate total power points used for adept powers
@@ -1734,13 +1736,15 @@ export class SR2ActorSheet extends ActorSheet {
 
     if (!item) return;
 
+    const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+
     const isInstalling = checkbox.checked;
-    const essenceCost = parseFloat(item.system.essence) || 0;
+    const essenceCost = round2(parseFloat(item.system.essence) || 0);
 
     if (isInstalling) {
       // Check if installing this cyberware would reduce essence below 0.1
-      const currentEssence = this.actor.system.attributes.essence.value || 6;
-      const remainingEssence = currentEssence - essenceCost;
+      const currentEssence = round2(this.actor.system.attributes.essence.value || 6);
+      const remainingEssence = round2(currentEssence - essenceCost);
 
       if (remainingEssence < 0.1) {
         // Prevent installation

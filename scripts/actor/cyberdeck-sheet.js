@@ -150,17 +150,50 @@ export class SR2CyberdeckSheet extends ActorSheet {
    */
   async _onItemCreate(event) {
     event.preventDefault();
+    event.stopPropagation();
+
+    if (this._creatingEmbeddedItem) return;
+
+    this._creatingEmbeddedItem = true;
+    const createButton = event.currentTarget;
+    createButton.setAttribute('aria-disabled', 'true');
     const header = event.currentTarget;
     const type = header.dataset.type;
     const data = foundry.utils.deepClone(header.dataset);
-    const name = `New ${type.capitalize()}`;
+    const typeLabel = type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Item';
+    const name = `New ${typeLabel}`;
     const itemData = {
       name: name,
       type: type,
       system: data
     };
     delete itemData.system["type"];
-    return await Item.create(itemData, {parent: this.actor});
+
+    try {
+      const [created] = await this.actor.createEmbeddedDocuments('Item', [itemData]);
+      await this.render(false);
+      return created;
+    } finally {
+      this._creatingEmbeddedItem = false;
+      createButton.removeAttribute('aria-disabled');
+    }
+  }
+
+  /** @override */
+  async _onDrop(event) {
+    const data = TextEditor.getDragEventData(event);
+
+    // Prevent dropping an owned item from this same actor onto this sheet, which creates duplicates.
+    if (data?.type === "Item") {
+      const uuid = data.uuid ?? data.data?.uuid;
+      if (uuid && this.actor?.uuid && uuid.startsWith(`${this.actor.uuid}.Item.`)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+    }
+
+    return super._onDrop(event);
   }
 
   /**
