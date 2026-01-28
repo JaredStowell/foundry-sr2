@@ -4215,9 +4215,9 @@ header.window-header.flexrow.draggable.resizable {
 .shadowrun2e.item-browser .window-header .close,
 .shadowrun2e.data-import .window-header .close,
 .shadowrun2e.character-import .window-header .close {
-  color: #333 !important;
-  background: rgba(255, 255, 255, 0.8) !important;
-  border: 1px solid #ccc !important;
+  color: var(--cyber-accent-red) !important;
+  background: var(--cyber-bg-secondary) !important;
+  border: 1px solid var(--cyber-accent-red) !important;
   border-radius: 3px !important;
   height: 24px !important;
   display: flex !important;
@@ -4232,9 +4232,10 @@ header.window-header.flexrow.draggable.resizable {
 .shadowrun2e.item-browser .window-header .close:hover,
 .shadowrun2e.data-import .window-header .close:hover,
 .shadowrun2e.character-import .window-header .close:hover {
-  color: #fff !important;
-  background: #dc3545 !important;
-  border-color: #c82333 !important;
+  color: var(--cyber-bg-primary) !important;
+  background: var(--cyber-accent-red) !important;
+  border-color: var(--cyber-accent-red) !important;
+  box-shadow: var(--cyber-glow-red) !important;
   transform: scale(1.1) !important;
 }
 
