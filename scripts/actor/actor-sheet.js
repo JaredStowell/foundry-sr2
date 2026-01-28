@@ -1378,10 +1378,15 @@ export class SR2ActorSheet extends ActorSheet {
     event.preventDefault();
     const itemType = event.currentTarget.dataset.type;
 
-    // Import the item browser dynamically
-    const { SR2ItemBrowser } = await import("/systems/shadowrun2e/scripts/item-browser.js");
-    const browser = new SR2ItemBrowser(this.actor, itemType);
-    browser.render(true);
+    try {
+      // Import the item browser dynamically
+      const { SR2ItemBrowser } = await import("/systems/shadowrun2e/scripts/item-browser.js");
+      const browser = new SR2ItemBrowser(this.actor, itemType);
+      browser.render(true);
+    } catch (error) {
+      console.error("SR2E | Failed to open item browser", error);
+      ui.notifications.error("Item browser is unavailable (see console).");
+    }
   }
 
   /**
@@ -1394,25 +1399,30 @@ export class SR2ActorSheet extends ActorSheet {
 
     if (!spell) return;
 
-    const force = spell.system.force || 1;
-    const magicRating = this.actor.system.attributes.magic.value || 1;
-    const sorcerySkill = this._getHighestSorcerySkill();
+    try {
+      const force = spell.system.force || 1;
+      const magicRating = this.actor.system.attributes.magic.value || 1;
+      const sorcerySkill = this._getHighestSorcerySkill();
 
-    // Calculate dice pool for spellcasting - in SR2E, use only the sorcery skill rating
-    const dicePool = sorcerySkill;
+      // Calculate dice pool for spellcasting - in SR2E, use only the sorcery skill rating
+      const dicePool = sorcerySkill;
 
-    const title = `Casting ${spell.name} (Force ${force})`;
+      const title = `Casting ${spell.name} (Force ${force})`;
 
-    // Show TN selection dialog and roll for spellcasting
-    await this._showTargetNumberDialog(dicePool, title, 'spell', 4);
+      // Show TN selection dialog and roll for spellcasting
+      await this._showTargetNumberDialog(dicePool, title, 'spell', 4);
 
-    // Calculate drain
-    const drainValue = this._calculateDrain(spell.system.drain, force);
-    const drainPool = this.actor.system.attributes.willpower.value + magicRating;
+      // Calculate drain
+      const drainValue = this._calculateDrain(spell.system.drain, force);
+      const drainPool = this.actor.system.attributes.willpower.value + magicRating;
 
-    // Show TN selection dialog and roll drain resistance
-    const drainTitle = `Drain Resistance for ${spell.name}`;
-    await this._showTargetNumberDialog(drainPool, drainTitle, 'drain', drainValue);
+      // Show TN selection dialog and roll drain resistance
+      const drainTitle = `Drain Resistance for ${spell.name}`;
+      await this._showTargetNumberDialog(drainPool, drainTitle, 'drain', drainValue);
+    } catch (error) {
+      console.error("SR2E | Failed to cast spell", error);
+      ui.notifications.error("Spell casting failed (see console).");
+    }
   }
 
   /**
@@ -1572,11 +1582,16 @@ export class SR2ActorSheet extends ActorSheet {
       return;
     }
 
-    // Load ranges data and display range bands
-    const rangesData = await this._loadRangesData();
-    if (rangesData && rangesData[rangeType]) {
-      this._displayRangeBands(rangesData[rangeType]);
-      this._calculateRangeCategory();
+    try {
+      // Load ranges data and display range bands
+      const rangesData = await this._loadRangesData();
+      if (rangesData && rangesData[rangeType]) {
+        this._displayRangeBands(rangesData[rangeType]);
+        this._calculateRangeCategory();
+      }
+    } catch (error) {
+      console.error("SR2E | Failed to update range bands", error);
+      ui.notifications.error("Range calculator failed (see console).");
     }
   }
 
@@ -1585,7 +1600,12 @@ export class SR2ActorSheet extends ActorSheet {
    */
   _onRangeDistanceChange(event) {
     event.preventDefault();
-    this._calculateRangeCategory();
+    try {
+      this._calculateRangeCategory();
+    } catch (error) {
+      console.error("SR2E | Failed to update range category", error);
+      ui.notifications.error("Range calculator failed (see console).");
+    }
   }
 
   /**
@@ -1699,30 +1719,35 @@ export class SR2ActorSheet extends ActorSheet {
   async _onBrowseTotems(event) {
     event.preventDefault();
 
-    // Import the item browser dynamically
-    const { SR2ItemBrowser } = await import("/systems/shadowrun2e/scripts/item-browser.js");
+    try {
+      // Import the item browser dynamically
+      const { SR2ItemBrowser } = await import("/systems/shadowrun2e/scripts/item-browser.js");
 
-    // Create a custom item browser with totem selection handling
-    const browser = new SR2ItemBrowser(this.actor, 'totem', {});
+      // Create a custom item browser with totem selection handling
+      const browser = new SR2ItemBrowser(this.actor, 'totem', {});
 
-    // Override the default item creation to handle totem selection
-    const originalAddItem = browser.addItem;
-    browser.addItem = async (item) => {
-      // First, unselect any existing totems
-      const existingTotems = this.actor.items.filter(i => i.type === 'totem');
-      for (const existingTotem of existingTotems) {
-        await existingTotem.update({ 'system.isSelected': false });
-      }
+      // Override the default item creation to handle totem selection
+      const originalAddItem = browser.addItem;
+      browser.addItem = async (item) => {
+        // First, unselect any existing totems
+        const existingTotems = this.actor.items.filter(i => i.type === 'totem');
+        for (const existingTotem of existingTotems) {
+          await existingTotem.update({ 'system.isSelected': false });
+        }
 
-      // Then add the new totem and mark it as selected
-      const newItem = await originalAddItem.call(browser, item);
-      if (newItem) {
-        await newItem.update({ 'system.isSelected': true });
-      }
-      return newItem;
-    };
+        // Then add the new totem and mark it as selected
+        const newItem = await originalAddItem.call(browser, item);
+        if (newItem) {
+          await newItem.update({ 'system.isSelected': true });
+        }
+        return newItem;
+      };
 
-    browser.render(true);
+      browser.render(true);
+    } catch (error) {
+      console.error("SR2E | Failed to open totem browser", error);
+      ui.notifications.error("Totem browser is unavailable (see console).");
+    }
   }
 
   /**
@@ -1741,65 +1766,72 @@ export class SR2ActorSheet extends ActorSheet {
     const isInstalling = checkbox.checked;
     const essenceCost = round2(parseFloat(item.system.essence) || 0);
 
-    if (isInstalling) {
-      // Check if installing this cyberware would reduce essence below 0.1
-      const currentEssence = round2(this.actor.system.attributes.essence.value || 6);
-      const remainingEssence = round2(currentEssence - essenceCost);
+    try {
+      if (isInstalling) {
+        // Check if installing this cyberware would reduce essence below 0.1
+        const currentEssence = round2(this.actor.system.attributes.essence.value || 6);
+        const remainingEssence = round2(currentEssence - essenceCost);
 
-      if (remainingEssence < 0.1) {
-        // Prevent installation
-        checkbox.checked = false;
-        ui.notifications.error(
-          `Cannot install ${item.name}. Essence cost (${essenceCost}) would reduce your Essence below 0.1. ` +
-          `Current Essence: ${currentEssence.toFixed(2)}, Required: ${essenceCost.toFixed(2)}`
-        );
-        return;
-      }
+        if (remainingEssence < 0.1) {
+          // Prevent installation
+          checkbox.checked = false;
+          ui.notifications.error(
+            `Cannot install ${item.name}. Essence cost (${essenceCost}) would reduce your Essence below 0.1. ` +
+            `Current Essence: ${currentEssence.toFixed(2)}, Required: ${essenceCost.toFixed(2)}`
+          );
+          return;
+        }
 
-      // Show confirmation for significant essence loss
-      if (essenceCost >= 1.0) {
+        // Show confirmation for significant essence loss
+        if (essenceCost >= 1.0) {
+          const confirm = await Dialog.confirm({
+            title: "Cyberware Installation",
+            content: `<p>Installing <strong>${item.name}</strong> will permanently reduce your Essence by <strong>${essenceCost}</strong>.</p>
+                     <p>Current Essence: <strong>${currentEssence.toFixed(2)}</strong></p>
+                     <p>New Essence: <strong>${remainingEssence.toFixed(2)}</strong></p>
+                     <p>This cannot be undone. Continue?</p>`,
+            yes: () => true,
+            no: () => false
+          });
+
+          if (!confirm) {
+            checkbox.checked = false;
+            return;
+          }
+        }
+
+        // Install the cyberware
+        await item.update({ 'system.installed': true });
+        ui.notifications.info(`${item.name} installed. Essence reduced by ${essenceCost}.`);
+
+      } else {
+        // Uninstall the cyberware
         const confirm = await Dialog.confirm({
-          title: "Cyberware Installation",
-          content: `<p>Installing <strong>${item.name}</strong> will permanently reduce your Essence by <strong>${essenceCost}</strong>.</p>
-                   <p>Current Essence: <strong>${currentEssence.toFixed(2)}</strong></p>
-                   <p>New Essence: <strong>${remainingEssence.toFixed(2)}</strong></p>
-                   <p>This cannot be undone. Continue?</p>`,
+          title: "Cyberware Removal",
+          content: `<p>Are you sure you want to remove <strong>${item.name}</strong>?</p>
+                   <p>This will restore <strong>${essenceCost}</strong> Essence.</p>
+                   <p><em>Note: In Shadowrun, cyberware removal typically requires surgery and may have complications.</em></p>`,
           yes: () => true,
           no: () => false
         });
 
         if (!confirm) {
-          checkbox.checked = false;
+          checkbox.checked = true;
           return;
         }
+
+        await item.update({ 'system.installed': false });
+        ui.notifications.info(`${item.name} removed. Essence restored by ${essenceCost}.`);
       }
 
-      // Install the cyberware
-      await item.update({ 'system.installed': true });
-      ui.notifications.info(`${item.name} installed. Essence reduced by ${essenceCost}.`);
-
-    } else {
-      // Uninstall the cyberware
-      const confirm = await Dialog.confirm({
-        title: "Cyberware Removal",
-        content: `<p>Are you sure you want to remove <strong>${item.name}</strong>?</p>
-                 <p>This will restore <strong>${essenceCost}</strong> Essence.</p>
-                 <p><em>Note: In Shadowrun, cyberware removal typically requires surgery and may have complications.</em></p>`,
-        yes: () => true,
-        no: () => false
-      });
-
-      if (!confirm) {
-        checkbox.checked = true;
-        return;
-      }
-
-      await item.update({ 'system.installed': false });
-      ui.notifications.info(`${item.name} removed. Essence restored by ${essenceCost}.`);
+      // Refresh the sheet to update essence display
+      this.render(false);
+    } catch (error) {
+      console.error("SR2E | Failed to toggle cyberware installation", error);
+      ui.notifications.error("Cyberware installation failed (see console).");
+      checkbox.checked = !!item.system.installed;
+      this.render(false);
     }
-
-    // Refresh the sheet to update essence display
-    this.render(false);
   }
 
   /**
@@ -1816,74 +1848,81 @@ export class SR2ActorSheet extends ActorSheet {
     const isInstalling = checkbox.checked;
     const bioIndex = parseFloat(item.system.bioIndex) || 0;
 
-    if (isInstalling) {
-      // Calculate current Bio Index usage
-      const installedBioware = this.actor.items.filter(i =>
-        i.type === 'bioware' && i.system.installed && i._id !== itemId
-      );
-      const currentBioIndex = installedBioware.reduce((total, bio) => {
-        return total + (parseFloat(bio.system.bioIndex) || 0);
-      }, 0);
-
-      // Bio Index limit is typically equal to Essence (rounded down)
-      const essenceValue = Math.floor(this.actor.system.attributes.essence.value || 6);
-      const remainingBioIndex = essenceValue - currentBioIndex;
-
-      if (bioIndex > remainingBioIndex) {
-        // Prevent installation
-        checkbox.checked = false;
-        ui.notifications.error(
-          `Cannot install ${item.name}. Bio Index cost (${bioIndex}) exceeds available capacity. ` +
-          `Available Bio Index: ${remainingBioIndex.toFixed(2)}, Required: ${bioIndex.toFixed(2)}`
+    try {
+      if (isInstalling) {
+        // Calculate current Bio Index usage
+        const installedBioware = this.actor.items.filter(i =>
+          i.type === 'bioware' && i.system.installed && i._id !== itemId
         );
-        return;
-      }
+        const currentBioIndex = installedBioware.reduce((total, bio) => {
+          return total + (parseFloat(bio.system.bioIndex) || 0);
+        }, 0);
 
-      // Show confirmation for bioware installation
-      if (bioIndex >= 1.0) {
+        // Bio Index limit is typically equal to Essence (rounded down)
+        const essenceValue = Math.floor(this.actor.system.attributes.essence.value || 6);
+        const remainingBioIndex = essenceValue - currentBioIndex;
+
+        if (bioIndex > remainingBioIndex) {
+          // Prevent installation
+          checkbox.checked = false;
+          ui.notifications.error(
+            `Cannot install ${item.name}. Bio Index cost (${bioIndex}) exceeds available capacity. ` +
+            `Available Bio Index: ${remainingBioIndex.toFixed(2)}, Required: ${bioIndex.toFixed(2)}`
+          );
+          return;
+        }
+
+        // Show confirmation for bioware installation
+        if (bioIndex >= 1.0) {
+          const confirm = await Dialog.confirm({
+            title: "Bioware Installation",
+            content: `<p>Installing <strong>${item.name}</strong> will use <strong>${bioIndex}</strong> Bio Index.</p>
+                     <p>Current Bio Index Used: <strong>${currentBioIndex.toFixed(2)}</strong></p>
+                     <p>Bio Index Limit: <strong>${essenceValue}</strong></p>
+                     <p>Remaining after installation: <strong>${(remainingBioIndex - bioIndex).toFixed(2)}</strong></p>
+                     <p>Continue?</p>`,
+            yes: () => true,
+            no: () => false
+          });
+
+          if (!confirm) {
+            checkbox.checked = false;
+            return;
+          }
+        }
+
+        // Install the bioware
+        await item.update({ 'system.installed': true });
+        ui.notifications.info(`${item.name} installed. Bio Index used: ${bioIndex}.`);
+
+      } else {
+        // Uninstall the bioware
         const confirm = await Dialog.confirm({
-          title: "Bioware Installation",
-          content: `<p>Installing <strong>${item.name}</strong> will use <strong>${bioIndex}</strong> Bio Index.</p>
-                   <p>Current Bio Index Used: <strong>${currentBioIndex.toFixed(2)}</strong></p>
-                   <p>Bio Index Limit: <strong>${essenceValue}</strong></p>
-                   <p>Remaining after installation: <strong>${(remainingBioIndex - bioIndex).toFixed(2)}</strong></p>
-                   <p>Continue?</p>`,
+          title: "Bioware Removal",
+          content: `<p>Are you sure you want to remove <strong>${item.name}</strong>?</p>
+                   <p>This will free up <strong>${bioIndex}</strong> Bio Index.</p>
+                   <p><em>Note: In Shadowrun, bioware removal typically requires surgery and may have complications.</em></p>`,
           yes: () => true,
           no: () => false
         });
 
         if (!confirm) {
-          checkbox.checked = false;
+          checkbox.checked = true;
           return;
         }
+
+        await item.update({ 'system.installed': false });
+        ui.notifications.info(`${item.name} removed. Bio Index freed: ${bioIndex}.`);
       }
 
-      // Install the bioware
-      await item.update({ 'system.installed': true });
-      ui.notifications.info(`${item.name} installed. Bio Index used: ${bioIndex}.`);
-
-    } else {
-      // Uninstall the bioware
-      const confirm = await Dialog.confirm({
-        title: "Bioware Removal",
-        content: `<p>Are you sure you want to remove <strong>${item.name}</strong>?</p>
-                 <p>This will free up <strong>${bioIndex}</strong> Bio Index.</p>
-                 <p><em>Note: In Shadowrun, bioware removal typically requires surgery and may have complications.</em></p>`,
-        yes: () => true,
-        no: () => false
-      });
-
-      if (!confirm) {
-        checkbox.checked = true;
-        return;
-      }
-
-      await item.update({ 'system.installed': false });
-      ui.notifications.info(`${item.name} removed. Bio Index freed: ${bioIndex}.`);
+      // Refresh the sheet to update displays
+      this.render(false);
+    } catch (error) {
+      console.error("SR2E | Failed to toggle bioware installation", error);
+      ui.notifications.error("Bioware installation failed (see console).");
+      checkbox.checked = !!item.system.installed;
+      this.render(false);
     }
-
-    // Refresh the sheet to update displays
-    this.render(false);
   }
 
   /**
@@ -3743,48 +3782,4 @@ export class SR2ActorSheet extends ActorSheet {
     await this.actor.rollDice(skillRating, 4, title);
   }
 
-  /**
-   * Placeholder methods for missing handlers
-   */
-  async _onBrowseItems(event) {
-    ui.notifications.info("Item browser not yet implemented");
-  }
-
-  async _onSpellCast(event) {
-    ui.notifications.info("Spell casting not yet implemented");
-  }
-
-  async _onRangeWeaponChange(event) {
-    // Range calculator functionality placeholder
-  }
-
-  async _onRangeDistanceChange(event) {
-    // Range calculator functionality placeholder
-  }
-
-  async _onBrowseTotems(event) {
-    ui.notifications.info("Totem browser not yet implemented");
-  }
-
-  async _onCyberwareInstall(event) {
-    const checkbox = event.currentTarget;
-    const itemId = checkbox.closest('.item-row').dataset.itemId;
-    const item = this.actor.items.get(itemId);
-    
-    if (item) {
-      await item.update({ 'system.installed': checkbox.checked });
-      this.render(false);
-    }
-  }
-
-  async _onBiowareInstall(event) {
-    const checkbox = event.currentTarget;
-    const itemId = checkbox.closest('.item-row').dataset.itemId;
-    const item = this.actor.items.get(itemId);
-    
-    if (item) {
-      await item.update({ 'system.installed': checkbox.checked });
-      this.render(false);
-    }
-  }
-}
+	}
