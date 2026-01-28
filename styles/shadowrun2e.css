@@ -2238,6 +2238,10 @@
 }
 
 /* Physical Adept Styles */
+.shadowrun2e .adept-powers {
+  margin-top: 20px;
+}
+
 .adept-info {
   display: flex;
   flex-direction: column;
@@ -6121,6 +6125,10 @@ header.window-header.flexrow.draggable.resizable {
 }
 
 /* ===== CYBERPUNK CYBERWARE/BIOWARE TABLES ===== */
+.shadowrun2e .augmentation-section + .augmentation-section {
+  margin-top: 20px;
+}
+
 .shadowrun2e .items-table-header {
   background: linear-gradient(135deg, var(--cyber-bg-tertiary), var(--cyber-bg-secondary));
   color: var(--cyber-accent-cyan);

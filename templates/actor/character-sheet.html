@@ -24,10 +24,8 @@
     <a class="item" data-tab="skills">Skills</a>
     <a class="item" data-tab="combat">Combat</a>
     <a class="item" data-tab="gear">Gear</a>
-    <a class="item" data-tab="cyberware">Cyberware</a>
-    <a class="item" data-tab="bioware">Bioware</a>
+    <a class="item" data-tab="augmentations">Augmentations</a>
     <a class="item" data-tab="magic">Magic</a>
-    <a class="item" data-tab="adept">Adept Powers</a>
     <a class="item" data-tab="biography">Biography</a>
   </nav>
 
@@ -878,111 +876,112 @@
 
     </div>
 
-    {{!-- Cyberware Tab --}}
-    <div class="tab cyberware" data-group="primary" data-tab="cyberware">
-      <div class="items-header">
-        <h3>Cyberware</h3>
-        <div class="item-controls">
-          <button class="browse-items" data-type="cyberware" title="Browse Cyberware">
-            <i class="fas fa-search"></i> Browse Cyberware
-          </button>
-          <a class="item-control item-create" title="Add Custom Cyberware" data-type="cyberware">
-            <i class="fas fa-plus"></i> Add Custom
-          </a>
-        </div>
-      </div>
-
-      <div class="items-list">
-        <div class="items-table-header">
-          <div class="item-name">Name</div>
-          <div class="item-rating">Rating</div>
-          <div class="item-essence">Essence</div>
-          <div class="item-installed">Installed</div>
-          <div class="item-actions">Actions</div>
-        </div>
-        
-        {{#each cyberware as |item id|}}
-        <div class="item-row" data-item-id="{{item._id}}" data-installed="{{item.system.installed}}">
-          <div class="item-name">
-            <img src="{{item.img}}" title="{{item.name}}" width="24" height="24"/>
-            <span>{{item.name}}</span>
-          </div>
-          <div class="item-rating">
-            <input type="number" name="items.{{item._id}}.system.rating" value="{{item.system.rating}}" data-dtype="Number" min="0"/>
-          </div>
-          <div class="item-essence">
-            <span>{{item.system.essence}}</span>
-          </div>
-          <div class="item-installed">
-            <input type="checkbox" class="cyberware-installed" data-item-id="{{item._id}}" {{#if item.system.installed}}checked{{/if}}/>
-          </div>
-          <div class="item-actions">
-            <button class="item-delete" data-item-id="{{item._id}}" title="Delete Item">
-              <i class="fas fa-trash"></i>
+    {{!-- Augmentations Tab --}}
+    <div class="tab augmentations" data-group="primary" data-tab="augmentations">
+      <div class="augmentation-section cyberware-section cyberware">
+        <div class="items-header">
+          <h3>Cyberware</h3>
+          <div class="item-controls">
+            <button class="browse-items" data-type="cyberware" title="Browse Cyberware">
+              <i class="fas fa-search"></i> Browse Cyberware
             </button>
+            <a class="item-control item-create" title="Add Custom Cyberware" data-type="cyberware">
+              <i class="fas fa-plus"></i> Add Custom
+            </a>
           </div>
         </div>
-        {{/each}}
-        
-        {{#unless cyberware}}
-        <div class="no-items">
-          <p>No cyberware installed. Browse the catalog to add cyberware.</p>
-        </div>
-        {{/unless}}
-      </div>
-    </div>
 
-    {{!-- Bioware Tab --}}
-    <div class="tab bioware" data-group="primary" data-tab="bioware">
-      <div class="items-header">
-        <h3>Bioware</h3>
-        <div class="item-controls">
-          <button class="browse-items" data-type="bioware" title="Browse Bioware">
-            <i class="fas fa-search"></i> Browse Bioware
-          </button>
-          <a class="item-control item-create" title="Add Custom Bioware" data-type="bioware">
-            <i class="fas fa-plus"></i> Add Custom
-          </a>
+        <div class="items-list">
+          <div class="items-table-header">
+            <div class="item-name">Name</div>
+            <div class="item-rating">Rating</div>
+            <div class="item-essence">Essence</div>
+            <div class="item-installed">Installed</div>
+            <div class="item-actions">Actions</div>
+          </div>
+          
+          {{#each cyberware as |item id|}}
+          <div class="item-row" data-item-id="{{item._id}}" data-installed="{{item.system.installed}}">
+            <div class="item-name">
+              <img src="{{item.img}}" title="{{item.name}}" width="24" height="24"/>
+              <span>{{item.name}}</span>
+            </div>
+            <div class="item-rating">
+              <input type="number" name="items.{{item._id}}.system.rating" value="{{item.system.rating}}" data-dtype="Number" min="0"/>
+            </div>
+            <div class="item-essence">
+              <span>{{item.system.essence}}</span>
+            </div>
+            <div class="item-installed">
+              <input type="checkbox" class="cyberware-installed" data-item-id="{{item._id}}" {{#if item.system.installed}}checked{{/if}}/>
+            </div>
+            <div class="item-actions">
+              <button class="item-delete" data-item-id="{{item._id}}" title="Delete Item">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+          {{/each}}
+          
+          {{#unless cyberware}}
+          <div class="no-items">
+            <p>No cyberware installed. Browse the catalog to add cyberware.</p>
+          </div>
+          {{/unless}}
         </div>
       </div>
 
-      <div class="items-list">
-        <div class="items-table-header">
-          <div class="item-name">Name</div>
-          <div class="item-rating">Rating</div>
-          <div class="item-bioindex">Bio Index</div>
-          <div class="item-installed">Installed</div>
-          <div class="item-actions">Actions</div>
-        </div>
-        
-        {{#each bioware as |item id|}}
-        <div class="item-row" data-item-id="{{item._id}}" data-installed="{{item.system.installed}}">
-          <div class="item-name">
-            <img src="{{item.img}}" title="{{item.name}}" width="24" height="24"/>
-            <span>{{item.name}}</span>
-          </div>
-          <div class="item-rating">
-            <input type="number" name="items.{{item._id}}.system.rating" value="{{item.system.rating}}" data-dtype="Number" min="0"/>
-          </div>
-          <div class="item-bioindex">
-            <span>{{item.system.bioIndex}}</span>
-          </div>
-          <div class="item-installed">
-            <input type="checkbox" class="bioware-installed" data-item-id="{{item._id}}" {{#if item.system.installed}}checked{{/if}}/>
-          </div>
-          <div class="item-actions">
-            <button class="item-delete" data-item-id="{{item._id}}" title="Delete Item">
-              <i class="fas fa-trash"></i>
+      <div class="augmentation-section bioware-section bioware">
+        <div class="items-header">
+          <h3>Bioware</h3>
+          <div class="item-controls">
+            <button class="browse-items" data-type="bioware" title="Browse Bioware">
+              <i class="fas fa-search"></i> Browse Bioware
             </button>
+            <a class="item-control item-create" title="Add Custom Bioware" data-type="bioware">
+              <i class="fas fa-plus"></i> Add Custom
+            </a>
           </div>
         </div>
-        {{/each}}
-        
-        {{#unless bioware}}
-        <div class="no-items">
-          <p>No bioware installed. Browse the catalog to add bioware.</p>
+
+        <div class="items-list">
+          <div class="items-table-header">
+            <div class="item-name">Name</div>
+            <div class="item-rating">Rating</div>
+            <div class="item-bioindex">Bio Index</div>
+            <div class="item-installed">Installed</div>
+            <div class="item-actions">Actions</div>
+          </div>
+          
+          {{#each bioware as |item id|}}
+          <div class="item-row" data-item-id="{{item._id}}" data-installed="{{item.system.installed}}">
+            <div class="item-name">
+              <img src="{{item.img}}" title="{{item.name}}" width="24" height="24"/>
+              <span>{{item.name}}</span>
+            </div>
+            <div class="item-rating">
+              <input type="number" name="items.{{item._id}}.system.rating" value="{{item.system.rating}}" data-dtype="Number" min="0"/>
+            </div>
+            <div class="item-bioindex">
+              <span>{{item.system.bioIndex}}</span>
+            </div>
+            <div class="item-installed">
+              <input type="checkbox" class="bioware-installed" data-item-id="{{item._id}}" {{#if item.system.installed}}checked{{/if}}/>
+            </div>
+            <div class="item-actions">
+              <button class="item-delete" data-item-id="{{item._id}}" title="Delete Item">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+          {{/each}}
+          
+          {{#unless bioware}}
+          <div class="no-items">
+            <p>No bioware installed. Browse the catalog to add bioware.</p>
+          </div>
+          {{/unless}}
         </div>
-        {{/unless}}
       </div>
     </div>
 
@@ -1113,98 +1112,98 @@
         {{/unless}}
       </div>
       {{/if}}
-    </div>
 
-    {{!-- Adept Powers Tab --}}
-    <div class="tab adept" data-group="primary" data-tab="adept">
-      {{#if (gt system.attributes.magic.value 0)}}
-      <div class="adept-section">
-        <h3>Physical Adept Powers</h3>
-        <div class="adept-info">
-          <div class="adept-type">
-            <label>
-              <input type="checkbox" name="system.magic.physicalAdept" {{#if system.magic.physicalAdept}}checked{{/if}}/>
-              Physical Adept
-            </label>
-          </div>
-          <div class="power-points">
-            <div class="power-point-stat">
-              <label>Magic Rating:</label>
-              <span>{{system.attributes.magic.value}}</span>
+      {{!-- Adept Powers (moved from Adept tab) --}}
+      <div class="adept-powers">
+        {{#if (gt system.attributes.magic.value 0)}}
+        <div class="adept-section">
+          <h3>Physical Adept Powers</h3>
+          <div class="adept-info">
+            <div class="adept-type">
+              <label>
+                <input type="checkbox" name="system.magic.physicalAdept" {{#if system.magic.physicalAdept}}checked{{/if}}/>
+                Physical Adept
+              </label>
             </div>
-            <div class="power-point-stat">
-              <label>Power Points Used:</label>
-              <span class="power-points-used {{#if (gt powerPointsUsed system.attributes.magic.value)}}over-limit{{/if}}">{{powerPointsUsed}}</span>
-              <span>/ {{system.attributes.magic.value}}</span>
-            </div>
-            {{#if (gt powerPointsUsed system.attributes.magic.value)}}
-              <div class="power-point-warning">
-                <i class="fas fa-exclamation-triangle"></i>
-                <span>Exceeding power point limit!</span>
+            <div class="power-points">
+              <div class="power-point-stat">
+                <label>Magic Rating:</label>
+                <span>{{system.attributes.magic.value}}</span>
               </div>
-            {{/if}}
+              <div class="power-point-stat">
+                <label>Power Points Used:</label>
+                <span class="power-points-used {{#if (gt powerPointsUsed system.attributes.magic.value)}}over-limit{{/if}}">{{powerPointsUsed}}</span>
+                <span>/ {{system.attributes.magic.value}}</span>
+              </div>
+              {{#if (gt powerPointsUsed system.attributes.magic.value)}}
+                <div class="power-point-warning">
+                  <i class="fas fa-exclamation-triangle"></i>
+                  <span>Exceeding power point limit!</span>
+                </div>
+              {{/if}}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="items-header">
-        <div class="item-controls">
-          <button class="browse-items" data-type="adeptpower" title="Browse Adept Powers">
-            <i class="fas fa-search"></i> Browse Powers
-          </button>
-          <a class="item-control item-create" title="Add Custom Power" data-type="adeptpower">
-            <i class="fas fa-plus"></i> Add Custom
-          </a>
-        </div>
-      </div>
-
-      <div class="items-list">
-        <div class="items-table-header">
-          <div class="item-name">Power</div>
-          <div class="item-level">Level</div>
-          <div class="item-cost">Cost</div>
-          <div class="item-mods">Modifiers</div>
-          <div class="item-actions">Actions</div>
-        </div>
-        
-        {{#each adeptpowers as |item id|}}
-        <div class="item-row" data-item-id="{{item._id}}">
-          <div class="item-name">
-            <img src="{{item.img}}" title="{{item.name}}" width="24" height="24"/>
-            <span>{{item.name}}</span>
-          </div>
-          <div class="item-level">
-            {{#if item.system.hasLevels}}
-              <input type="number" name="items.{{item._id}}.system.currentLevel" value="{{item.system.currentLevel}}" data-dtype="Number" min="1" max="{{item.system.maxLevel}}"/>
-            {{else}}
-              <span>—</span>
-            {{/if}}
-          </div>
-          <div class="item-cost">
-            <span>{{item.system.totalCost}}</span>
-          </div>
-          <div class="item-mods">
-            <span>{{item.system.mods}}</span>
-          </div>
-          <div class="item-actions">
-            <button class="item-delete" data-item-id="{{item._id}}" title="Delete Power">
-              <i class="fas fa-trash"></i>
+        <div class="items-header">
+          <div class="item-controls">
+            <button class="browse-items" data-type="adeptpower" title="Browse Adept Powers">
+              <i class="fas fa-search"></i> Browse Powers
             </button>
+            <a class="item-control item-create" title="Add Custom Power" data-type="adeptpower">
+              <i class="fas fa-plus"></i> Add Custom
+            </a>
           </div>
         </div>
-        {{/each}}
-        
-        {{#unless adeptpowers}}
-        <div class="no-items">
-          <p>No adept powers learned. Browse the power catalog to add powers.</p>
+
+        <div class="items-list">
+          <div class="items-table-header">
+            <div class="item-name">Power</div>
+            <div class="item-level">Level</div>
+            <div class="item-cost">Cost</div>
+            <div class="item-mods">Modifiers</div>
+            <div class="item-actions">Actions</div>
+          </div>
+          
+          {{#each adeptpowers as |item id|}}
+          <div class="item-row" data-item-id="{{item._id}}">
+            <div class="item-name">
+              <img src="{{item.img}}" title="{{item.name}}" width="24" height="24"/>
+              <span>{{item.name}}</span>
+            </div>
+            <div class="item-level">
+              {{#if item.system.hasLevels}}
+                <input type="number" name="items.{{item._id}}.system.currentLevel" value="{{item.system.currentLevel}}" data-dtype="Number" min="1" max="{{item.system.maxLevel}}"/>
+              {{else}}
+                <span>—</span>
+              {{/if}}
+            </div>
+            <div class="item-cost">
+              <span>{{item.system.totalCost}}</span>
+            </div>
+            <div class="item-mods">
+              <span>{{item.system.mods}}</span>
+            </div>
+            <div class="item-actions">
+              <button class="item-delete" data-item-id="{{item._id}}" title="Delete Power">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+          {{/each}}
+          
+          {{#unless adeptpowers}}
+          <div class="no-items">
+            <p>No adept powers learned. Browse the power catalog to add powers.</p>
+          </div>
+          {{/unless}}
         </div>
-        {{/unless}}
+        {{else}}
+        <div class="no-magic">
+          <p>This character has no Magic rating. Set Magic > 0 to access Adept Powers.</p>
+        </div>
+        {{/if}}
       </div>
-      {{else}}
-      <div class="no-magic">
-        <p>This character has no Magic rating. Set Magic > 0 to access Adept Powers.</p>
-      </div>
-      {{/if}}
     </div>
 
     <div class="tab biography" data-group="primary" data-tab="biography">
