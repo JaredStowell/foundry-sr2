@@ -1,6 +1,28 @@
 // Import the initiative tracker
 import { SR2InitiativeTracker } from '../initiative-tracker.js';
 
+let skillsDataCache = null;
+let skillsDataCachePromise = null;
+
+async function loadSkillsData() {
+    if (skillsDataCache) return skillsDataCache;
+
+    if (!skillsDataCachePromise) {
+        skillsDataCachePromise = fetch('/systems/shadowrun2e/data/skills.json')
+            .then(response => response.json())
+            .then(skillsData => {
+                skillsDataCache = skillsData;
+                return skillsData;
+            })
+            .catch(error => {
+                skillsDataCachePromise = null;
+                throw error;
+            });
+    }
+
+    return skillsDataCachePromise;
+}
+
 /**
  * Extend the basic ActorSheet with Shadowrun 2E specific functionality
  */
@@ -235,8 +257,7 @@ export class SR2ActorSheet extends ActorSheet {
   async _prepareSkillsData(context) {
     // Load the skills data from the JSON file
     try {
-      const response = await fetch('/systems/shadowrun2e/data/skills.json');
-      const skillsData = await response.json();
+      const skillsData = await loadSkillsData();
       context.availableSkills = skillsData;
 
       // Add concentration data for each skill
@@ -433,17 +454,33 @@ export class SR2ActorSheet extends ActorSheet {
    */
   async _onItemCreate(event) {
     event.preventDefault();
+    event.stopPropagation();
+
+    if (this._creatingEmbeddedItem) return;
+
+    this._creatingEmbeddedItem = true;
+    const createButton = event.currentTarget;
+    createButton.setAttribute('aria-disabled', 'true');
     const header = event.currentTarget;
     const type = header.dataset.type;
     const data = foundry.utils.deepClone(header.dataset);
-    const name = `New ${type.capitalize()}`;
+    const typeLabel = type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Item';
+    const name = `New ${typeLabel}`;
     const itemData = {
       name: name,
       type: type,
       system: data
     };
     delete itemData.system["type"];
-    return await Item.create(itemData, { parent: this.actor });
+
+    try {
+      const [created] = await this.actor.createEmbeddedDocuments('Item', [itemData]);
+      await this.render(false);
+      return created;
+    } finally {
+      this._creatingEmbeddedItem = false;
+      createButton.removeAttribute('aria-disabled');
+    }
   }
 
   /**
@@ -3276,9 +3313,9 @@ export class SR2ActorSheet extends ActorSheet {
    */
   _onDragStart(event) {
     const element = event.currentTarget;
-    
+
     // Get item data - try different ways to find the item ID
-    let itemId = element.dataset.itemId || 
+    let itemId = element.dataset.itemId ||
                  element.getAttribute('data-item-id') ||
                  element.closest('[data-item-id]')?.dataset.itemId;
     
@@ -3297,15 +3334,27 @@ export class SR2ActorSheet extends ActorSheet {
     console.log("SR2E | Dragging item:", item.name, "Type:", item.type);
 
     // Create drag data for hotbar macro creation
-    const dragData = {
-      type: "Item",
-      actorId: this.actor.id,
-      data: item.toObject(),
-      uuid: item.uuid
-    };
+    const dragData = item.toDragData ? item.toDragData() : { type: "Item", uuid: item.uuid };
 
     // Set the drag data
     event.dataTransfer.setData("text/plain", JSON.stringify(dragData));
+  }
+
+  /** @override */
+  async _onDrop(event) {
+    const data = TextEditor.getDragEventData(event);
+
+    // Prevent dropping an owned item from this same actor onto this sheet, which creates duplicates.
+    if (data?.type === "Item") {
+      const uuid = data.uuid ?? data.data?.uuid;
+      if (uuid && this.actor?.uuid && uuid.startsWith(`${this.actor.uuid}.Item.`)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+    }
+
+    return super._onDrop(event);
   }
 
   /**
