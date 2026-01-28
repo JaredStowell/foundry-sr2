@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# Editor swap files
+*.swp
+*.swo
+
+# Foundry VTT generated compendium packs (LevelDB)
+/packs/*
+!/packs/.gitkeep
