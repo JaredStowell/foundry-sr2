@@ -2767,6 +2767,11 @@
   width: 160px;
 }
 
+.shadowrun2e .resource input.nuyen-input {
+  width: 140px;
+  text-align: right;
+}
+
 /* Tabs */
 .shadowrun2e .tabs {
   height: 60px;
