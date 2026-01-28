@@ -2763,6 +2763,10 @@
   width: 100%;
 }
 
+.shadowrun2e .resource select.metatype-select {
+  width: 160px;
+}
+
 /* Tabs */
 .shadowrun2e .tabs {
   height: 60px;
