@@ -1,23 +1,11 @@
 <div class="item-browser">
   <header class="browser-header">
     <h2>{{title}}</h2>
-    <div class="browser-controls">
-      <div class="search-section">
-        <input type="text" class="item-search" placeholder="Search items..." value="{{searchTerm}}">
-        <button class="clear-search" title="Clear Search">
-          <i class="fas fa-times"></i>
-        </button>
+      <div class="browser-controls">
+        <div class="search-section">
+          <input type="text" class="item-search" placeholder="Search items..." value="{{searchTerm}}">
+        </div>
       </div>
-      
-      <div class="filter-section">
-        <select class="category-filter">
-          <option value="">All Categories</option>
-          {{#each categories}}
-            <option value="{{this}}" {{#if (eq this ../selectedCategory)}}selected{{/if}}>{{this}}</option>
-          {{/each}}
-        </select>
-      </div>
-    </div>
   </header>
 
   <div class="browser-content">
@@ -27,7 +15,9 @@
           <div class="item-card" data-item-index="{{@index}}">
             <div class="item-header">
               <h4 class="item-name">{{name}}</h4>
-              <div class="item-category">{{category}}</div>
+              {{#unless (eq ../itemType "spell")}}
+                <div class="item-category">{{category}}</div>
+              {{/unless}}
             </div>
             
             <div class="item-details">
@@ -75,16 +65,26 @@
               
               {{#if (eq ../itemType "spell")}}
                 <div class="detail-row">
-                  <span class="label">Drain:</span>
-                  <span class="value">{{drain}}</span>
+                  <span class="label">Range:</span>
+                  <span class="value">{{range}}</span>
                 </div>
                 <div class="detail-row">
-                  <span class="label">Type:</span>
-                  <span class="value">{{type}}</span>
+                  <span class="label">Resist:</span>
+                  <span class="value">{{resist}}</span>
                 </div>
+                {{#if damage}}
+                  <div class="detail-row">
+                    <span class="label">Dmg:</span>
+                    <span class="value">{{damage}}</span>
+                  </div>
+                {{/if}}
                 <div class="detail-row">
-                  <span class="label">Duration:</span>
+                  <span class="label">Dur:</span>
                   <span class="value">{{duration}}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="label">Drain:</span>
+                  <span class="value">{{drainDisplay}}</span>
                 </div>
               {{/if}}
               
@@ -128,16 +128,17 @@
                 </div>
               {{/if}}
               
-              <div class="detail-row source">
-                <span class="label">Source:</span>
-                <span class="value">{{bookPage}}</span>
-              </div>
             </div>
             
             <div class="item-actions">
               <button class="add-item" data-item-index="{{@index}}" title="Add to Character">
                 <i class="fas fa-plus"></i> Add
               </button>
+              {{#if showBuy}}
+                <button class="buy-item {{buyButtonClass}}" data-item-index="{{@index}}" title="{{buyTitle}}" {{#if buyDisabled}}disabled{{/if}}>
+                  ${{buyCostDisplay}} Buy
+                </button>
+              {{/if}}
             </div>
           </div>
         {{/each}}
@@ -146,7 +147,7 @@
       <div class="no-results">
         <p>No items found matching your search criteria.</p>
         {{#if searchTerm}}
-          <p>Try adjusting your search term or clearing the filters.</p>
+          <p>Try adjusting your search term.</p>
         {{/if}}
       </div>
     {{/if}}

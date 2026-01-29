@@ -1,0 +1,97 @@
+<div class="gear-purchase">
+  <header class="gear-purchase-header">
+    <h2>Gear Purchase</h2>
+    <p>Choose which archetype gear to buy for <strong>{{actorName}}</strong>.</p>
+  </header>
+
+  {{#if hasRows}}
+    <div class="gear-purchase-table-wrap">
+      <table class="gear-purchase-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Item</th>
+            <th>Type</th>
+            <th class="cost">Unit</th>
+            <th class="qty">Qty</th>
+            <th class="cost">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each rows}}
+            <tr class="{{#unless canBuy}}is-disabled{{/unless}}">
+              <td class="check">
+                <input
+                  type="checkbox"
+                  data-action="toggle-row"
+                  data-row-index="{{@index}}"
+                  {{#if selected}}checked{{/if}}
+                  {{#unless canBuy}}disabled{{/unless}}
+                >
+              </td>
+              <td class="name">
+                <div>{{name}}</div>
+                {{#if note}}<div class="note">{{note}}</div>{{/if}}
+              </td>
+              <td class="type">{{typeLabel}}</td>
+              <td class="cost">¥{{unitCostDisplay}}</td>
+              <td class="qty">
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value="{{quantity}}"
+                  data-action="qty-change"
+                  data-row-index="{{@index}}"
+                  {{#unless canBuy}}disabled{{/unless}}
+                >
+              </td>
+              <td class="cost">¥<span data-role="row-subtotal" data-row-index="{{@index}}">{{subtotalDisplay}}</span></td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+  {{else}}
+    <div class="gear-purchase-empty">
+      <p>No archetype gear was found for this follower.</p>
+    </div>
+  {{/if}}
+
+  <div class="gear-purchase-summary">
+    <div class="summary-row">
+      <span class="label">Buyer</span>
+      <span class="value">{{buyerName}}</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Available</span>
+      <span class="value">¥<span data-role="buyer-nuyen">{{buyerNuyenDisplay}}</span></span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Total</span>
+      <span class="value">¥<span data-role="total-cost">{{totalCostDisplay}}</span></span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Remaining</span>
+      <span class="value">¥<span data-role="remaining-nuyen">{{remainingNuyenDisplay}}</span></span>
+    </div>
+  </div>
+
+  <div class="gear-purchase-warning {{#unless overBudget}}is-hidden{{/unless}}" data-role="over-budget">
+    Total exceeds available nuyen.
+  </div>
+
+  {{#if hasRows}}
+    <div class="gear-purchase-actions">
+      <button type="button" data-action="select-all">
+        <i class="fas fa-check-square"></i> Select All
+      </button>
+      <button type="button" data-action="purchase" data-role="purchase" {{#if buyDisabled}}disabled{{/if}}>
+        <i class="fas fa-shopping-cart"></i> Purchase Selected
+      </button>
+      <button type="button" data-action="skip">
+        <i class="fas fa-times"></i> Skip
+      </button>
+    </div>
+  {{/if}}
+</div>

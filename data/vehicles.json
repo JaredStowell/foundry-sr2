@@ -1,5 +1,5 @@
 [
-    {
+  {
     "name": "BMW Blitzen 2050",
     "Handling": "3/4",
     "Speed/Accel": "220/13",
@@ -513,7 +513,7 @@
     "$Cost": "619600",
     "Availability": "31/1month",
     "Street Index": "3.00",
-    "Notes": " ECCM 6, ECD 4, EnviroSeal (Gas with Cabin Overpressure), Medium Turret (Vigilant Autocannon on AA-mount 15 CF Ammo Bin Medium Launch Control System 8 Internal Missile Mounts), Radar Absorbent Materials 1 (factored in), Electronics Port (with Rating 3 Radio), Thermal Baffles 1 (factored in)",
+    "Notes": "ECCM 6, ECD 4, EnviroSeal (Gas with Cabin Overpressure), Medium Turret (Vigilant Autocannon on AA-mount 15 CF Ammo Bin Medium Launch Control System 8 Internal Missile Mounts), Radar Absorbent Materials 1 (factored in), Electronics Port (with Rating 3 Radio), Thermal Baffles 1 (factored in)",
     "Book.Page": "sota.78"
   },
   {
@@ -606,7 +606,6 @@
     "Notes": "ECM8, ECCM8, ED5, ECD6, Electronics Port (with Remote Control Deck 6 Rigger Protocol Emulation Module 6 Signal Amplifier 6), Remote Control Encryption Unit 6, Small Remote Turret (2 CF Ammo Bin), 4 Additional Electronics Ports",
     "Book.Page": "sota.78"
   },
-  
   {
     "name": "Mitsubishi Nightsky",
     "Handling": "4/8",
@@ -1939,7 +1938,7 @@
     "$Cost": "331000",
     "Availability": "17/17 days",
     "Street Index": "1",
-    "Notes": "Customised Engine(factored in), 2 External Hardpoints ",
+    "Notes": "Customised Engine(factored in), 2 External Hardpoints",
     "Book.Page": "r3.180"
   },
   {
@@ -2588,7 +2587,7 @@
     "$Cost": "800000",
     "Availability": "18/18 Days",
     "Street Index": "2.00",
-    "Notes": "4 comfy bucket seats, 3 person couch + 2 foldup bendhes, 2 mahogany desks, comm/entertainment suite, satt Matrix uplink, kitchen, bar, side door ",
+    "Notes": "4 comfy bucket seats, 3 person couch + 2 foldup bendhes, 2 mahogany desks, comm/entertainment suite, satt Matrix uplink, kitchen, bar, side door",
     "Book.Page": "tss.6"
   },
   {
@@ -2887,7 +2886,7 @@
     "$Cost": "12102000",
     "Availability": "-",
     "Street Index": "3.00",
-    "Notes": "Gas Enviroseal, ECM 7, ECCM 8, RAM 2 (factored in), 2 External Fixed Hardpoints (1 CF ammo bin each), Missile Launch System, 6 Missile Mounts (Total Ordinance Weight 1800 kg) ",
+    "Notes": "Gas Enviroseal, ECM 7, ECCM 8, RAM 2 (factored in), 2 External Fixed Hardpoints (1 CF ammo bin each), Missile Launch System, 6 Missile Mounts (Total Ordinance Weight 1800 kg)",
     "Book.Page": "r3.190"
   },
   {
@@ -2932,7 +2931,7 @@
     "$Cost": "2210000",
     "Availability": "NA",
     "Street Index": "3.00",
-    "Notes": " ECM 3, ECCM 3, RAM 2 (factored in), Thermal Baffles 2 (factored in), Gas Enviroseal, Medium Launch Control System, 2 External Missile Mounts, Small Turret (1 CF Ammo Bin)",
+    "Notes": "ECM 3, ECCM 3, RAM 2 (factored in), Thermal Baffles 2 (factored in), Gas Enviroseal, Medium Launch Control System, 2 External Missile Mounts, Small Turret (1 CF Ammo Bin)",
     "Book.Page": "r3.190"
   },
   {
@@ -2962,7 +2961,7 @@
     "$Cost": "240000",
     "Availability": "12/12 days",
     "Street Index": "1.00",
-    "Notes": " Suncell, This model is a dirigible",
+    "Notes": "Suncell, This model is a dirigible",
     "Book.Page": "r3.191"
   },
   {
@@ -2977,7 +2976,7 @@
     "$Cost": "360000",
     "Availability": "18/18 days",
     "Street Index": "1.00",
-    "Notes": " This model is a dirigible",
+    "Notes": "This model is a dirigible",
     "Book.Page": "r3.191"
   },
   {
@@ -3141,7 +3140,6 @@
     "Notes": "Rigger Adaption, 8 Partial Basic Living Amenities",
     "Book.Page": "r3.192"
   },
-  
   {
     "name": "Moonlight Aerospace Gossamer",
     "Handling": "5",

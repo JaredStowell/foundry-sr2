@@ -56,24 +56,46 @@ export class SR2Actor extends Actor {
    * Prepare Character type specific data
    */
   _prepareCharacterData(actorData) {
-    if (actorData.type !== 'character') return;
+    if (!['character', 'contact', 'follower'].includes(actorData.type)) return;
 
     const systemData = actorData.system;
 
+    // Derived Essence (current = base max - installed cyberware Essence cost)
+    this._calculateEssence(systemData);
+
+    // Cache augmentation modifiers for this prepare cycle (used by sheets and derived calcs)
+    const modifiers = this._calculateAugmentationModifiers();
+    this._sr2AugmentationModifiers = modifiers;
+
     // Calculate derived attributes
-    this._calculateDerivedAttributes(systemData);
+    this._calculateDerivedAttributes(systemData, modifiers);
     this._calculateConditionMonitors(systemData);
-    this._calculateInitiative(systemData);
+    this._calculateInitiative(systemData, modifiers);
+  }
+
+  _calculateEssence(systemData) {
+    const attrs = systemData.attributes;
+    if (!attrs?.essence) return;
+
+    const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+    const baseEssence = Number(attrs.essence.max) || 6;
+    const installedCyberware = this.items.filter(i => i.type === 'cyberware' && i.system.installed);
+    const totalEssenceLoss = round2(installedCyberware.reduce((total, cyber) => {
+      return total + (parseFloat(cyber.system.essence) || 0);
+    }, 0));
+
+    attrs.essence.value = round2(Math.max(0, baseEssence - totalEssenceLoss));
   }
 
   /**
    * Calculate derived attributes like Reaction, Initiative, etc.
    */
-  _calculateDerivedAttributes(systemData) {
+  _calculateDerivedAttributes(systemData, modifiers = null) {
     const attrs = systemData.attributes;
 
     // Apply cyberware and bioware modifiers to attributes
-    const modifiers = this._calculateAugmentationModifiers();
+    if (!modifiers) modifiers = this._calculateAugmentationModifiers();
 
     // Base attributes with modifiers applied
     const modifiedAttrs = {
@@ -82,18 +104,33 @@ export class SR2Actor extends Actor {
       strength: attrs.strength.value + (modifiers.STR || 0),
       charisma: attrs.charisma.value + (modifiers.CHA || 0),
       intelligence: attrs.intelligence.value + (modifiers.INT || 0),
-      willpower: attrs.willpower.value + (modifiers.WIL || 0),
-      reaction: Math.ceil((attrs.quickness.value + attrs.intelligence.value) / 2) + (modifiers.RCT || 0)
+      willpower: attrs.willpower.value + (modifiers.WIL || 0)
     };
+
+    // Reaction = floor((Quickness + Intelligence) / 2) + Reaction modifiers
+    modifiedAttrs.reaction = Math.floor((modifiedAttrs.quickness + modifiedAttrs.intelligence) / 2) + (modifiers.RCT || 0);
 
     // Update the reaction attribute with modifiers
     attrs.reaction.value = modifiedAttrs.reaction;
 
+    // Magic = Essence (rounded down) for awakened/adepts; 0 otherwise
+    const isMagical = Boolean(systemData.magic?.awakened || systemData.magic?.physicalAdept);
+    if (attrs.magic) {
+      if (isMagical) {
+        const essence = Number(attrs.essence?.value);
+        attrs.magic.value = Number.isFinite(essence) ? Math.floor(Math.max(0, essence)) : 0;
+      } else {
+        attrs.magic.value = 0;
+      }
+    }
+
     // Combat Pool = (Modified Quickness + Modified Intelligence + Modified Willpower) / 2 + Combat Pool bonuses
     systemData.pools.combat.max = Math.floor((modifiedAttrs.quickness + modifiedAttrs.intelligence + modifiedAttrs.willpower) / 2) + (modifiers.CPL || 0);
 
-    // Spell Pool = highest Sorcery skill (if awakened)
-    if (systemData.magic.awakened) {
+    const isSpellcaster = systemData.magic.awakened && !systemData.magic.physicalAdept;
+
+    // Spell Pool = highest Sorcery skill (spellcasters only)
+    if (isSpellcaster) {
       const sorcerySkill = this._getHighestSorcerySkill();
       systemData.pools.spell.max = sorcerySkill;
     } else {
@@ -111,8 +148,8 @@ export class SR2Actor extends Actor {
     // Task Pool = Modified Intelligence + highest relevant skill (simplified - using Intelligence base)
     systemData.pools.task.max = modifiedAttrs.intelligence;
 
-    // Astral Combat Pool = Modified Willpower + Modified Charisma (for astral combat)
-    if (systemData.magic.awakened) {
+    // Astral Combat Pool = Modified Willpower + Modified Charisma (spellcasters only)
+    if (isSpellcaster) {
       systemData.pools.astral.max = modifiedAttrs.willpower + modifiedAttrs.charisma;
     } else {
       systemData.pools.astral.max = 0;
@@ -120,9 +157,15 @@ export class SR2Actor extends Actor {
 
     // Initialize current values if not set
     Object.keys(systemData.pools).forEach(poolName => {
-      if (poolName !== 'karma' && systemData.pools[poolName].current === undefined) {
-        systemData.pools[poolName].current = systemData.pools[poolName].max;
-      }
+      if (poolName === 'karma') return;
+
+      const pool = systemData.pools[poolName];
+      if (!pool) return;
+      if (pool.current === undefined) pool.current = pool.max;
+
+      const max = Number(pool.max) || 0;
+      const cur = Number(pool.current) || 0;
+      pool.current = Math.max(0, Math.min(cur, max));
     });
   }
 
@@ -234,6 +277,12 @@ export class SR2Actor extends Actor {
 
     // Parse modifiers from each augmentation
     for (const aug of augmentations) {
+      // Explicit cyberware fields (in addition to optional Mods string)
+      if (aug.type === 'cyberware') {
+        modifiers.RCT += Number(aug.system.reactionBonus) || 0;
+        modifiers.INI += Number(aug.system.initiativeDice) || 0;
+      }
+
       const mods = aug.system.mods || "";
       if (!mods) continue;
 
@@ -259,12 +308,6 @@ export class SR2Actor extends Actor {
 
           if (modifiers.hasOwnProperty(attribute)) {
             modifiers[attribute] += finalValue;
-
-            if (levelMultiplier > 1) {
-              console.log(`SR2E | Applied ${aug.name} (Level ${levelMultiplier}): ${trimmed} x${levelMultiplier} = ${finalValue} (Total ${attribute}: ${modifiers[attribute]})`);
-            } else {
-              console.log(`SR2E | Applied ${aug.name}: ${trimmed} (Total ${attribute}: ${modifiers[attribute]})`);
-            }
           }
         }
       }
@@ -289,12 +332,12 @@ export class SR2Actor extends Actor {
   /**
    * Calculate initiative
    */
-  _calculateInitiative(systemData) {
+  _calculateInitiative(systemData, modifiers = null) {
     const attrs = systemData.attributes;
-    const modifiers = this._calculateAugmentationModifiers();
+    if (!modifiers) modifiers = this._calculateAugmentationModifiers();
 
-    // Base initiative = Quickness + Reaction (both already include modifiers)
-    systemData.initiative.base = attrs.quickness.value + attrs.reaction.value;
+    // Base initiative = Reaction (already includes modifiers via derived attributes)
+    systemData.initiative.base = attrs.reaction.value;
 
     // Initiative dice = 1 base + INI modifiers from cyberware
     systemData.initiative.dice = 1 + (modifiers.INI || 0);
@@ -305,13 +348,14 @@ export class SR2Actor extends Actor {
    */
   async rollDice(dicePool, targetNumber = 4, title = "Dice Roll") {
     // Ensure dicePool is a number and at least 1
-    dicePool = Number(dicePool) || 1;
-    targetNumber = Number(targetNumber) || 4;
-    
+    dicePool = Math.max(1, Number(dicePool) || 1);
+    targetNumber = Math.max(2, Number(targetNumber) || 4);
+
     
     const diceResults = [];
     let totalSuccesses = 0;
     let totalOnes = 0;
+    const shouldExplode = targetNumber > 6;
 
     // Roll each die in the pool
     for (let i = 0; i < dicePool; i++) {
@@ -320,26 +364,28 @@ export class SR2Actor extends Actor {
       let dieTotal = currentRoll;
       dieResults.push(currentRoll);
 
-      // Exploding 6s - keep rolling while we get 6s
-      while (currentRoll === 6) {
+      // Rule of Six (only when TN > 6): exploding 6s - keep rolling while we get 6s
+      while (shouldExplode && currentRoll === 6) {
         currentRoll = Math.floor(Math.random() * 6) + 1;
         dieTotal += currentRoll;
         dieResults.push(currentRoll);
       }
 
       // Count successes and ones for this die
-      if (dieTotal >= targetNumber) {
+      const isOne = dieResults[0] === 1;
+      const isSuccess = !isOne && dieTotal >= targetNumber;
+      if (isSuccess) {
         totalSuccesses++;
       }
-      if (dieResults[0] === 1) { // Only the first roll counts for ones
+      if (isOne) { // Only the first roll counts for ones
         totalOnes++;
       }
 
       diceResults.push({
         results: dieResults,
         total: dieTotal,
-        success: dieTotal >= targetNumber,
-        isOne: dieResults[0] === 1
+        success: isSuccess,
+        isOne: isOne
       });
     }
 

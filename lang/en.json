@@ -7,7 +7,9 @@
 
   "TYPES": {
     "Actor": {
-      "character": "Character"
+      "character": "Character - Player",
+      "contact": "Character - Contact",
+      "follower": "Character - Follower"
     },
     "Item": {
       "skill": "Skill",

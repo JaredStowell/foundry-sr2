@@ -1070,6 +1070,10 @@
 /* Item Browser Styles */
 .item-browser {
   background: #f8f9fa;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .browser-header {
@@ -1090,6 +1094,7 @@
   display: flex;
   gap: 15px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .search-section {
@@ -1106,11 +1111,12 @@
 }
 
 .clear-search {
-  padding: 6px 8px;
+  padding: 3px 8px;
   border: 1px solid #ccc;
   background: white;
   border-radius: 4px;
   cursor: pointer;
+  font-size: 11px;
 }
 
 .clear-search:hover {
@@ -1122,93 +1128,156 @@
   border: 1px solid #ccc;
   border-radius: 4px;
   background: white;
+  min-width: 220px;
 }
 
-.items-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 15px;
+.item-browser .browser-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
 }
 
-.item-card {
+.item-browser .items-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item-browser .item-card {
   background: var(--cyber-bg-secondary);
   border: 1px solid #ddd;
   border-radius: 6px;
-  padding: 15px;
+  padding: 10px 12px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) 1fr auto;
+  gap: 6px;
+  align-items: center;
 }
 
-.item-card:hover {
+.item-browser .item-card:hover {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
-.item-header {
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #eee;
+.item-browser .item-header {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
 }
 
-.item-name {
-  margin: 0 0 4px 0;
+.item-browser .item-name {
+  margin: 0 0 2px 0;
   color: #333;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: bold;
+  border-bottom: none;
+  padding-bottom: 0;
+  overflow-wrap: anywhere;
 }
 
-.item-category {
-  font-size: 11px;
+.item-browser .item-category {
+  font-size: 10px;
   color: #666;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.item-details {
-  margin-bottom: 12px;
-}
-
-.detail-row {
+.item-browser .item-details {
+  margin: 0;
   display: flex;
-  justify-content: space-between;
-  margin-bottom: 4px;
-  font-size: 12px;
+  flex-wrap: wrap;
+  gap: 2px 12px;
 }
 
-.detail-row .label {
+.item-browser .detail-row {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.item-browser .detail-row .label {
   font-weight: bold;
   color: #555;
 }
 
-.detail-row .value {
+.item-browser .detail-row .value {
   color: #333;
 }
 
-.detail-row.source {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #eee;
+.item-browser .detail-row.source {
+  margin: 0;
+  padding: 0;
+  border: 0;
   font-style: italic;
 }
 
-.item-actions {
-  text-align: center;
+.item-browser .item-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
 }
 
-.add-item {
-  padding: 6px 12px;
+.item-browser .item-actions button {
+  width: auto;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.item-browser .add-item {
+  padding: 4px 10px;
   background: #007acc;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   display: flex;
   align-items: center;
   gap: 4px;
-  margin: 0 auto;
+  margin: 0;
 }
 
-.add-item:hover {
+.item-browser .add-item:hover {
   background: #005a99;
+}
+
+.item-browser .buy-item {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+
+.item-browser .buy-item.can-buy {
+  background: #28a745;
+  color: white;
+}
+
+.item-browser .buy-item.can-buy:hover {
+  background: #1e7e34;
+}
+
+.item-browser .buy-item.cant-buy {
+  background: #dc3545;
+  color: white;
+  cursor: not-allowed;
+}
+
+.item-browser .buy-item.cant-buy:hover {
+  background: #dc3545;
+}
+
+.item-browser .buy-item:disabled {
+  opacity: 0.7;
 }
 
 .no-results {
@@ -4640,9 +4709,18 @@ header.window-header.flexrow.draggable.resizable {
   box-shadow: var(--cyber-glow-cyan);
 }
 
+.shadowrun2e.item-browser .window-content {
+  overflow: hidden;
+  padding: 0;
+}
+
 .shadowrun2e .item-browser {
   padding: 20px;
   background: linear-gradient(135deg, var(--cyber-bg-primary), var(--cyber-bg-secondary));
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .shadowrun2e .browser-header {
@@ -4678,6 +4756,7 @@ header.window-header.flexrow.draggable.resizable {
   display: flex;
   gap: 15px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .shadowrun2e .search-section {
@@ -4707,9 +4786,13 @@ header.window-header.flexrow.draggable.resizable {
   background: linear-gradient(135deg, var(--cyber-bg-secondary), var(--cyber-bg-tertiary));
   color: var(--cyber-accent-red);
   border: 1px solid var(--cyber-accent-red);
-  padding: 8px 10px;
+  padding: 4px 10px;
   cursor: pointer;
   transition: all 0.3s ease;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .shadowrun2e .clear-search:hover {
@@ -4725,6 +4808,7 @@ header.window-header.flexrow.draggable.resizable {
   padding: 8px 12px;
   font-family: inherit;
   transition: all 0.3s ease;
+  min-width: 250px;
 }
 
 .shadowrun2e .category-filter:focus {
@@ -4733,22 +4817,26 @@ header.window-header.flexrow.draggable.resizable {
   box-shadow: var(--cyber-glow-cyan);
 }
 
-.shadowrun2e .items-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
+.shadowrun2e .item-browser .items-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.shadowrun2e .item-card {
+.shadowrun2e .item-browser .item-card {
   background: linear-gradient(135deg, var(--cyber-bg-secondary), var(--cyber-bg-primary));
   border: 1px solid var(--cyber-border-bright);
   border-left: 3px solid var(--cyber-accent-cyan);
-  padding: 16px;
+  padding: 10px 12px;
   transition: all 0.3s ease;
   position: relative;
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) 1fr auto;
+  gap: 6px;
+  align-items: center;
 }
 
-.shadowrun2e .item-card:before {
+.shadowrun2e .item-browser .item-card:before {
   content: '';
   position: absolute;
   top: 0;
@@ -4759,77 +4847,93 @@ header.window-header.flexrow.draggable.resizable {
   clip-path: polygon(0 0, 100% 0, 100% 100%);
 }
 
-.shadowrun2e .item-card:hover {
+.shadowrun2e .item-browser .item-card:hover {
   border-left-color: var(--cyber-accent-magenta);
   box-shadow: var(--cyber-glow-magenta);
   transform: translateY(-2px);
 }
 
-.shadowrun2e .item-card:hover:before {
+.shadowrun2e .item-browser .item-card:hover:before {
   background: linear-gradient(-45deg, var(--cyber-accent-magenta), transparent);
 }
 
-.shadowrun2e .item-header {
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--cyber-border);
+.shadowrun2e .item-browser .item-header {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
 }
 
-.shadowrun2e .item-name {
-  margin: 0 0 4px 0;
+.shadowrun2e .item-browser .item-name {
+  margin: 0 0 2px 0;
   color: var(--cyber-accent-cyan);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: bold;
   text-transform: uppercase;
   letter-spacing: 1px;
+  border-bottom: none;
+  padding-bottom: 0;
+  overflow-wrap: anywhere;
 }
 
-.shadowrun2e .item-category {
+.shadowrun2e .item-browser .item-category {
   font-size: 10px;
   color: var(--cyber-text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
 
-.shadowrun2e .item-details {
-  margin-bottom: 15px;
-}
-
-.shadowrun2e .detail-row {
+.shadowrun2e .item-browser .item-details {
+  margin: 0;
   display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
-  font-size: 12px;
+  flex-wrap: wrap;
+  gap: 2px 12px;
 }
 
-.shadowrun2e .detail-row .label {
+.shadowrun2e .item-browser .detail-row {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.shadowrun2e .item-browser .detail-row .label {
   font-weight: bold;
   color: var(--cyber-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.shadowrun2e .detail-row .value {
+.shadowrun2e .item-browser .detail-row .value {
   color: var(--cyber-text-primary);
 }
 
-.shadowrun2e .detail-row.source {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--cyber-border);
+.shadowrun2e .item-browser .detail-row.source {
+  margin: 0;
+  padding: 0;
+  border: 0;
   font-style: italic;
   color: var(--cyber-text-muted);
 }
 
-.shadowrun2e .item-actions {
-  text-align: center;
+.shadowrun2e.item-browser .item-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
 }
 
-.shadowrun2e .add-item {
+.shadowrun2e.item-browser .item-actions button {
+  width: auto;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.shadowrun2e.item-browser .add-item {
   background: linear-gradient(135deg, var(--cyber-bg-secondary), var(--cyber-bg-tertiary));
   color: var(--cyber-accent-green);
   border: 1px solid var(--cyber-accent-green);
-  padding: 8px 16px;
+  padding: 6px 12px;
   cursor: pointer;
   font-size: 11px;
   font-weight: bold;
@@ -4838,18 +4942,67 @@ header.window-header.flexrow.draggable.resizable {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0 auto;
+  margin: 0;
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
 }
 
-.shadowrun2e .add-item:hover {
+.shadowrun2e.item-browser .add-item:hover {
   background: linear-gradient(135deg, var(--cyber-bg-tertiary), var(--cyber-bg-secondary));
   color: var(--cyber-accent-cyan);
   border-color: var(--cyber-accent-cyan);
   box-shadow: var(--cyber-glow-cyan);
   transform: translateY(-2px);
+}
+
+.shadowrun2e.item-browser .buy-item {
+  background: linear-gradient(135deg, var(--cyber-bg-secondary), var(--cyber-bg-tertiary));
+  border: 1px solid var(--cyber-border);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.shadowrun2e.item-browser .buy-item.can-buy {
+  color: var(--cyber-accent-green);
+  border-color: var(--cyber-accent-green);
+}
+
+.shadowrun2e.item-browser .buy-item.can-buy:hover {
+  background: linear-gradient(135deg, var(--cyber-bg-tertiary), var(--cyber-bg-secondary));
+  color: var(--cyber-accent-cyan);
+  border-color: var(--cyber-accent-cyan);
+  box-shadow: var(--cyber-glow-cyan);
+  transform: translateY(-2px);
+}
+
+.shadowrun2e.item-browser .buy-item.cant-buy {
+  color: var(--cyber-accent-red);
+  border-color: var(--cyber-accent-red);
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.shadowrun2e.item-browser .buy-item.cant-buy:hover {
+  box-shadow: none;
+  transform: none;
+  color: var(--cyber-accent-red);
+  border-color: var(--cyber-accent-red);
+}
+
+.shadowrun2e.item-browser .buy-item:disabled {
+  opacity: 0.7;
 }
 
 .shadowrun2e .no-results {
@@ -4865,6 +5018,198 @@ header.window-header.flexrow.draggable.resizable {
   margin: 8px 0;
   text-transform: uppercase;
   letter-spacing: 1px;
+}
+
+/* ===== GEAR PURCHASE ===== */
+.shadowrun2e.gear-purchase {
+  background: var(--cyber-bg-primary);
+  color: var(--cyber-text-primary);
+  border: 2px solid var(--cyber-accent-cyan);
+  box-shadow: var(--cyber-glow-cyan);
+}
+
+.shadowrun2e.gear-purchase .window-content {
+  overflow: hidden;
+  padding: 0;
+}
+
+.shadowrun2e .gear-purchase {
+  padding: 20px;
+  background: linear-gradient(135deg, var(--cyber-bg-primary), var(--cyber-bg-secondary));
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.shadowrun2e .gear-purchase-header {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--cyber-accent-cyan);
+}
+
+.shadowrun2e .gear-purchase-header h2 {
+  margin: 0 0 6px 0;
+  color: var(--cyber-accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: var(--cyber-glow-cyan);
+}
+
+.shadowrun2e .gear-purchase-header p {
+  margin: 0;
+  color: var(--cyber-text-muted);
+}
+
+.shadowrun2e .gear-purchase-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 14px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, var(--cyber-bg-secondary), var(--cyber-bg-primary));
+  border: 1px solid var(--cyber-border);
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.shadowrun2e .gear-purchase-summary .summary-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.shadowrun2e .gear-purchase-summary .label {
+  font-size: 10px;
+  color: var(--cyber-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.shadowrun2e .gear-purchase-summary .value {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--cyber-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.shadowrun2e .gear-purchase-warning {
+  border: 1px solid var(--cyber-accent-red);
+  color: var(--cyber-accent-red);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 11px;
+}
+
+.shadowrun2e .gear-purchase-warning.is-hidden {
+  display: none;
+}
+
+.shadowrun2e .gear-purchase-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: transparent;
+}
+
+.shadowrun2e .gear-purchase-table-wrap {
+  flex: 1;
+  overflow: auto;
+  background: var(--cyber-bg-secondary);
+  border: 1px solid var(--cyber-border);
+}
+
+.shadowrun2e .gear-purchase-table thead th {
+  position: sticky;
+  top: 0;
+  background: linear-gradient(135deg, var(--cyber-bg-tertiary), var(--cyber-bg-secondary));
+  color: var(--cyber-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--cyber-border);
+  text-align: left;
+}
+
+.shadowrun2e .gear-purchase-table th.cost,
+.shadowrun2e .gear-purchase-table td.cost {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.shadowrun2e .gear-purchase-table th.qty,
+.shadowrun2e .gear-purchase-table td.qty {
+  width: 80px;
+}
+
+.shadowrun2e .gear-purchase-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  vertical-align: middle;
+}
+
+.shadowrun2e .gear-purchase-table tr.is-disabled {
+  opacity: 0.6;
+}
+
+.shadowrun2e .gear-purchase-table td.check {
+  width: 28px;
+}
+
+.shadowrun2e .gear-purchase-table td.name .note {
+  font-size: 10px;
+  color: var(--cyber-text-muted);
+  margin-top: 2px;
+}
+
+.shadowrun2e .gear-purchase-table input[type="number"] {
+  width: 70px;
+  background: var(--cyber-bg-primary);
+  color: var(--cyber-text-primary);
+  border: 1px solid var(--cyber-border);
+  padding: 4px 6px;
+}
+
+.shadowrun2e .gear-purchase-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.shadowrun2e .gear-purchase-actions button {
+  background: linear-gradient(135deg, var(--cyber-bg-secondary), var(--cyber-bg-tertiary));
+  border: 1px solid var(--cyber-border);
+  color: var(--cyber-text-primary);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.shadowrun2e .gear-purchase-actions button:hover:not(:disabled) {
+  border-color: var(--cyber-accent-cyan);
+  box-shadow: var(--cyber-glow-cyan);
+  transform: translateY(-1px);
+}
+
+.shadowrun2e .gear-purchase-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.shadowrun2e .gear-purchase-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--cyber-text-muted);
 }
 
 /* ===== CYBERPUNK CHARACTER SHEET OVERRIDES ===== */
@@ -5673,20 +6018,7 @@ header.window-header.flexrow.draggable.resizable {
   align-items: center;
   line-height: 1;
 }
-
-.shadowrun2e .close {
-  color: var(--cyber-accent-red);
-  border: 1px solid var(--cyber-accent-red);
-  background: var(--cyber-bg-secondary);
-  transition: all 0.3s ease;
-}
-
-.shadowrun2e .close:hover {
-  background: var(--cyber-accent-red);
-  color: var(--cyber-bg-primary);
-  box-shadow: var(--cyber-glow-red);
-}
-
+	
 /* ===== CYBERPUNK FORM ELEMENTS ===== */
 .shadowrun2e .form-group {
   margin-bottom: 15px;
@@ -6001,8 +6333,13 @@ header.window-header.flexrow.draggable.resizable {
     width: 100%;
   }
 
-  .shadowrun2e .items-grid {
+  .shadowrun2e.item-browser .item-card {
     grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .shadowrun2e.item-browser .item-actions {
+    justify-content: flex-start;
   }
 
   .shadowrun2e .attributes-grid {
@@ -6167,6 +6504,29 @@ header.window-header.flexrow.draggable.resizable {
 
 .shadowrun2e .bioware .item-row {
   grid-template-columns: 2fr 80px 100px 80px 100px;
+}
+
+.shadowrun2e .items-list.spells .items-table-header {
+  grid-template-columns: 2fr 60px 70px 100px 50px 50px 140px 100px;
+}
+
+.shadowrun2e .items-list.spells .item-row {
+  grid-template-columns: 2fr 60px 70px 100px 50px 50px 140px 100px;
+  border-bottom: none;
+  margin-bottom: 8px;
+}
+
+.shadowrun2e .items-list.spells .item-row:last-child {
+  margin-bottom: 0;
+}
+
+.shadowrun2e .items-list.spells .item-force,
+.shadowrun2e .items-list.spells .item-range,
+.shadowrun2e .items-list.spells .item-resist,
+.shadowrun2e .items-list.spells .item-dmg,
+.shadowrun2e .items-list.spells .item-duration,
+.shadowrun2e .items-list.spells .item-drain {
+  text-align: center;
 }
 
 .shadowrun2e .item-row:hover {
@@ -8100,4 +8460,358 @@ Management Dialog */
 
 .weapon-attack-result strong {
   color: var(--cyber-accent-magenta);
+}
+
+/* Create Actor dialog extras (Priorities/Archetype) */
+.sr2-create-extras .sr2-create-priorities .form-group .form-fields {
+  padding: 2px 0;
+}
+
+.sr2-create-extras .sr2-create-priorities select.sr2-priority-select {
+  margin: 2px 0;
+}
+
+.sr2-create-extras .sr2-create-archetype .form-group .form-fields {
+  padding: 2px 0;
+}
+
+.sr2-create-extras .sr2-metatype-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+}
+
+.sr2-create-extras .sr2-metatype-fields select {
+  width: 100%;
+}
+
+/* Creation counters (attributes/skills/force) */
+.shadowrun2e .sr2-creation-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 8px;
+  border: 1px solid var(--cyber-border);
+  background: var(--cyber-bg-secondary);
+}
+
+.shadowrun2e .sr2-creation-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cyber-text-primary);
+  font-size: 12px;
+}
+
+.shadowrun2e .sr2-points-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--cyber-text-primary);
+  font-size: 12px;
+}
+
+.shadowrun2e .sr2-points-row.over-limit {
+  color: var(--cyber-accent-red);
+  text-shadow: var(--cyber-glow-red);
+}
+
+.shadowrun2e .sr2-points-remaining {
+  color: var(--cyber-text-muted);
+}
+
+.shadowrun2e .sr2-racial-summary {
+  color: var(--cyber-text-muted);
+  font-size: 12px;
+}
+
+.shadowrun2e .sr2-readonly-number {
+  display: inline-block;
+  min-width: 24px;
+  text-align: center;
+  padding: 2px 4px;
+  border: 1px solid var(--cyber-border);
+  background: var(--cyber-bg-tertiary);
+}
+
+.shadowrun2e .skills-table-header .skill-allocated-rating,
+.shadowrun2e .skill-item .skill-allocated-rating {
+  width: 70px;
+  text-align: center;
+}
+
+.shadowrun2e .skill-allocated-rating input {
+  width: 100%;
+  text-align: center;
+}
+
+.shadowrun2e .language-section input {
+  width: 100%;
+  background: var(--cyber-bg-secondary);
+  color: var(--cyber-text-primary);
+  border: 1px solid var(--cyber-border);
+  padding: 4px;
+}
+
+.shadowrun2e .language-section input:focus {
+  border-color: var(--cyber-accent-cyan);
+  box-shadow: var(--cyber-glow-cyan);
+}
+
+/* Follower leader display in header */
+.shadowrun2e .header-subrow.follower-leader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.shadowrun2e .follower-leader-fields {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shadowrun2e .follower-leader-name {
+  color: var(--cyber-text-primary);
+}
+
+.shadowrun2e .open-leader {
+  background: none;
+  border: 1px solid var(--cyber-border);
+  color: var(--cyber-accent-cyan);
+  padding: 2px 6px;
+}
+
+.shadowrun2e .open-leader:hover {
+  border-color: var(--cyber-accent-cyan);
+  box-shadow: var(--cyber-glow-cyan);
+}
+
+.shadowrun2e .sr2-creation-resources h3,
+.shadowrun2e .sr2-creation-resources h4 {
+  margin: 0 0 8px 0;
+}
+
+.shadowrun2e .sr2-resource-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 2px 0;
+}
+
+.shadowrun2e .sr2-resource-header .resource-label {
+  margin: 0;
+}
+
+.shadowrun2e .sr2-lifestyles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shadowrun2e .sr2-lifestyle-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  gap: 6px;
+  align-items: center;
+}
+
+.shadowrun2e .sr2-lifestyle-add,
+.shadowrun2e .sr2-lifestyle-delete {
+  background: none;
+  border: 1px solid var(--cyber-border);
+  color: var(--cyber-accent-cyan);
+}
+
+.shadowrun2e .sr2-lifestyle-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: none;
+  width: auto;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.shadowrun2e .sr2-lifestyle-delete {
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+.shadowrun2e .sr2-lifestyle-add:hover {
+  text-shadow: var(--cyber-glow-cyan);
+}
+
+.shadowrun2e .sr2-lifestyle-delete:hover {
+  border-color: var(--cyber-accent-cyan);
+  box-shadow: var(--cyber-glow-cyan);
+}
+
+.shadowrun2e .sr2-subcost {
+  margin-left: 12px;
+}
+
+.shadowrun2e .sr2-extras-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.shadowrun2e .sr2-creation-note {
+  margin: 6px 0 0 0;
+  color: var(--cyber-text-muted);
+  font-size: 12px;
+}
+
+.shadowrun2e .sr2-cost-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--cyber-text-muted);
+  font-size: 12px;
+}
+
+.shadowrun2e .finalize-resources,
+.shadowrun2e .unfinalize-resources {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid var(--cyber-border);
+  color: var(--cyber-accent-cyan);
+  padding: 4px 8px;
+}
+
+.shadowrun2e .finalize-resources:hover,
+.shadowrun2e .unfinalize-resources:hover {
+  border-color: var(--cyber-accent-cyan);
+  box-shadow: var(--cyber-glow-cyan);
+}
+
+.shadowrun2e .finalize-resources:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.shadowrun2e .sr2-connections {
+  margin-top: 12px;
+}
+
+.shadowrun2e .sr2-connections-section + .sr2-connections-section {
+  margin-top: 12px;
+}
+
+.shadowrun2e .sr2-connections-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shadowrun2e .sr2-connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--cyber-border);
+  background: var(--cyber-bg-secondary);
+}
+
+.shadowrun2e .open-connection {
+  background: none;
+  border: 1px solid var(--cyber-border);
+  color: var(--cyber-accent-cyan);
+  padding: 2px 6px;
+}
+
+.shadowrun2e .open-connection:hover {
+  border-color: var(--cyber-accent-cyan);
+  box-shadow: var(--cyber-glow-cyan);
+}
+
+/* ===== CHARACTER SHEET TABS (COMPACT) ===== */
+.shadowrun2e form.character .sheet-tabs.tabs,
+.shadowrun2e form.contact .sheet-tabs.tabs,
+.shadowrun2e form.follower .sheet-tabs.tabs,
+form.shadowrun2e.character .sheet-tabs.tabs,
+form.shadowrun2e.contact .sheet-tabs.tabs,
+form.shadowrun2e.follower .sheet-tabs.tabs,
+.shadowrun2e.character .sheet-tabs.tabs,
+.shadowrun2e.contact .sheet-tabs.tabs,
+.shadowrun2e.follower .sheet-tabs.tabs {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  height: auto !important;
+  min-height: 0 !important;
+  flex: 0 0 auto !important;
+  padding: 0 !important;
+  margin: 0 0 8px 0 !important;
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 0 !important;
+}
+
+.shadowrun2e form.character .sheet-tabs.tabs .item,
+.shadowrun2e form.contact .sheet-tabs.tabs .item,
+.shadowrun2e form.follower .sheet-tabs.tabs .item,
+form.shadowrun2e.character .sheet-tabs.tabs .item,
+form.shadowrun2e.contact .sheet-tabs.tabs .item,
+form.shadowrun2e.follower .sheet-tabs.tabs .item,
+.shadowrun2e.character .sheet-tabs.tabs .item,
+.shadowrun2e.contact .sheet-tabs.tabs .item,
+.shadowrun2e.follower .sheet-tabs.tabs .item {
+  background: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 10px !important;
+  line-height: 24px !important;
+  min-height: 0 !important;
+  transform: none !important;
+}
+
+.shadowrun2e form.character .sheet-tabs.tabs .item:before,
+.shadowrun2e form.contact .sheet-tabs.tabs .item:before,
+.shadowrun2e form.follower .sheet-tabs.tabs .item:before,
+form.shadowrun2e.character .sheet-tabs.tabs .item:before,
+form.shadowrun2e.contact .sheet-tabs.tabs .item:before,
+form.shadowrun2e.follower .sheet-tabs.tabs .item:before,
+.shadowrun2e.character .sheet-tabs.tabs .item:before,
+.shadowrun2e.contact .sheet-tabs.tabs .item:before,
+.shadowrun2e.follower .sheet-tabs.tabs .item:before {
+  content: none;
+}
+
+.shadowrun2e form.character .sheet-tabs.tabs .item.active,
+.shadowrun2e form.contact .sheet-tabs.tabs .item.active,
+.shadowrun2e form.follower .sheet-tabs.tabs .item.active,
+form.shadowrun2e.character .sheet-tabs.tabs .item.active,
+form.shadowrun2e.contact .sheet-tabs.tabs .item.active,
+form.shadowrun2e.follower .sheet-tabs.tabs .item.active,
+.shadowrun2e.character .sheet-tabs.tabs .item.active,
+.shadowrun2e.contact .sheet-tabs.tabs .item.active,
+.shadowrun2e.follower .sheet-tabs.tabs .item.active {
+  background: linear-gradient(135deg, var(--cyber-accent-cyan), var(--cyber-accent-magenta)) !important;
+  color: var(--cyber-bg-primary) !important;
+  transform: none !important;
+}
+
+.shadowrun2e form.character .sheet-tabs.tabs .item:hover,
+.shadowrun2e form.contact .sheet-tabs.tabs .item:hover,
+.shadowrun2e form.follower .sheet-tabs.tabs .item:hover,
+form.shadowrun2e.character .sheet-tabs.tabs .item:hover,
+form.shadowrun2e.contact .sheet-tabs.tabs .item:hover,
+form.shadowrun2e.follower .sheet-tabs.tabs .item:hover,
+.shadowrun2e.character .sheet-tabs.tabs .item:hover,
+.shadowrun2e.contact .sheet-tabs.tabs .item:hover,
+.shadowrun2e.follower .sheet-tabs.tabs .item:hover {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: var(--cyber-accent-cyan) !important;
+  transform: none !important;
 }

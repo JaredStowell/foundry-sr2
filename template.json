@@ -1,6 +1,6 @@
 {
   "Actor": {
-    "types": ["character", "cyberdeck", "vehicle", "spirit"],
+    "types": ["character", "contact", "follower", "cyberdeck", "vehicle", "spirit"],
     "templates": {
       "base": {
         "health": {
@@ -107,17 +107,350 @@
       },
       "resources": {
         "nuyen": 0,
-        "lifestyle": "street"
+        "lifestyle": "street",
+        "lifestyles": [
+          {
+            "type": "street",
+            "months": 1
+          }
+        ]
+      },
+      "priorities": {
+        "attributes": "",
+        "skills": "",
+        "resources": "",
+        "metatype": "",
+        "magic": ""
+      },
+      "creation": {
+        "attributePoints": 0,
+        "skillPoints": 0,
+        "forcePoints": 0,
+        "startingNuyen": 0,
+        "lifestyleMonths": 1,
+        "extras": {
+          "contacts": 0,
+          "buddy": 0,
+          "gang": 0,
+          "followers": 0
+        },
+        "resourcesFinalized": false,
+        "unspentNuyen": 0,
+        "startingCashFromUnspent": 0,
+        "startingCashRoll": 0,
+        "startingCashFinal": 0
       },
       "details": {
         "metatype": "human",
+        "nativeLanguage": "English",
+        "dialectLanguage": "City Speak",
         "age": "",
         "height": "",
         "weight": "",
         "eyes": "",
         "hair": "",
         "skin": "",
-        "concept": ""
+        "concept": "",
+        "archetype": "",
+        "traits": {
+          "lowLightVision": false,
+          "thermographicVision": false,
+          "reach": 0,
+          "dermalArmor": 0,
+          "diseaseResistance": 0
+        }
+      }
+    },
+    "contact": {
+      "templates": ["base"],
+      "attributes": {
+        "body": {
+          "value": 1,
+          "min": 1,
+          "max": 6
+        },
+        "quickness": {
+          "value": 1,
+          "min": 1,
+          "max": 6
+        },
+        "strength": {
+          "value": 1,
+          "min": 1,
+          "max": 6
+        },
+        "charisma": {
+          "value": 1,
+          "min": 1,
+          "max": 6
+        },
+        "intelligence": {
+          "value": 1,
+          "min": 1,
+          "max": 6
+        },
+        "willpower": {
+          "value": 1,
+          "min": 1,
+          "max": 6
+        },
+        "essence": {
+          "value": 6,
+          "min": 0,
+          "max": 6
+        },
+        "magic": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "reaction": {
+          "value": 1,
+          "min": 1,
+          "max": 12
+        }
+      },
+      "pools": {
+        "combat": {
+          "current": 0,
+          "max": 0
+        },
+        "spell": {
+          "current": 0,
+          "max": 0
+        },
+        "karma": {
+          "current": 0,
+          "total": 0
+        },
+        "hacking": {
+          "current": 0,
+          "max": 0
+        },
+        "control": {
+          "current": 0,
+          "max": 0
+        },
+        "task": {
+          "current": 0,
+          "max": 0
+        },
+        "astral": {
+          "current": 0,
+          "max": 0
+        }
+      },
+      "initiative": {
+        "base": 2,
+        "dice": 1,
+        "current": 0
+      },
+      "magic": {
+        "awakened": false,
+        "physicalAdept": false,
+        "tradition": ""
+      },
+      "resources": {
+        "nuyen": 0,
+        "lifestyle": "street",
+        "lifestyles": [
+          {
+            "type": "street",
+            "months": 1
+          }
+        ]
+      },
+      "priorities": {
+        "attributes": "",
+        "skills": "",
+        "resources": "",
+        "metatype": "",
+        "magic": ""
+      },
+      "creation": {
+        "attributePoints": 0,
+        "skillPoints": 0,
+        "forcePoints": 0,
+        "startingNuyen": 0,
+        "lifestyleMonths": 1,
+        "extras": {
+          "contacts": 0,
+          "buddy": 0,
+          "gang": 0,
+          "followers": 0
+        },
+        "resourcesFinalized": false,
+        "unspentNuyen": 0,
+        "startingCashFromUnspent": 0,
+        "startingCashRoll": 0,
+        "startingCashFinal": 0
+      },
+      "details": {
+        "metatype": "human",
+        "nativeLanguage": "English",
+        "dialectLanguage": "City Speak",
+        "age": "",
+        "height": "",
+        "weight": "",
+        "eyes": "",
+        "hair": "",
+        "skin": "",
+        "concept": "",
+        "archetype": "",
+        "traits": {
+          "lowLightVision": false,
+          "thermographicVision": false,
+          "reach": 0,
+          "dermalArmor": 0,
+          "diseaseResistance": 0
+        },
+        "leaderId": ""
+      }
+    },
+    "follower": {
+      "templates": ["base"],
+      "attributes": {
+        "body": {
+          "value": 1,
+          "min": 1,
+          "max": 6
+        },
+        "quickness": {
+          "value": 1,
+          "min": 1,
+          "max": 6
+        },
+        "strength": {
+          "value": 1,
+          "min": 1,
+          "max": 6
+        },
+        "charisma": {
+          "value": 1,
+          "min": 1,
+          "max": 6
+        },
+        "intelligence": {
+          "value": 1,
+          "min": 1,
+          "max": 6
+        },
+        "willpower": {
+          "value": 1,
+          "min": 1,
+          "max": 6
+        },
+        "essence": {
+          "value": 6,
+          "min": 0,
+          "max": 6
+        },
+        "magic": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "reaction": {
+          "value": 1,
+          "min": 1,
+          "max": 12
+        }
+      },
+      "pools": {
+        "combat": {
+          "current": 0,
+          "max": 0
+        },
+        "spell": {
+          "current": 0,
+          "max": 0
+        },
+        "karma": {
+          "current": 0,
+          "total": 0
+        },
+        "hacking": {
+          "current": 0,
+          "max": 0
+        },
+        "control": {
+          "current": 0,
+          "max": 0
+        },
+        "task": {
+          "current": 0,
+          "max": 0
+        },
+        "astral": {
+          "current": 0,
+          "max": 0
+        }
+      },
+      "initiative": {
+        "base": 2,
+        "dice": 1,
+        "current": 0
+      },
+      "magic": {
+        "awakened": false,
+        "physicalAdept": false,
+        "tradition": ""
+      },
+      "resources": {
+        "nuyen": 0,
+        "lifestyle": "street",
+        "lifestyles": [
+          {
+            "type": "street",
+            "months": 1
+          }
+        ]
+      },
+      "priorities": {
+        "attributes": "",
+        "skills": "",
+        "resources": "",
+        "metatype": "",
+        "magic": ""
+      },
+      "creation": {
+        "attributePoints": 0,
+        "skillPoints": 0,
+        "forcePoints": 0,
+        "startingNuyen": 0,
+        "lifestyleMonths": 1,
+        "extras": {
+          "contacts": 0,
+          "buddy": 0,
+          "gang": 0,
+          "followers": 0
+        },
+        "resourcesFinalized": false,
+        "unspentNuyen": 0,
+        "startingCashFromUnspent": 0,
+        "startingCashRoll": 0,
+        "startingCashFinal": 0
+      },
+      "details": {
+        "metatype": "human",
+        "nativeLanguage": "English",
+        "dialectLanguage": "City Speak",
+        "age": "",
+        "height": "",
+        "weight": "",
+        "eyes": "",
+        "hair": "",
+        "skin": "",
+        "concept": "",
+        "archetype": "",
+        "traits": {
+          "lowLightVision": false,
+          "thermographicVision": false,
+          "reach": 0,
+          "dermalArmor": 0,
+          "diseaseResistance": 0
+        },
+        "leaderId": ""
       }
     },
     "cyberdeck": {
@@ -244,6 +577,7 @@
     },
     "skill": {
       "templates": ["base"],
+      "allocatedRating": 0,
       "baseRating": 0,
       "concentrationRating": 0,
       "specializationRating": 0,
@@ -251,6 +585,8 @@
       "concentration": "",
       "specialization": "",
       "category": "active",
+      "isFree": false,
+      "freeLanguageType": "",
       "requiresConcentration": false
     },
     "weapon": {
@@ -283,7 +619,9 @@
     },
     "gear": {
       "templates": ["base"],
+      "category": "",
       "rating": 0,
+      "bondCost": 0,
       "equipped": false
     },
     "cyberware": {

@@ -2,7 +2,11 @@
  * Item Browser for Shadowrun 2E
  * Allows browsing and adding items from JSON data files
  */
+import { sr2InferFocusBondCostForGearItem } from "./sr2-rules.js";
+
 export class SR2ItemBrowser extends Application {
+
+  static _itemsCache = new Map();
   
   constructor(actor, itemType, options = {}) {
     super(options);
@@ -11,7 +15,8 @@ export class SR2ItemBrowser extends Application {
     this.items = [];
     this.filteredItems = [];
     this.searchTerm = "";
-    this.selectedCategory = "";
+    this._pendingSearchFocus = null;
+    this._scheduledRender = null;
   }
 
   /** @override */
@@ -51,16 +56,30 @@ export class SR2ItemBrowser extends Application {
       await this._loadItems();
     }
     
-    // Filter items based on search and category
+    // Filter items based on search
     this._filterItems();
+
+    const buyer = this._getBuyerActor();
+    const buyerNuyen = this._getActorNuyen(buyer);
+    for (const item of this.filteredItems) {
+      const costValue = item._buyCostValue ?? null;
+      const costDisplay = item._buyCostDisplay ?? "?";
+      const cost = { value: costValue, display: costDisplay };
+
+      item.showBuy = costValue !== null;
+      item.buyCostDisplay = costDisplay;
+      item.buyCostValue = costValue;
+      item.canBuy = Boolean(buyer) && costValue !== null && buyerNuyen >= costValue;
+      item.buyDisabled = !item.canBuy;
+      item.buyButtonClass = item.canBuy ? "can-buy" : "cant-buy";
+      item.buyTitle = this._getBuyTitle({ buyer, buyerNuyen, cost, item });
+    }
     
     return {
       ...data,
       itemType: this.itemType,
       items: this.filteredItems,
       searchTerm: this.searchTerm,
-      selectedCategory: this.selectedCategory,
-      categories: this._getCategories(),
       hasItems: this.filteredItems.length > 0
     };
   }
@@ -72,14 +91,13 @@ export class SR2ItemBrowser extends Application {
     // Search functionality
     html.find('.item-search').on('input', this._onSearch.bind(this));
     
-    // Category filter
-    html.find('.category-filter').change(this._onCategoryFilter.bind(this));
-    
     // Add item to character
     html.find('.add-item').click(this._onAddItem.bind(this));
-    
-    // Clear search
-    html.find('.clear-search').click(this._onClearSearch.bind(this));
+
+    // Buy item (add + subtract nuyen)
+    html.find('.buy-item').click(this._onBuyItem.bind(this));
+
+    this._restorePendingSearchFocus(html);
   }
 
   /**
@@ -87,6 +105,12 @@ export class SR2ItemBrowser extends Application {
    */
   async _loadItems() {
     try {
+      const cached = SR2ItemBrowser._itemsCache.get(this.itemType);
+      if (cached) {
+        this.items = cached.items.map(item => ({ ...item }));
+        return;
+      }
+
       let response;
       let data;
       
@@ -139,9 +163,26 @@ export class SR2ItemBrowser extends Application {
           this.items = this._processGearData(data);
           break;
       }
+
+      this._prepareBrowserItems();
+      SR2ItemBrowser._itemsCache.set(this.itemType, {
+        items: this.items.map(item => ({ ...item }))
+      });
     } catch (error) {
       console.error(`Failed to load ${this.itemType} data:`, error);
       ui.notifications.error(`Failed to load ${this.itemType} data`);
+    }
+  }
+
+  _prepareBrowserItems() {
+    for (const item of this.items) {
+      const name = String(item.name || "").toLowerCase();
+      const mods = String(item.mods || "").toLowerCase();
+      item._searchText = `${name} ${mods}`.trim();
+
+      const cost = this._parseNuyenCost(item.cost);
+      item._buyCostValue = cost.value;
+      item._buyCostDisplay = cost.display;
     }
   }
 
@@ -200,18 +241,64 @@ export class SR2ItemBrowser extends Application {
     const items = [];
     
     for (const spell of data) {
+      const name = spell.Name.trim();
+      const spellType = spell.Type;
+      const drain = spell.Drain;
+
       items.push({
-        name: spell.Name.trim(),
+        name,
         category: spell.Class,
-        drain: spell.Drain,
-        type: spell.Type,
+        range: this._inferSpellRange(name),
+        resist: this._inferSpellResist(spellType),
+        damage: this._inferSpellDamageLevelFromDrain(drain),
+        drain,
+        drainDisplay: this._formatSpellDrain(drain),
+        spellType,
         duration: spell.Duration,
         bookPage: spell.BookPage,
-        type: 'spell'
       });
     }
     
     return items;
+  }
+
+  _inferSpellRange(spellName) {
+    const name = String(spellName || "").toLowerCase();
+    if (!name) return "";
+    if (name.includes("touch")) return "Touch";
+    return "LOS";
+  }
+
+  _inferSpellResist(spellType) {
+    switch (String(spellType || "").toUpperCase()) {
+      case "M":
+        return "Willpower";
+      case "P":
+        return "Body";
+      default:
+        return "";
+    }
+  }
+
+  _inferSpellDamageLevelFromDrain(rawDrain) {
+    const drain = String(rawDrain || "").trim().toUpperCase();
+    const match = drain.match(/([LMSD])\s*$/);
+    return match ? match[1] : "";
+  }
+
+  _formatSpellDrain(rawDrain) {
+    const drain = String(rawDrain || "").trim();
+    if (!drain) return "";
+
+    const levelMatch = drain.toUpperCase().match(/([LMSD])\s*$/);
+    if (!levelMatch) return drain;
+
+    const level = levelMatch[1];
+    let formula = drain.replace(/([LMSD])\s*$/i, "").trim();
+    formula = formula.replace(/^\[(.*)\]$/, "$1").trim();
+    if (!formula) return drain;
+
+    return `${formula} ${level}`;
   }
 
   /**
@@ -287,28 +374,14 @@ export class SR2ItemBrowser extends Application {
   }
 
   /**
-   * Get available categories for filtering
-   */
-  _getCategories() {
-    const categories = [...new Set(this.items.map(item => item.category))];
-    return categories.sort();
-  }
-
-  /**
-   * Filter items based on search term and category
+   * Filter items based on search term
    */
   _filterItems() {
     this.filteredItems = this.items.filter(item => {
-      // Category filter
-      if (this.selectedCategory && item.category !== this.selectedCategory) {
-        return false;
-      }
-      
       // Search filter
       if (this.searchTerm) {
         const searchLower = this.searchTerm.toLowerCase();
-        return item.name.toLowerCase().includes(searchLower) ||
-               (item.mods && item.mods.toLowerCase().includes(searchLower));
+        return (item._searchText || "").includes(searchLower);
       }
       
       return true;
@@ -319,16 +392,13 @@ export class SR2ItemBrowser extends Application {
    * Handle search input
    */
   _onSearch(event) {
-    this.searchTerm = event.target.value;
-    this.render();
-  }
-
-  /**
-   * Handle category filter change
-   */
-  _onCategoryFilter(event) {
-    this.selectedCategory = event.target.value;
-    this.render();
+    const input = event.currentTarget;
+    this.searchTerm = input.value;
+    this._pendingSearchFocus = {
+      selectionStart: input.selectionStart,
+      selectionEnd: input.selectionEnd
+    };
+    this._scheduleRender();
   }
 
   /**
@@ -347,7 +417,7 @@ export class SR2ItemBrowser extends Application {
   /**
    * Add item to character (can be overridden for custom behavior)
    */
-  async addItem(itemData) {
+  async addItem(itemData, { notify = true } = {}) {
     // Create the item data for Foundry
     const newItemData = {
       name: itemData.name,
@@ -357,7 +427,7 @@ export class SR2ItemBrowser extends Application {
 
     try {
       const createdItems = await this.actor.createEmbeddedDocuments("Item", [newItemData]);
-      ui.notifications.info(`Added ${itemData.name} to ${this.actor.name}`);
+      if (notify) ui.notifications.info(`Added ${itemData.name} to ${this.actor.name}`);
       return createdItems[0];
     } catch (error) {
       console.error("Failed to add item:", error);
@@ -367,12 +437,65 @@ export class SR2ItemBrowser extends Application {
   }
 
   /**
+   * Handle buying an item (add to actor + subtract nuyen)
+   */
+  async _onBuyItem(event) {
+    event.preventDefault();
+    const itemIndex = parseInt(event.currentTarget.dataset.itemIndex);
+    const itemData = this.filteredItems[itemIndex];
+    if (!itemData) return;
+
+    const buyer = this._getBuyerActor();
+    if (!buyer) return;
+
+    const cost = this._parseNuyenCost(itemData.cost);
+    if (cost.value === null) {
+      ui.notifications.warn(`Can't buy ${itemData.name}: cost is not a number.`);
+      return;
+    }
+
+    const buyerNuyen = this._getActorNuyen(buyer);
+    if (buyerNuyen < cost.value) {
+      ui.notifications.warn(`Not enough nuyen to buy ${itemData.name}.`);
+      return;
+    }
+
+    try {
+      await buyer.update({ "system.resources.nuyen": buyerNuyen - cost.value });
+    } catch (error) {
+      console.error("Failed to deduct nuyen:", error);
+      ui.notifications.error("Failed to deduct nuyen for purchase.");
+      return;
+    }
+
+    const createdItem = await this.addItem(itemData, { notify: false });
+    if (!createdItem) {
+      try {
+        const currentNuyen = this._getActorNuyen(buyer);
+        await buyer.update({ "system.resources.nuyen": currentNuyen + cost.value });
+      } catch (error) {
+        console.error("Failed to refund nuyen after purchase failure:", error);
+      }
+      return;
+    }
+
+    ui.notifications.info(`Bought ${itemData.name} for ${cost.value}¥.`);
+    this._cancelScheduledRender();
+    this.render(false);
+  }
+
+  /**
    * Create system data based on item type
    */
   _createSystemData(itemData) {
+    const cost = this._parseNuyenCost(itemData.cost);
+    const descriptionParts = [];
+    if (itemData.bookPage) descriptionParts.push(`Source: ${itemData.bookPage}`);
+    if (cost.value === null && cost.display && cost.display !== "?") descriptionParts.push(`Cost: ${cost.display}`);
+
     const baseData = {
-      description: `Source: ${itemData.bookPage}`,
-      price: itemData.cost || 0
+      description: descriptionParts.join("\n"),
+      price: cost.value ?? 0
     };
 
     switch (this.itemType) {
@@ -400,7 +523,7 @@ export class SR2ItemBrowser extends Application {
         return {
           ...baseData,
           drain: itemData.drain,
-          type: itemData.type,
+          type: itemData.spellType,
           duration: itemData.duration,
           class: itemData.category,
           force: 1
@@ -467,7 +590,13 @@ export class SR2ItemBrowser extends Application {
       case 'gear':
         return {
           ...baseData,
+          category: itemData.category || "",
           rating: parseInt(itemData.rating) || 0,
+          bondCost: sr2InferFocusBondCostForGearItem({
+            category: itemData.category,
+            name: itemData.name,
+            price: itemData.cost
+          }),
           equipped: false,
           quantity: 1,
           weight: parseFloat(itemData.weight) || 0,
@@ -479,14 +608,78 @@ export class SR2ItemBrowser extends Application {
     return baseData;
   }
 
-  /**
-   * Clear search
-   */
-  _onClearSearch(event) {
-    event.preventDefault();
-    this.searchTerm = "";
-    this.selectedCategory = "";
-    this.render();
+  _getBuyerActor() {
+    const leaderId = this.actor?.system?.details?.leaderId;
+    const leader = leaderId && game?.actors ? game.actors.get(leaderId) : null;
+    return leader || this.actor;
+  }
+
+  _getActorNuyen(actor) {
+    const nuyen = actor?.system?.resources?.nuyen;
+    const value = Number(nuyen);
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  _parseNuyenCost(rawCost) {
+    if (rawCost === undefined || rawCost === null) return { value: null, display: "?" };
+
+    const display = String(rawCost).trim();
+    if (!display) return { value: null, display: "?" };
+
+    const numeric = display.replace(/[,\s¥$]/g, "");
+    if (!/^\d+(\.\d+)?$/.test(numeric)) return { value: null, display };
+
+    const value = Number(numeric);
+    return Number.isFinite(value) ? { value, display } : { value: null, display };
+  }
+
+  _getBuyTitle({ buyer, buyerNuyen, cost, item }) {
+    if (!buyer) return "No buyer available";
+    if (cost.value === null) return "Can't buy: cost is not a number";
+    if (buyerNuyen < cost.value) return `Can't buy: need ${cost.value}¥`;
+    if (buyer === this.actor) return `Buy for ${cost.value}¥`;
+    return `Buy for ${cost.value}¥ (paid by ${buyer.name})`;
+  }
+
+  _cancelScheduledRender() {
+    if (!this._scheduledRender) return;
+    clearTimeout(this._scheduledRender);
+    this._scheduledRender = null;
+  }
+
+  _scheduleRender(delayMs = 150) {
+    this._cancelScheduledRender();
+    this._scheduledRender = setTimeout(() => {
+      this._scheduledRender = null;
+      this.render(false);
+    }, delayMs);
+  }
+
+  _restorePendingSearchFocus(html) {
+    const pending = this._pendingSearchFocus;
+    if (!pending) return;
+
+    const input = html.find('.item-search')[0];
+    if (!input) {
+      this._pendingSearchFocus = null;
+      return;
+    }
+
+    input.focus();
+    try {
+      const start = Number.isFinite(pending.selectionStart) ? pending.selectionStart : input.value.length;
+      const end = Number.isFinite(pending.selectionEnd) ? pending.selectionEnd : start;
+      input.setSelectionRange(start, end);
+    } catch (_) {
+      // ignore
+    }
+
+    this._pendingSearchFocus = null;
+  }
+
+  async close(options = {}) {
+    this._cancelScheduledRender();
+    return super.close(options);
   }
 
   /**

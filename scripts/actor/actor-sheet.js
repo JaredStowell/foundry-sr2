@@ -1,5 +1,18 @@
 // Import the initiative tracker
 import { SR2InitiativeTracker } from '../initiative-tracker.js';
+import {
+    sr2ComputeCreationNuyenBudgetBreakdown,
+    sr2ComputeAttributePointsSpent,
+    sr2ComputeForcePointsSpent,
+    sr2ComputeSkillPointsSpent,
+    sr2ComputeSkillRatingsFromAllocated,
+    sr2Clamp,
+    sr2FormatSignedModifier,
+    sr2GetRacialAttributeBounds,
+    sr2GetRacialModifiers,
+    sr2GetRacialTraits,
+    sr2SkillInferAllocatedRating
+} from "../sr2-rules.js";
 
 let skillsDataCache = null;
 let skillsDataCachePromise = null;
@@ -23,6 +36,45 @@ async function loadSkillsData() {
     return skillsDataCachePromise;
 }
 
+function sr2InferSpellRangeFromName(spellName) {
+    const name = String(spellName || "").toLowerCase();
+    if (!name) return "";
+    if (name.includes("touch")) return "Touch";
+    return "LOS";
+}
+
+function sr2InferSpellResistFromType(spellType) {
+    switch (String(spellType || "").toUpperCase()) {
+        case "M":
+            return "Willpower";
+        case "P":
+            return "Body";
+        default:
+            return "";
+    }
+}
+
+function sr2InferSpellDamageLevelFromDrain(rawDrain) {
+    const drain = String(rawDrain || "").trim().toUpperCase();
+    const match = drain.match(/([LMSD])\s*$/);
+    return match ? match[1] : "";
+}
+
+function sr2FormatSpellDrain(rawDrain) {
+    const drain = String(rawDrain || "").trim();
+    if (!drain) return "";
+
+    const levelMatch = drain.toUpperCase().match(/([LMSD])\s*$/);
+    if (!levelMatch) return drain;
+
+    const level = levelMatch[1];
+    let formula = drain.replace(/([LMSD])\s*$/i, "").trim();
+    formula = formula.replace(/^\[(.*)\]$/, "$1").trim();
+    if (!formula) return drain;
+
+    return `${formula} ${level}`;
+}
+
 /**
  * Extend the basic ActorSheet with Shadowrun 2E specific functionality
  */
@@ -31,16 +83,14 @@ export class SR2ActorSheet extends ActorSheet {
   constructor(...args) {
     super(...args);
 
-    // Performance optimization: Cache DOM elements and debounce updates
+    // Cache DOM lookups and debounce multi-click updates
     this._domCache = new Map();
     this._updateQueue = new Map();
-    this._updateTimeout = null;
-    this._lastRenderTime = 0;
-    this._renderThrottle = 100; // Minimum time between renders in ms
 
-    // Bind methods for performance
+    this._boundOnActorUpdate = this._onActorUpdate.bind(this);
+    this._hasActorUpdateHook = false;
+
     this._debouncedUpdate = this._debounce(this._processUpdateQueue.bind(this), 50);
-    this._throttledRender = this._throttle(this.render.bind(this), this._renderThrottle);
   }
 
   /** @override */
@@ -68,6 +118,18 @@ export class SR2ActorSheet extends ActorSheet {
 
     context.system = actorData.system;
     context.flags = actorData.flags;
+
+    // Ensure shadowrun2e flags container exists for template bindings
+    if (!context.flags.shadowrun2e) context.flags.shadowrun2e = {};
+
+    // Default: creation mode is enabled for characters created via priorities
+    if (typeof context.flags.shadowrun2e.creationMode !== "boolean") {
+      const hasCreationPoints =
+        (context.system.creation?.attributePoints || 0) > 0 ||
+        (context.system.creation?.skillPoints || 0) > 0 ||
+        (context.system.creation?.forcePoints || 0) > 0;
+      context.flags.shadowrun2e.creationMode = hasCreationPoints;
+    }
 
     // Ensure health data structure exists with defaults
     if (!context.system.health) {
@@ -101,11 +163,132 @@ export class SR2ActorSheet extends ActorSheet {
       }
     }
 
+    // Normalize lifestyles list (supports multiple lifestyles)
+    if (['character', 'contact', 'follower'].includes(actorData.type)) {
+      if (!context.system.resources) context.system.resources = {};
+
+      const legacyLifestyle = context.system.resources.lifestyle || "street";
+      const legacyMonths = context.system.creation?.lifestyleMonths ?? 1;
+
+      const rawLifestyles = context.system.resources.lifestyles;
+      if (!Array.isArray(rawLifestyles) || rawLifestyles.length === 0) {
+        context.system.resources.lifestyles = [{
+          type: legacyLifestyle,
+          months: Math.max(1, parseInt(legacyMonths, 10) || 1)
+        }];
+      } else {
+        context.system.resources.lifestyles = rawLifestyles.map(l => ({
+          type: l?.type || legacyLifestyle,
+          months: Math.max(1, parseInt(l?.months, 10) || 1)
+        }));
+      }
+    }
+
     // Prepare character data and items
-    if (actorData.type == 'character') {
+    if (['character', 'contact', 'follower'].includes(actorData.type)) {
       this._prepareItems(context);
       this._prepareCharacterData(context);
       await this._prepareSkillsData(context);
+    }
+
+    // Racial modifiers/caps and creation point tracking
+    if (['character', 'contact', 'follower'].includes(actorData.type)) {
+      const metatype = context.system?.details?.metatype || "human";
+      const bounds = sr2GetRacialAttributeBounds(metatype);
+
+      // Apply racial min/max to displayed attributes (Body/Quickness/Strength/Charisma/Intelligence/Willpower)
+      for (const [key, { min, max }] of Object.entries(bounds)) {
+        if (!context.system.attributes?.[key]) continue;
+        context.system.attributes[key].min = min;
+        context.system.attributes[key].max = max;
+      }
+
+      // Leader display (followers)
+      context.leaderId = context.system?.details?.leaderId || "";
+      context.leaderName = "";
+      if (actorData.type === "follower" && context.leaderId && game?.actors) {
+        const leader = game.actors.get(context.leaderId);
+        context.leaderName = leader?.name || "";
+      }
+
+      // Followers list (leaders)
+      if (actorData.type === "character" && game?.actors) {
+        const linkedActors = game.actors.filter(a => a.system?.details?.leaderId === this.actor.id);
+
+        context.leaderContacts = linkedActors
+          .filter(a => a.type === "contact")
+          .map(a => ({ id: a.id, name: a.name }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        const linkedFollowers = linkedActors
+          .filter(a => a.type === "follower")
+          .map(a => ({
+            id: a.id,
+            name: a.name,
+            archetype: a.system?.details?.archetype || ""
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        context.leaderGangMembers = linkedFollowers.filter(f => f.archetype === "gangMember");
+        context.leaderFollowers = linkedFollowers.filter(f => f.archetype !== "gangMember");
+      }
+      if (!Array.isArray(context.leaderContacts)) context.leaderContacts = [];
+      if (!Array.isArray(context.leaderGangMembers)) context.leaderGangMembers = [];
+      if (!Array.isArray(context.leaderFollowers)) context.leaderFollowers = [];
+
+      const attributePointsTotal = Number(context.system.creation?.attributePoints) || 0;
+      const skillPointsTotal = Number(context.system.creation?.skillPoints) || 0;
+      const forcePointsTotal = Number(context.system.creation?.forcePoints) || 0;
+
+      const attributePointsSpent = sr2ComputeAttributePointsSpent(context.system.attributes, metatype);
+      const skillPointsSpent = sr2ComputeSkillPointsSpent(context.skills || []);
+      const forcePointsSpent = sr2ComputeForcePointsSpent(context.items || []);
+
+      context.creationPoints = {
+        attributes: {
+          total: attributePointsTotal,
+          spent: attributePointsSpent,
+          remaining: attributePointsTotal - attributePointsSpent
+        },
+        skills: {
+          total: skillPointsTotal,
+          spent: skillPointsSpent,
+          remaining: skillPointsTotal - skillPointsSpent
+        },
+        force: {
+          total: forcePointsTotal,
+          spent: forcePointsSpent,
+          remaining: forcePointsTotal - forcePointsSpent
+        }
+      };
+
+      // Racial summary string for quick reference
+      const mods = sr2GetRacialModifiers(metatype);
+      const traits = sr2GetRacialTraits(metatype);
+      const modParts = [
+        ["Body", mods.body],
+        ["Quickness", mods.quickness],
+        ["Strength", mods.strength],
+        ["Charisma", mods.charisma],
+        ["Intelligence", mods.intelligence],
+        ["Willpower", mods.willpower]
+      ].filter(([, v]) => Number(v) !== 0);
+
+      const traitParts = [];
+      if (traits.lowLightVision) traitParts.push("Low-Light Vision");
+      if (traits.thermographicVision) traitParts.push("Thermographic Vision");
+      if (traits.reach) traitParts.push(`Reach +${traits.reach}`);
+      if (traits.dermalArmor) traitParts.push(`Dermal Armor (+${traits.dermalArmor} Body vs damage)`);
+      if (traits.diseaseResistance) traitParts.push(`Disease Resistance (+${traits.diseaseResistance} Body vs disease)`);
+
+      const modsText = modParts.length
+        ? `Racial Mods: ${modParts.map(([label, v]) => `${label} ${sr2FormatSignedModifier(v)}`).join(", ")}`
+        : "";
+      const traitsText = traitParts.length ? `Traits: ${traitParts.join(", ")}` : "";
+      context.racialSummary = [modsText, traitsText].filter(Boolean).join(" | ");
+
+      // Creation resources helpers (lifestyle + extras)
+      context.creationResources = sr2ComputeCreationNuyenBudgetBreakdown(context.system, context.items);
     }
 
     return context;
@@ -140,6 +323,12 @@ export class SR2ActorSheet extends ActorSheet {
       } else if (i.type === 'bioware') {
         bioware.push(i);
       } else if (i.type === 'spell') {
+        i.sr2Spell = {
+          range: sr2InferSpellRangeFromName(i.name),
+          resist: sr2InferSpellResistFromType(i.system?.type),
+          damage: sr2InferSpellDamageLevelFromDrain(i.system?.drain),
+          drainDisplay: sr2FormatSpellDrain(i.system?.drain)
+        };
         spells.push(i);
       } else if (i.type === 'adeptpower') {
         // Calculate total cost for leveled powers
@@ -184,12 +373,12 @@ export class SR2ActorSheet extends ActorSheet {
     }, 0));
 
     // Calculate current essence (base essence - cyberware essence loss)
-    const baseEssence = this.actor.system.attributes.essence.max || 6;
+    const baseEssence = Number(context.system?.attributes?.essence?.max) || 6;
     const currentEssence = round2(Math.max(0, baseEssence - totalEssenceLoss));
 
-    // Update the actor's current essence value
-    if (this.actor.system.attributes.essence.value !== currentEssence) {
-      this.actor.update({ 'system.attributes.essence.value': currentEssence });
+    // Avoid Document updates during getData/render; derived Essence is handled in SR2Actor.prepareDerivedData.
+    if (context.system?.attributes?.essence) {
+      context.system.attributes.essence.value = currentEssence;
     }
 
     context.essenceData = {
@@ -223,7 +412,7 @@ export class SR2ActorSheet extends ActorSheet {
    */
   _prepareCharacterData(context) {
     // Calculate and display augmentation modifiers
-    const modifiers = this.actor._calculateAugmentationModifiers();
+    const modifiers = this.actor._sr2AugmentationModifiers ?? this.actor._calculateAugmentationModifiers();
     context.augmentationModifiers = modifiers;
 
     // Calculate total modified attributes for display
@@ -260,7 +449,16 @@ export class SR2ActorSheet extends ActorSheet {
     // Load the skills data from the JSON file
     try {
       const skillsData = await loadSkillsData();
-      context.availableSkills = skillsData;
+      const availableSkills = foundry.utils.deepClone(skillsData);
+      const hasMagic = (Number(this.actor.system?.attributes?.magic?.value) || 0) > 0;
+
+      // Only characters with a Magic rating may take Sorcery/Conjuring (SR2 core).
+      for (const key of ["Sorcery", "Conjuring"]) {
+        if (!availableSkills[key]) continue;
+        availableSkills[key].disabled = !hasMagic;
+      }
+
+      context.availableSkills = availableSkills;
 
       // Add concentration data for each skill
       context.skills.forEach(skill => {
@@ -277,14 +475,15 @@ export class SR2ActorSheet extends ActorSheet {
         if (typeof skill.system.baseRating !== 'number') skill.system.baseRating = 0;
         if (typeof skill.system.concentrationRating !== 'number') skill.system.concentrationRating = 0;
         if (typeof skill.system.specializationRating !== 'number') skill.system.specializationRating = 0;
+        if (typeof skill.system.isFree !== 'boolean') skill.system.isFree = false;
 
-        // Debug logging for skill data
-        console.log(`SR2E | Skill ${skill.name}: baseSkill="${skill.system.baseSkill}", concentration="${skill.system.concentration}", specialization="${skill.system.specialization}"`);
-        console.log(`SR2E | Ratings: base=${skill.system.baseRating}, conc=${skill.system.concentrationRating}, spec=${skill.system.specializationRating}`);
+        // Ensure allocated rating exists in the template context and compute SR2 conc/spec math for display
+        const computed = sr2ComputeSkillRatingsFromAllocated(skill.system);
+        skill.system.allocatedRating = computed.allocatedRating;
+        skill.system.baseRating = computed.baseRating;
+        skill.system.concentrationRating = computed.concentrationRating;
+        skill.system.specializationRating = computed.specializationRating;
       });
-
-      console.log('SR2E | Skills data loaded successfully:', Object.keys(skillsData).length, 'skills');
-      console.log('SR2E | Actor skills:', context.skills.length);
     } catch (error) {
       console.error('SR2E | Failed to load skills data:', error);
       context.availableSkills = {};
@@ -298,8 +497,11 @@ export class SR2ActorSheet extends ActorSheet {
     // Initialize health data if needed
     this._initializeHealthData();
 
-    // Set up actor update listener for external changes
-    Hooks.on('updateActor', this._onActorUpdate.bind(this));
+    // Set up actor update listener for external changes (once per sheet instance)
+    if (!this._hasActorUpdateHook && globalThis.Hooks) {
+      Hooks.on('updateActor', this._boundOnActorUpdate);
+      this._hasActorUpdateHook = true;
+    }
 
     // Ensure skill selects show correct values after render
     this._refreshSkillSelects(html);
@@ -402,14 +604,24 @@ export class SR2ActorSheet extends ActorSheet {
     html.find('.base-skill-select').change(this._onBaseSkillChange.bind(this));
     html.find('.concentration-select').change(this._onConcentrationChange.bind(this));
     html.find('input[name*="specialization"]:not([name*="Rating"])').on('change', this._onSpecializationChange.bind(this));
+    html.find('input[name*="allocatedRating"]').on('change', this._onSkillAllocatedRatingChange.bind(this));
+    html.find('input[name*="allocatedRating"]').on('blur', this._onSkillAllocatedRatingChange.bind(this));
+    html.find('input[name*="allocatedRating"]').on('input', this._onSkillAllocatedRatingInput.bind(this));
     html.find('.skill-roll').click(this._onSkillRoll.bind(this));
 
-    // Handle skill rating changes to ensure proper updates
-    html.find('input[name*="baseRating"], input[name*="concentrationRating"], input[name*="specializationRating"]').on('change', this._onSkillRatingChange.bind(this));
-    html.find('input[name*="baseRating"], input[name*="concentrationRating"], input[name*="specializationRating"]').on('blur', this._onSkillRatingChange.bind(this));
+    // Leader quick-open (followers)
+    html.find('.open-leader').click(this._onOpenLeader.bind(this));
+    html.find('.open-connection').click(this._onOpenConnection.bind(this));
 
-    // Also handle input events for immediate feedback
-    html.find('input[name*="baseRating"], input[name*="concentrationRating"], input[name*="specializationRating"]').on('input', this._onSkillRatingInput.bind(this));
+    // Creation resources finalization
+    html.find('.finalize-resources').click(this._onFinalizeResources.bind(this));
+    html.find('.unfinalize-resources').click(this._onUnfinalizeResources.bind(this));
+
+    // Lifestyle management (creation resources)
+    if (['character', 'contact', 'follower'].includes(this.actor.type)) {
+      html.find('.sr2-lifestyle-add').click(this._onLifestyleAdd.bind(this));
+      html.find('.sr2-lifestyle-delete').click(this._onLifestyleDelete.bind(this));
+    }
 
     // Handle form submission to ensure skill data is saved
     html.find('form').on('submit', this._onFormSubmit.bind(this));
@@ -539,6 +751,7 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Check conditions for pool visibility
     const magicAttribute = this.actor.system.attributes.magic?.value || 0;
+    const isSpellcaster = Boolean(this.actor.system.magic?.awakened) && !Boolean(this.actor.system.magic?.physicalAdept);
     const hasCyberdeck = this.actor.items.some(item => 
       item.type === 'cyberware' && 
       item.name.toLowerCase().includes('cyberdeck')
@@ -552,11 +765,11 @@ export class SR2ActorSheet extends ActorSheet {
     // Build list of available pools for confirmation dialog
     const availablePools = [];
     if (true) availablePools.push('Combat');
-    if (magicAttribute > 0) availablePools.push('Spell');
+    if (isSpellcaster && magicAttribute > 0) availablePools.push('Spell');
     if (hasCyberdeck) availablePools.push('Hacking');
     if (hasControlRig) availablePools.push('Control');
     if ((this.actor.system.pools.task?.max || 0) > 0) availablePools.push('Task');
-    if (magicAttribute > 0) availablePools.push('Astral');
+    if (isSpellcaster && magicAttribute > 0) availablePools.push('Astral');
 
     // Confirm with GM before resetting
     const confirmed = await Dialog.confirm({
@@ -578,11 +791,11 @@ export class SR2ActorSheet extends ActorSheet {
     // Define pool types with their visibility conditions
     const poolTypes = [
       { key: 'combat', condition: true },
-      { key: 'spell', condition: magicAttribute > 0 },
+      { key: 'spell', condition: isSpellcaster && magicAttribute > 0 },
       { key: 'hacking', condition: hasCyberdeck },
       { key: 'control', condition: hasControlRig },
       { key: 'task', condition: (poolData.task?.max || 0) > 0 },
-      { key: 'astral', condition: magicAttribute > 0 }
+      { key: 'astral', condition: isSpellcaster && magicAttribute > 0 }
     ];
 
     const resetPools = [];
@@ -622,34 +835,50 @@ export class SR2ActorSheet extends ActorSheet {
    */
   async _onBaseSkillChange(event) {
     event.preventDefault();
+    event.stopPropagation();
     const element = event.currentTarget;
     const skillId = element.dataset.skillId;
     const baseSkill = element.value;
     const item = this.actor.items.get(skillId);
-
-    console.log("SR2E | Base skill change:", skillId, baseSkill);
 
     if (item) {
       // Only clear concentration and specialization if the base skill actually changed
       const currentBaseSkill = item.system.baseSkill;
 
       if (currentBaseSkill !== baseSkill) {
+        // Prevent duplicate base skills (Languages may have multiple entries)
+        if (baseSkill && baseSkill !== "Language") {
+          const duplicate = this.actor.items.some(i =>
+            i.type === "skill" &&
+            i.id !== item.id &&
+            i.system?.baseSkill === baseSkill
+          );
+          if (duplicate) {
+            ui.notifications.warn(`"${baseSkill}" is already on the sheet. Each skill can only be acquired once.`);
+            element.value = currentBaseSkill || "";
+            return;
+          }
+        }
+
         // Clear concentration and specialization when base skill changes
+        const nextSystem = {
+          ...item.system,
+          baseSkill: baseSkill,
+          concentration: "",
+          specialization: ""
+        };
+
+        const computed = sr2ComputeSkillRatingsFromAllocated(nextSystem);
         await item.update({
           'system.baseSkill': baseSkill,
-          'system.concentration': '',
-          'system.concentrationRating': 0,
-          'system.specialization': '',
-          'system.specializationRating': 0,
+          'system.concentration': "",
+          'system.specialization': "",
+          'system.allocatedRating': computed.allocatedRating,
+          'system.baseRating': computed.baseRating,
+          'system.concentrationRating': computed.concentrationRating,
+          'system.specializationRating': computed.specializationRating,
           'name': baseSkill || 'New Skill'
         });
-
-        console.log("SR2E | Updated skill:", item.name, "with base skill:", baseSkill);
-
-        // Force a full re-render to update the UI with new concentrations
-        setTimeout(() => {
-          this.render(true);
-        }, 100);
       } else {
         // Even if the base skill didn't change, make sure the select shows the correct value
         element.value = baseSkill;
@@ -664,33 +893,78 @@ export class SR2ActorSheet extends ActorSheet {
    */
   async _onConcentrationChange(event) {
     event.preventDefault();
+    event.stopPropagation();
     const element = event.currentTarget;
     const skillId = element.dataset.skillId || element.closest('.skill-item').dataset.itemId;
     const concentration = element.value;
     const item = this.actor.items.get(skillId);
 
-    console.log("SR2E | Concentration change:", skillId, concentration);
+    if (!item) {
+      console.error("SR2E | Could not find skill item for concentration change:", skillId);
+      return;
+    }
 
-    if (item && item.system.concentration !== concentration) {
-      // Update concentration and reset concentration rating if cleared
-      const updateData = {
-        'system.concentration': concentration
-      };
+    if (item.system.isFree) {
+      element.value = item.system.concentration || "";
+      return;
+    }
 
-      // If concentration is cleared, reset the rating
-      if (!concentration) {
-        updateData['system.concentrationRating'] = 0;
+    if (item.system.concentration === concentration) return;
+
+    const baseSkill = item.system.baseSkill || "";
+    if (baseSkill === "Language") {
+      element.value = "";
+      return;
+    }
+
+    const currentAllocated = sr2SkillInferAllocatedRating(item.system);
+    let nextAllocated = currentAllocated;
+
+    // Clearing concentration also clears specialization (SR2: spec implies concentration)
+    const nextSpecialization = concentration ? (item.system.specialization || "") : "";
+
+    // If a concentration is selected, ensure allocated rating supports it (min 2)
+    const computedPreview = sr2ComputeSkillRatingsFromAllocated({
+      ...item.system,
+      concentration,
+      specialization: nextSpecialization,
+      allocatedRating: nextAllocated
+    });
+
+    if (baseSkill && nextAllocated < computedPreview.minAllocated) {
+      nextAllocated = computedPreview.minAllocated;
+    }
+
+    if (this._isCreationMode() && (Number(this.actor.system.creation?.skillPoints) || 0) > 0) {
+      const total = Number(this.actor.system.creation?.skillPoints) || 0;
+      const spentOther = this._getSkillPointsSpentExcluding(item.id);
+      const maxForThis = total - spentOther;
+
+      if (maxForThis < computedPreview.minAllocated) {
+        ui.notifications.error("Not enough Skill Points remaining. Reduce other skills first.");
+        element.value = item.system.concentration || "";
+        return;
       }
 
-      await item.update(updateData);
-
-      // Re-render to update the UI (enable/disable concentration rating input)
-      setTimeout(() => {
-        this.render(false);
-      }, 50);
-    } else if (!item) {
-      console.error("SR2E | Could not find skill item for concentration change:", skillId);
+      nextAllocated = Math.min(nextAllocated, 6, maxForThis);
+      nextAllocated = Math.max(nextAllocated, computedPreview.minAllocated);
     }
+
+    const computed = sr2ComputeSkillRatingsFromAllocated({
+      ...item.system,
+      concentration,
+      specialization: nextSpecialization,
+      allocatedRating: nextAllocated
+    });
+
+    await item.update({
+      "system.concentration": concentration,
+      "system.specialization": nextSpecialization,
+      "system.allocatedRating": computed.allocatedRating,
+      "system.baseRating": computed.baseRating,
+      "system.concentrationRating": computed.concentrationRating,
+      "system.specializationRating": computed.specializationRating
+    });
   }
 
   /**
@@ -698,36 +972,78 @@ export class SR2ActorSheet extends ActorSheet {
    */
   async _onSpecializationChange(event) {
     event.preventDefault();
+    event.stopPropagation();
     const element = event.currentTarget;
     const skillId = element.dataset.skillId || element.closest('.skill-item').dataset.itemId;
     const specialization = element.value;
     const item = this.actor.items.get(skillId);
 
-    console.log("SR2E | Specialization change:", skillId, specialization);
+    if (!item) {
+      console.error("SR2E | Could not find skill item for specialization change:", skillId);
+      return;
+    }
 
-    if (item && item.system.specialization !== specialization) {
-      // Update specialization and reset specialization rating if cleared
-      const updateData = {
-        'system.specialization': specialization
-      };
+    if (item.system.isFree) {
+      element.value = item.system.specialization || "";
+      return;
+    }
 
-      // If specialization is cleared, reset the rating
-      if (!specialization) {
-        updateData['system.specializationRating'] = 0;
+    if (item.system.specialization === specialization) return;
+
+    const baseSkill = item.system.baseSkill || "";
+    if (baseSkill === "Language") {
+      element.value = "";
+      return;
+    }
+
+    if (specialization && !item.system.concentration) {
+      ui.notifications.warn("Specialization requires a Concentration.");
+      element.value = "";
+      return;
+    }
+
+    const currentAllocated = sr2SkillInferAllocatedRating(item.system);
+    let nextAllocated = currentAllocated;
+
+    const computedPreview = sr2ComputeSkillRatingsFromAllocated({
+      ...item.system,
+      specialization,
+      allocatedRating: nextAllocated
+    });
+
+    if (baseSkill && specialization && nextAllocated < computedPreview.minAllocated) {
+      nextAllocated = computedPreview.minAllocated;
+    }
+
+    if (this._isCreationMode() && (Number(this.actor.system.creation?.skillPoints) || 0) > 0) {
+      const total = Number(this.actor.system.creation?.skillPoints) || 0;
+      const spentOther = this._getSkillPointsSpentExcluding(item.id);
+      const maxForThis = total - spentOther;
+
+      if (maxForThis < computedPreview.minAllocated) {
+        ui.notifications.error("Not enough Skill Points remaining. Reduce other skills first.");
+        element.value = item.system.specialization || "";
+        return;
       }
 
-      await item.update(updateData);
-
-      // Re-render to update the UI (enable/disable specialization rating input and roll button)
-      setTimeout(() => {
-        this.render(false);
-      }, 100);
-    } else if (!item) {
-      console.error("SR2E | Could not find skill item for specialization change:", skillId);
+      nextAllocated = Math.min(nextAllocated, 6, maxForThis);
+      nextAllocated = Math.max(nextAllocated, computedPreview.minAllocated);
     }
+
+    const computed = sr2ComputeSkillRatingsFromAllocated({
+      ...item.system,
+      specialization,
+      allocatedRating: nextAllocated
+    });
+
+    await item.update({
+      "system.specialization": specialization,
+      "system.allocatedRating": computed.allocatedRating,
+      "system.baseRating": computed.baseRating,
+      "system.concentrationRating": computed.concentrationRating,
+      "system.specializationRating": computed.specializationRating
+    });
   }
-
-
 
   /**
    * Refresh skill select elements to ensure they show correct values
@@ -739,7 +1055,6 @@ export class SR2ActorSheet extends ActorSheet {
       const skill = this.actor.items.get(skillId);
       if (skill && skill.system.baseSkill) {
         select.value = skill.system.baseSkill;
-        console.log(`SR2E | Refreshed base skill select for ${skill.name}: ${skill.system.baseSkill}`);
       }
     });
 
@@ -749,75 +1064,239 @@ export class SR2ActorSheet extends ActorSheet {
       const skill = this.actor.items.get(skillId);
       if (skill && skill.system.concentration) {
         select.value = skill.system.concentration;
-        console.log(`SR2E | Refreshed concentration select for ${skill.name}: ${skill.system.concentration}`);
       }
     });
   }
 
-  /**
-   * Handle skill rating changes
-   */
-  async _onSkillRatingChange(event) {
-    const element = event.currentTarget;
-    const skillId = element.closest('.skill-item').dataset.itemId;
-    const item = this.actor.items.get(skillId);
+  _isCreationMode() {
+    const flag = this.actor.getFlag("shadowrun2e", "creationMode");
+    if (typeof flag === "boolean") return flag;
 
-    if (item) {
-      const rating = parseInt(element.value) || 0;
-      const clampedRating = Math.max(0, Math.min(12, rating));
+    const creation = this.actor.system?.creation;
+    return Boolean(
+      (creation?.attributePoints || 0) > 0 ||
+      (creation?.skillPoints || 0) > 0 ||
+      (creation?.forcePoints || 0) > 0
+    );
+  }
 
-      if (rating !== clampedRating) {
-        element.value = clampedRating;
-        ui.notifications.warn("Skill ratings must be between 0 and 12.");
-      }
-
-      // Determine which rating field this is and update the item directly
-      const fieldName = element.name;
-      let updateKey = '';
-
-      if (fieldName.includes('baseRating')) {
-        updateKey = 'system.baseRating';
-      } else if (fieldName.includes('concentrationRating')) {
-        updateKey = 'system.concentrationRating';
-      } else if (fieldName.includes('specializationRating')) {
-        updateKey = 'system.specializationRating';
-      }
-
-      if (updateKey) {
-        console.log(`SR2E | Updating ${item.name} ${updateKey} from ${item.system[updateKey.split('.')[1]]} to ${clampedRating}`);
-
-        try {
-          await item.update({ [updateKey]: clampedRating });
-          console.log(`SR2E | Successfully updated ${item.name} ${updateKey} to ${clampedRating}`);
-
-          // Verify the update worked
-          const updatedItem = this.actor.items.get(skillId);
-          const actualValue = updatedItem.system[updateKey.split('.')[1]];
-          console.log(`SR2E | Verification: ${updateKey} is now ${actualValue}`);
-
-        } catch (error) {
-          console.error(`SR2E | Failed to update ${item.name} ${updateKey}:`, error);
-          ui.notifications.error(`Failed to update skill rating: ${error.message}`);
-        }
-      }
-    } else {
-      console.error("SR2E | Could not find skill item for rating change:", skillId);
-    }
+  _getSkillPointsSpentExcluding(excludeItemId) {
+    return this.actor.items
+      .filter(i => i.type === "skill" && i.id !== excludeItemId)
+      .reduce((sum, skill) => {
+        if (!skill.system?.baseSkill) return sum;
+        if (skill.system?.isFree) return sum;
+        return sum + sr2SkillInferAllocatedRating(skill.system);
+      }, 0);
   }
 
   /**
-   * Handle skill rating input for immediate validation
+   * Handle allocated skill rating changes (SR2 skill point spending)
    */
-  _onSkillRatingInput(event) {
-    const element = event.currentTarget;
-    const rating = parseInt(element.value) || 0;
+  async _onSkillAllocatedRatingChange(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
-    // Visual feedback for invalid values
-    if (rating < 0 || rating > 12) {
+    const element = event.currentTarget;
+    const skillId = element.closest('.skill-item')?.dataset?.itemId;
+    const item = skillId ? this.actor.items.get(skillId) : null;
+    if (!item) return;
+    if (item.system.isFree) {
+      element.value = sr2SkillInferAllocatedRating(item.system);
+      return;
+    }
+
+    const baseSkill = item.system.baseSkill || "";
+    const oldAllocated = sr2SkillInferAllocatedRating(item.system);
+    let nextAllocated = parseInt(element.value, 10);
+    if (!Number.isFinite(nextAllocated)) nextAllocated = 0;
+
+    const preview = { ...item.system, allocatedRating: nextAllocated };
+    const computedPreview = sr2ComputeSkillRatingsFromAllocated(preview);
+
+    // Starting skills must have a minimum rating (SR2 p. 45). Allow 0 only if no base skill selected.
+    const minAllocated = baseSkill ? computedPreview.minAllocated : 0;
+    const maxAllocated = this._isCreationMode() ? 6 : 12;
+
+    nextAllocated = sr2Clamp(nextAllocated, minAllocated, maxAllocated);
+
+    if (this._isCreationMode() && (Number(this.actor.system.creation?.skillPoints) || 0) > 0 && baseSkill) {
+      const total = Number(this.actor.system.creation?.skillPoints) || 0;
+      const spentOther = this._getSkillPointsSpentExcluding(item.id);
+      const maxForThis = total - spentOther;
+
+      if (maxForThis < minAllocated) {
+        ui.notifications.error("Not enough Skill Points remaining. Reduce other skills first.");
+        element.value = oldAllocated;
+        return;
+      }
+
+      nextAllocated = Math.min(nextAllocated, maxForThis);
+    }
+
+    const computed = sr2ComputeSkillRatingsFromAllocated({ ...item.system, allocatedRating: nextAllocated });
+
+    await item.update({
+      "system.allocatedRating": computed.allocatedRating,
+      "system.baseRating": computed.baseRating,
+      "system.concentrationRating": computed.concentrationRating,
+      "system.specializationRating": computed.specializationRating
+    });
+  }
+
+  _onSkillAllocatedRatingInput(event) {
+    const element = event.currentTarget;
+    const rating = parseInt(element.value, 10);
+    if (!Number.isFinite(rating)) {
+      element.style.borderColor = '';
+      return;
+    }
+
+    const maxAllocated = this._isCreationMode() ? 6 : 12;
+    if (rating < 0 || rating > maxAllocated) {
       element.style.borderColor = '#ff6b6b';
     } else {
       element.style.borderColor = '';
     }
+  }
+
+  _onOpenLeader(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const leaderId = event.currentTarget?.dataset?.leaderId;
+    const leader = leaderId ? game?.actors?.get(leaderId) : null;
+    if (!leader) {
+      ui.notifications.warn("Leader not found.");
+      return;
+    }
+
+    leader.sheet?.render(true);
+  }
+
+  _onOpenConnection(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const actorId = event.currentTarget?.dataset?.actorId;
+    const actor = actorId ? game?.actors?.get(actorId) : null;
+    if (!actor) {
+      ui.notifications.warn("Actor not found.");
+      return;
+    }
+
+    actor.sheet?.render(true);
+  }
+
+  async _onFinalizeResources(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const budget = Number(this.actor.system?.creation?.startingNuyen) || 0;
+    if (budget <= 0) return;
+    if (this.actor.system?.creation?.resourcesFinalized) return;
+
+    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(this.actor.system, this.actor.items);
+    if ((breakdown.remainingNuyen || 0) < 0) {
+      ui.notifications.error("Resource Budget exceeded. Reduce item/lifestyle/extras spending first.");
+      return;
+    }
+
+    const unspentNuyen = Math.max(0, Math.floor(breakdown.remainingNuyen || 0));
+    const startingCashFromUnspent = Math.floor(unspentNuyen / 10);
+
+    const roll = await (new Roll("3d6")).evaluate({ async: true });
+    const startingCashRoll = (Number(roll.total) || 0) * 1000;
+    const startingCashFinal = startingCashFromUnspent + startingCashRoll;
+
+    await this.actor.update({
+      "system.creation.resourcesFinalized": true,
+      "system.creation.unspentNuyen": unspentNuyen,
+      "system.creation.startingCashFromUnspent": startingCashFromUnspent,
+      "system.creation.startingCashRoll": startingCashRoll,
+      "system.creation.startingCashFinal": startingCashFinal,
+      "system.resources.nuyen": startingCashFinal
+    });
+
+    ChatMessage.create({
+      speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+      flavor: `${this.actor.name} finalizes starting cash`,
+      content: `<p>Unspent: ${unspentNuyen}¥ → ÷10 = ${startingCashFromUnspent}¥</p>
+                <p>Roll (3D6×1,000¥): ${startingCashRoll}¥</p>
+                <p><strong>Total Starting Cash:</strong> ${startingCashFinal}¥</p>`
+    });
+
+    ui.notifications.info(`Resources finalized: ${startingCashFinal}¥ starting cash.`);
+  }
+
+  async _onUnfinalizeResources(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!this.actor.system?.creation?.resourcesFinalized) return;
+
+    const restoredBudget = Number(this.actor.system?.creation?.startingNuyen) || 0;
+    await this.actor.update({
+      "system.creation.resourcesFinalized": false,
+      "system.creation.unspentNuyen": 0,
+      "system.creation.startingCashFromUnspent": 0,
+      "system.creation.startingCashRoll": 0,
+      "system.creation.startingCashFinal": 0,
+      ...(restoredBudget > 0 ? { "system.resources.nuyen": restoredBudget } : {})
+    });
+
+    ui.notifications.info("Resource budget reopened.");
+  }
+
+  _getNormalizedLifestylesFromActor() {
+    const rawLifestyles = this.actor.system?.resources?.lifestyles;
+    if (Array.isArray(rawLifestyles) && rawLifestyles.length) {
+      return foundry.utils.deepClone(rawLifestyles).map(l => ({
+        type: l?.type || "street",
+        months: Math.max(1, parseInt(l?.months, 10) || 1)
+      }));
+    }
+
+    const legacyLifestyle = this.actor.system?.resources?.lifestyle || "street";
+    const legacyMonths = this.actor.system?.creation?.lifestyleMonths ?? 1;
+    return [{
+      type: legacyLifestyle,
+      months: Math.max(1, parseInt(legacyMonths, 10) || 1)
+    }];
+  }
+
+  async _onLifestyleAdd(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const lifestyles = this._getNormalizedLifestylesFromActor();
+    lifestyles.push({ type: "street", months: 1 });
+
+    const primary = lifestyles[0] || { type: "street", months: 1 };
+    await this.actor.update({
+      "system.resources.lifestyles": lifestyles,
+      "system.resources.lifestyle": primary.type || "street",
+      "system.creation.lifestyleMonths": primary.months || 1
+    });
+  }
+
+  async _onLifestyleDelete(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const index = parseInt(event.currentTarget?.dataset?.index, 10);
+    if (!Number.isFinite(index)) return;
+
+    const lifestyles = this._getNormalizedLifestylesFromActor();
+    lifestyles.splice(index, 1);
+    if (!lifestyles.length) lifestyles.push({ type: "street", months: 1 });
+
+    const primary = lifestyles[0] || { type: "street", months: 1 };
+    await this.actor.update({
+      "system.resources.lifestyles": lifestyles,
+      "system.resources.lifestyle": primary.type || "street",
+      "system.creation.lifestyleMonths": primary.months || 1
+    });
   }
 
   /**
@@ -848,35 +1327,34 @@ export class SR2ActorSheet extends ActorSheet {
       return;
     }
 
-    // Check what the form inputs currently show vs what the item data shows
+    // Sorcery/Conjuring require a Magic rating.
+    const baseSkillName = skill.system?.baseSkill || "";
+    const magicRating = Number(this.actor.system?.attributes?.magic?.value) || 0;
+    if ((baseSkillName === "Sorcery" || baseSkillName === "Conjuring") && magicRating <= 0) {
+      ui.notifications.error("Sorcery and Conjuring require a Magic rating.");
+      return;
+    }
+
+    // If the user edited the allocated rating without blurring, prefer the form value for this roll.
     const formElement = event.currentTarget.closest('form');
     if (formElement) {
-      const baseRatingInput = formElement.querySelector(`input[name*="${skillId}"][name*="baseRating"]`);
-      const concRatingInput = formElement.querySelector(`input[name*="${skillId}"][name*="concentrationRating"]`);
-      const specRatingInput = formElement.querySelector(`input[name*="${skillId}"][name*="specializationRating"]`);
-
-      console.log("SR2E | Form input values:");
-      console.log("  Base rating input:", baseRatingInput?.value);
-      console.log("  Conc rating input:", concRatingInput?.value);
-      console.log("  Spec rating input:", specRatingInput?.value);
-
-      console.log("SR2E | Item data values:");
-      console.log("  Base rating item:", skill.system.baseRating);
-      console.log("  Conc rating item:", skill.system.concentrationRating);
-      console.log("  Spec rating item:", skill.system.specializationRating);
-
-      // If there's a mismatch, use the form values (they're more current)
-      if (baseRatingInput && parseInt(baseRatingInput.value) !== skill.system.baseRating) {
-        console.log("SR2E | Mismatch detected! Using form values instead of item data");
-        skill = {
-          ...skill,
-          system: {
-            ...skill.system,
-            baseRating: parseInt(baseRatingInput.value) || 0,
-            concentrationRating: parseInt(concRatingInput.value) || 0,
-            specializationRating: parseInt(specRatingInput.value) || 0
-          }
-        };
+      const allocatedRatingInput = formElement.querySelector(`input[name*="${skillId}"][name*="allocatedRating"]`);
+      if (allocatedRatingInput) {
+        const allocated = parseInt(allocatedRatingInput.value, 10);
+        const currentAllocated = sr2SkillInferAllocatedRating(skill.system);
+        if (Number.isFinite(allocated) && allocated !== currentAllocated) {
+          const computed = sr2ComputeSkillRatingsFromAllocated({ ...skill.system, allocatedRating: allocated });
+          skill = {
+            ...skill,
+            system: {
+              ...skill.system,
+              allocatedRating: computed.allocatedRating,
+              baseRating: computed.baseRating,
+              concentrationRating: computed.concentrationRating,
+              specializationRating: computed.specializationRating
+            }
+          };
+        }
       }
     }
 
@@ -893,6 +1371,9 @@ export class SR2ActorSheet extends ActorSheet {
         skillRating = parseInt(skill.system.baseRating) || 0;
         rollDescription = 'Base Skill';
         title = skill.system.baseSkill || skill.name || 'Unknown Skill';
+        if (skill.system.baseSkill === "Language" && skill.name) {
+          title = skill.name;
+        }
         console.log(`SR2E | Base skill roll: baseRating=${skill.system.baseRating}, parsed=${skillRating}`);
         break;
       case 'concentration':
@@ -963,7 +1444,11 @@ export class SR2ActorSheet extends ActorSheet {
     };
 
     if (modifierMap[attributeName]) {
-      modifierValue = modifiers[modifierMap[attributeName]] || 0;
+      // Reaction is already derived (includes modifiers) in `SR2Actor.prepareDerivedData`.
+      // Avoid double-counting RCT/attribute modifiers on Reaction tests.
+      if (attributeName !== 'reaction') {
+        modifierValue = modifiers[modifierMap[attributeName]] || 0;
+      }
     }
 
     // Attributes roll their rating as dice pool (including modifiers)
@@ -1400,11 +1885,20 @@ export class SR2ActorSheet extends ActorSheet {
     if (!spell) return;
 
     try {
-      const force = spell.system.force || 1;
-      const magicRating = this.actor.system.attributes.magic.value || 1;
+      const force = Math.max(1, Number(spell.system.force) || 1);
+      const magicRating = Number(this.actor.system.attributes.magic.value) || 0;
       const sorcerySkill = this._getHighestSorcerySkill();
 
       // Calculate dice pool for spellcasting - in SR2E, use only the sorcery skill rating
+      if (magicRating <= 0) {
+        ui.notifications.error("This character has no Magic rating.");
+        return;
+      }
+      if (sorcerySkill <= 0) {
+        ui.notifications.error("Sorcery skill is required to cast spells.");
+        return;
+      }
+
       const dicePool = sorcerySkill;
 
       const title = `Casting ${spell.name} (Force ${force})`;
@@ -2197,12 +2691,12 @@ export class SR2ActorSheet extends ActorSheet {
       // Get reaction bonus with validation and sensible defaults
       let reactionBonus = this.actor.system.attributes.reaction.value;
 
-      if (typeof reactionBonus !== 'number' || isNaN(reactionBonus) || reactionBonus < 1) {
-        console.warn(`SR2E | Invalid reaction value: ${reactionBonus}, defaulting to 1`);
-        reactionBonus = 1;
+      if (typeof reactionBonus !== 'number' || isNaN(reactionBonus) || reactionBonus < 0) {
+        console.warn(`SR2E | Invalid reaction value: ${reactionBonus}, defaulting to 0`);
+        reactionBonus = 0;
         // Update the actor with the corrected value
         await this.actor.update({
-          'system.attributes.reaction.value': 1
+          'system.attributes.reaction.value': 0
         });
       }
 
@@ -2546,20 +3040,6 @@ export class SR2ActorSheet extends ActorSheet {
   }
 
   /**
-   * Performance optimization: Throttle function
-   */
-  _throttle(func, limit) {
-    let inThrottle;
-    return function (...args) {
-      if (!inThrottle) {
-        func.apply(this, args);
-        inThrottle = true;
-        setTimeout(() => inThrottle = false, limit);
-      }
-    };
-  }
-
-  /**
    * Performance optimization: Cache DOM elements
    */
   _getCachedElement(selector) {
@@ -2661,43 +3141,6 @@ export class SR2ActorSheet extends ActorSheet {
     } catch (error) {
       console.error(`SR2E | Error updating ${damageType} damage display:`, error);
     }
-  }
-
-  /**
-   * Performance optimization: Override render to include throttling and cache clearing
-   */
-  async render(force = false, options = {}) {
-    // Clear DOM cache on render
-    this._clearDomCache();
-
-    // Throttle renders for performance
-    const now = Date.now();
-    if (!force && (now - this._lastRenderTime) < this._renderThrottle) {
-      return this._throttledRender(force, options);
-    }
-
-    this._lastRenderTime = now;
-    return super.render(force, options);
-  }
-
-  /**
-   * Performance optimization: Cleanup on close
-   */
-  async close(options = {}) {
-    // Process any pending updates before closing
-    if (this._updateQueue.size > 0) {
-      await this._processUpdateQueue();
-    }
-
-    // Clear caches
-    this._clearDomCache();
-
-    // Clear timeouts
-    if (this._updateTimeout) {
-      clearTimeout(this._updateTimeout);
-    }
-
-    return super.close(options);
   }
 
   /**
@@ -3187,41 +3630,12 @@ export class SR2ActorSheet extends ActorSheet {
   }
 
   /**
-   * Handle concurrent updates gracefully with debouncing
-   */
-  _debouncedUpdate = foundry.utils.debounce(async (updateData) => {
-    try {
-      // Check if actor is still valid and editable
-      if (!this.actor || !this.actor.isOwner) {
-        console.warn("SR2E | Cannot update actor: not owner or actor invalid");
-        return;
-      }
-
-      // Merge any pending updates
-      if (this._pendingUpdates) {
-        updateData = foundry.utils.mergeObject(this._pendingUpdates, updateData);
-        this._pendingUpdates = null;
-      }
-
-      // Perform the update with error handling
-      await this.actor.update(updateData);
-
-      // Synchronize UI after successful update
-      this._synchronizeUIState();
-
-    } catch (error) {
-      console.error("SR2E | Error in debounced update:", error);
-      ui.notifications.error("Failed to save changes. You may not have permission or the data may be invalid.");
-    }
-  }, 300);
-
-
-
-  /**
    * Override the render method to handle loading states
    */
   async render(force = false, options = {}) {
     try {
+      this._clearDomCache();
+
       // Add loading state
       if (this.element && this.element.length > 0) {
         this.element.addClass('loading');
@@ -3272,8 +3686,6 @@ export class SR2ActorSheet extends ActorSheet {
       );
 
       if (combatDataUpdated) {
-        console.log("SR2E | Combat data updated externally, synchronizing UI");
-
         // Synchronize UI with a small delay to ensure data is fully updated
         setTimeout(() => {
           this._synchronizeUIState();
@@ -3290,17 +3702,23 @@ export class SR2ActorSheet extends ActorSheet {
   /**
    * Clean up listeners when sheet is closed
    */
-  close(options = {}) {
-    // Remove actor update listener
-    Hooks.off('updateActor', this._onActorUpdate);
+  async close(options = {}) {
+    if (this._hasActorUpdateHook && globalThis.Hooks) {
+      Hooks.off('updateActor', this._boundOnActorUpdate);
+      this._hasActorUpdateHook = false;
+    }
 
+    // Flush any pending queued updates (e.g., damage clicks) before closing
+    if (this._updateQueue?.size > 0) {
+      await this._processUpdateQueue();
+    }
+
+    this._clearDomCache();
     return super.close(options);
   }
 
   /** @override */
   async _updateObject(event, formData) {
-    console.log("SR2E | Form data received:", formData);
-
     // Separate actor updates from item updates
     const actorUpdates = {};
     const itemUpdates = {};
@@ -3330,21 +3748,173 @@ export class SR2ActorSheet extends ActorSheet {
       }
     }
 
-    console.log("SR2E | Actor updates:", actorUpdates);
-    console.log("SR2E | Item updates:", itemUpdates);
+    const creationModeOverride = actorUpdates["flags.shadowrun2e.creationMode"];
+    let creationMode = this._isCreationMode();
+    if (creationModeOverride !== undefined) {
+      if (typeof creationModeOverride === "boolean") creationMode = creationModeOverride;
+      else if (typeof creationModeOverride === "string") creationMode = creationModeOverride === "true";
+      else creationMode = Boolean(creationModeOverride);
+    }
+
+    const totalSkillPoints = Number(this.actor.system.creation?.skillPoints) || 0;
+    const totalAttributePoints = Number(this.actor.system.creation?.attributePoints) || 0;
+    const totalForcePoints = Number(this.actor.system.creation?.forcePoints) || 0;
+
+    // Clamp SR2 starting gear limits (rating <= 6) in creation mode
+    const clampStartingRating = (item, updateData) => {
+      if (!creationMode) return;
+      if (!totalSkillPoints && !totalAttributePoints && !totalForcePoints) return;
+
+      if (updateData["system.rating"] !== undefined) {
+        const rating = parseInt(updateData["system.rating"], 10);
+        if (Number.isFinite(rating)) {
+          updateData["system.rating"] = Math.max(0, Math.min(6, rating));
+        }
+      }
+    };
+
+    const computeForceSpentExcluding = (excludeItemId) => {
+      let spent = 0;
+      for (const i of this.actor.items) {
+        if (i.id === excludeItemId) continue;
+        if (i.type === "spell") spent += Math.max(0, Number(i.system.force) || 0);
+        if (i.type === "gear") spent += Math.max(0, Number(i.system.bondCost) || 0);
+      }
+      return spent;
+    };
 
     // Update items first
     for (const [itemId, updateData] of Object.entries(itemUpdates)) {
       const item = this.actor.items.get(itemId);
       if (item) {
-        console.log(`SR2E | Updating item ${item.name} with:`, updateData);
+        // Creation-mode clamping and SR2 conc/spec math
+        if (item.type === "skill") {
+          const nextSystem = {
+            ...item.system,
+            baseSkill: updateData["system.baseSkill"] ?? item.system.baseSkill,
+            concentration: updateData["system.concentration"] ?? item.system.concentration,
+            specialization: updateData["system.specialization"] ?? item.system.specialization,
+            allocatedRating: updateData["system.allocatedRating"] ?? item.system.allocatedRating,
+            isFree: updateData["system.isFree"] ?? item.system.isFree
+          };
+
+          const computed = sr2ComputeSkillRatingsFromAllocated(nextSystem);
+          const shouldClampAllocated = creationMode && !nextSystem.isFree && nextSystem.baseSkill !== "Language";
+          updateData["system.allocatedRating"] = shouldClampAllocated ? Math.min(computed.allocatedRating, 6) : computed.allocatedRating;
+          updateData["system.baseRating"] = computed.baseRating;
+          updateData["system.concentrationRating"] = computed.concentrationRating;
+          updateData["system.specializationRating"] = computed.specializationRating;
+        }
+
+        if (item.type === "spell" && updateData["system.force"] !== undefined) {
+          let nextForce = parseInt(updateData["system.force"], 10);
+          if (!Number.isFinite(nextForce)) nextForce = 1;
+
+          if (creationMode && totalForcePoints > 0) {
+            nextForce = Math.max(1, Math.min(6, nextForce));
+            const spentOther = computeForceSpentExcluding(item.id);
+            const maxForThis = totalForcePoints - spentOther;
+            if (maxForThis < 1) {
+              ui.notifications.error("Not enough Force Points remaining. Reduce other spells/foci first.");
+              updateData["system.force"] = item.system.force || 1;
+            } else {
+              updateData["system.force"] = Math.min(nextForce, maxForThis);
+            }
+          } else {
+            updateData["system.force"] = Math.max(1, Math.min(10, nextForce));
+          }
+        }
+
+        clampStartingRating(item, updateData);
+
         await item.update(updateData);
       }
     }
 
-    // Then update actor if there are actor-level changes
-    if (Object.keys(actorUpdates).length > 0) {
-      console.log("SR2E | Updating actor with:", actorUpdates);
+	    // Then update actor if there are actor-level changes
+	    if (Object.keys(actorUpdates).length > 0) {
+	      // Sync legacy lifestyle fields from the multi-lifestyle list
+	      const existingLifestyles = this._getNormalizedLifestylesFromActor();
+	      const lifestylesByIndex = new Map();
+	      for (const [key, value] of Object.entries(actorUpdates)) {
+	        const match = key.match(/^system\.resources\.lifestyles\.(\d+)\.(type|months)$/);
+	        if (!match) continue;
+
+	        const index = parseInt(match[1], 10);
+	        if (!Number.isFinite(index)) continue;
+
+	        if (!lifestylesByIndex.has(index)) {
+	          const current = existingLifestyles[index] || { type: "street", months: 1 };
+	          lifestylesByIndex.set(index, {
+	            type: current.type || "street",
+	            months: Math.max(1, parseInt(current.months, 10) || 1)
+	          });
+	        }
+	        const entry = lifestylesByIndex.get(index);
+	        if (match[2] === "type") entry.type = String(value || "street");
+	        if (match[2] === "months") entry.months = Math.max(1, parseInt(value, 10) || 1);
+	      }
+
+      if (lifestylesByIndex.size > 0) {
+        const normalizedLifestyles = [...lifestylesByIndex.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([, entry]) => ({
+            type: entry.type || "street",
+            months: entry.months || 1
+          }));
+
+        for (const key of Object.keys(actorUpdates)) {
+          if (key.startsWith("system.resources.lifestyles.")) delete actorUpdates[key];
+        }
+
+        actorUpdates["system.resources.lifestyles"] = normalizedLifestyles.length
+          ? normalizedLifestyles
+          : [{ type: "street", months: 1 }];
+
+        actorUpdates["system.resources.lifestyle"] = actorUpdates["system.resources.lifestyles"][0]?.type || "street";
+        actorUpdates["system.creation.lifestyleMonths"] = actorUpdates["system.resources.lifestyles"][0]?.months || 1;
+      }
+
+      // Clamp attributes by racial mins/maxes and enforce Attribute Points in creation mode
+      const metatype = actorUpdates["system.details.metatype"] ?? this.actor.system.details?.metatype ?? "human";
+      const bounds = sr2GetRacialAttributeBounds(metatype);
+
+      const attrKeys = ["body", "quickness", "strength", "charisma", "intelligence", "willpower"];
+      const newAttributeValues = {};
+      for (const key of attrKeys) {
+        const path = `system.attributes.${key}.value`;
+        const raw = actorUpdates[path] !== undefined ? actorUpdates[path] : this.actor.system.attributes?.[key]?.value;
+        const clamped = sr2Clamp(raw, bounds[key].min, bounds[key].max);
+        newAttributeValues[key] = clamped;
+        if (actorUpdates[path] !== undefined) actorUpdates[path] = clamped;
+      }
+
+      if (creationMode && totalAttributePoints > 0) {
+        const spent = attrKeys.reduce((sum, key) => {
+          const baseline = bounds[key]?.min ?? 0;
+          const value = Number(newAttributeValues[key]);
+          return sum + Math.max(0, value - baseline);
+        }, 0);
+
+        if (spent > totalAttributePoints) {
+          const changedName = event?.currentTarget?.name || "";
+          const match = changedName.match(/^system\.attributes\.([^.]+)\.value$/);
+          const changedKey = match?.[1];
+          if (changedKey && attrKeys.includes(changedKey)) {
+            const baseline = bounds[changedKey]?.min ?? 0;
+            const currentSpent = Math.max(0, Number(newAttributeValues[changedKey]) - baseline);
+            const otherSpent = spent - currentSpent;
+            const allowedSpent = Math.max(0, totalAttributePoints - otherSpent);
+            const allowedFinalRaw = baseline + allowedSpent;
+            const allowedFinal = sr2Clamp(allowedFinalRaw, bounds[changedKey].min, bounds[changedKey].max);
+            actorUpdates[`system.attributes.${changedKey}.value`] = allowedFinal;
+            ui.notifications.warn("Attribute Points exceeded; clamped the last change.");
+          } else {
+            ui.notifications.warn("Attribute Points exceeded.");
+          }
+        }
+      }
+
       await this.object.update(actorUpdates);
     }
 
@@ -3373,8 +3943,6 @@ export class SR2ActorSheet extends ActorSheet {
       console.warn("SR2E | Item not found for drag:", itemId);
       return;
     }
-
-    console.log("SR2E | Dragging item:", item.name, "Type:", item.type);
 
     // Create drag data for hotbar macro creation
     const dragData = item.toDragData ? item.toDragData() : { type: "Item", uuid: item.uuid };
@@ -3723,63 +4291,4 @@ export class SR2ActorSheet extends ActorSheet {
     // Return the highest rating available
     return Math.max(baseRating, concRating, specRating);
   }
-
-  /**
-   * Handle attribute roll button clicks
-   */
-  async _onAttributeRoll(event) {
-    event.preventDefault();
-    const attribute = event.currentTarget.dataset.attribute;
-    
-    if (!attribute) {
-      ui.notifications.error("No attribute specified for roll");
-      return;
-    }
-
-    const attributeValue = this.actor.system.attributes[attribute]?.value || 1;
-    const title = `${attribute.charAt(0).toUpperCase() + attribute.slice(1)} Roll`;
-    
-    await this.actor.rollDice(attributeValue, 4, title);
-  }
-
-  /**
-   * Handle skill roll button clicks
-   */
-  async _onSkillRoll(event) {
-    event.preventDefault();
-    const skillId = event.currentTarget.dataset.skillId;
-    const rollType = event.currentTarget.dataset.rollType || 'base';
-
-    const skill = this.actor.items.get(skillId);
-    if (!skill) {
-      ui.notifications.error("Skill not found for roll");
-      return;
-    }
-
-    let skillRating = 0;
-    let skillName = skill.name;
-
-    switch (rollType) {
-      case 'base':
-        skillRating = skill.system.baseRating || 0;
-        break;
-      case 'concentration':
-        skillRating = skill.system.concentrationRating || 0;
-        skillName += ` (${skill.system.concentration})`;
-        break;
-      case 'specialization':
-        skillRating = skill.system.specializationRating || 0;
-        skillName += ` [${skill.system.specialization}]`;
-        break;
-    }
-
-    if (skillRating === 0) {
-      ui.notifications.error(`${skillName} rating is 0. Cannot make roll.`);
-      return;
-    }
-
-    const title = `${skillName} Roll`;
-    await this.actor.rollDice(skillRating, 4, title);
-  }
-
-	}
+}

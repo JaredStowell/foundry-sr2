@@ -639,6 +639,9 @@ export class SR2InitiativeTracker extends Application {
      * Get initiative dice for an actor (base 1 + cyberware bonuses)
      */
     _getInitiativeDice(actor) {
+        const derived = Number(actor.system?.initiative?.dice);
+        if (Number.isFinite(derived) && derived >= 1) return derived;
+
         let dice = 1; // Base initiative dice
 
         // Check for cyberware that adds initiative dice
@@ -656,6 +659,9 @@ export class SR2InitiativeTracker extends Application {
      * Get reaction score for an actor
      */
     _getReaction(actor) {
+        const derived = Number(actor.system?.attributes?.reaction?.value);
+        if (Number.isFinite(derived) && derived > 0) return derived;
+
         let reaction = actor.system.attributes?.reaction?.value || 0;
 
         // Check for cyberware that adds reaction

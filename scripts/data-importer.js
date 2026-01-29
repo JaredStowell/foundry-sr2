@@ -2,6 +2,8 @@
  * Data Importer for Shadowrun 2E
  * Loads items from JSON files into Foundry compendiums
  */
+import { sr2InferFocusBondCostForGearItem } from "./sr2-rules.js";
+
 export class SR2DataImporter {
 
   /**
@@ -829,6 +831,13 @@ export class SR2DataImporter {
               quantity: 1,
               weight: parseFloat(item.Weight) || 0,
               price: parseInt(item.Cost) || 0,
+              bondCost: itemType === "gear"
+                ? sr2InferFocusBondCostForGearItem({
+                  category: categoryName,
+                  name: item.Name,
+                  price: item.Cost
+                })
+                : 0,
               // Add category-specific fields
               ...this._getCategorySpecificFields(categoryName, item)
             }

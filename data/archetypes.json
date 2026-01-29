@@ -1,0 +1,349 @@
+{
+  "schemaVersion": 1,
+  "catalogs": {
+    "cyberware": "data/cyberware.json",
+    "bioware": "data/bioware.json",
+    "gear": "data/gear.json",
+    "spells": "data/spells.json",
+    "programs": "data/programs.json",
+    "vrPrograms": "data/VirtualRealityPrograms.json",
+    "cyberdecks": "data/cyberdeck.json",
+    "vehicles": "data/vehicles.json",
+    "drones": "data/drones.json"
+  },
+  "archetypes": {
+    "bodyguard": {
+      "label": "Bodyguard",
+      "source": { "book": "SR2", "page": 49 },
+      "contacts": 2,
+      "lifestyle": { "key": "high", "months": 2 },
+      "cyberware": [
+        { "name": "Filter: Air 5" },
+        { "name": "Dermal Plating 3" },
+        { "name": "Skillwires 3" },
+        { "name": "Smartlink I" },
+        { "name": "Wired Reflexes 2" }
+      ],
+      "gear": [
+        { "type": "weapon", "name": "Ares Predator" },
+        { "type": "armor", "name": "Armor Clothing" },
+        { "type": "armor", "name": "Lined Coat" },
+        { "type": "armor", "name": "Tres Chic Clothing" },
+        { "type": "gear", "name": "Concealable Holster" },
+        { "type": "gear", "name": "Earplug Phone" },
+        { "type": "gear", "name": "Phone Booster Pack" },
+        { "type": "gear", "name": "Pocket Secretary" },
+        { "type": "gear", "name": "DocWagon", "expectedPrice": 25000 },
+        { "type": "gear", "name": "Active General Skill Chip Rating 3", "quantity": 5 },
+        { "type": "gear", "name": "Active Concentration Chip Rating 3", "quantity": 4 }
+      ],
+      "missing": [
+        "Spare clips (unknown clip type/size)",
+        "Exploding ammo (50 rounds)",
+        "Ares Predator internal/external smartlink details"
+      ]
+    },
+    "combatMage": {
+      "label": "Combat Mage",
+      "source": { "book": "SR2", "page": 50 },
+      "contacts": 2,
+      "cyberware": [
+        { "name": "Eye Thermographic" },
+        { "name": "Eye Low-light" }
+      ],
+      "gear": [
+        { "type": "armor", "name": "Armor Jacket" },
+        { "type": "weapon", "name": "Heckler & Koch HK227" },
+        { "type": "gear", "name": "DocWagon", "expectedPrice": 25000 },
+        { "type": "gear", "name": "Power Focus 2" },
+        { "type": "gear", "name": "Spell Lock", "quantity": 2 }
+      ],
+      "spells": [
+        { "name": "Manaball", "force": 4 },
+        { "name": "Mana Bolt", "force": 4 },
+        { "name": "Power Bolt", "force": 3 },
+        { "name": "Clairvoyance", "force": 3 },
+        { "name": "Detect Enemies", "force": 2 },
+        { "name": "Personal Combat Sense", "force": 5 },
+        { "name": "Heal", "force": 3 },
+        { "name": "Armor", "force": 3 },
+        { "name": "Confusion", "force": 3 }
+      ],
+      "missing": [
+        "Increase Reaction (+2)",
+        "Ammo: HK227 SMG (50 rounds regular ammo)"
+      ]
+    },
+    "decker": {
+      "label": "Decker",
+      "source": { "book": "SR2", "page": 51 },
+      "contacts": 2,
+      "lifestyle": { "key": "middle", "months": 1 },
+      "cyberware": [
+        { "name": "Datajack" },
+        { "name": "Headware Memory (30 Mp)" }
+      ],
+      "cyberdecks": [
+        { "name": "Fuchi Cyber-4" }
+      ],
+      "vehicles": [
+        { "name": "Yamaha Rapier" }
+      ],
+      "programs": [
+        { "name": "Attack", "rating": 6 },
+        { "name": "Browse", "rating": 4 },
+        { "name": "Deception", "rating": 4 }
+      ],
+      "gear": [
+        { "type": "weapon", "name": "Ruger Super Warhawk" },
+        { "type": "gear", "name": "Bod Rating 5" },
+        { "type": "gear", "name": "Evasion Rating 4" },
+        { "type": "gear", "name": "Masking Rating 4" },
+        { "type": "gear", "name": "Sensors Rating 5" },
+        { "type": "gear", "name": "Electronic Shop" },
+        { "type": "gear", "name": "Table Top PC (100 mp)" }
+      ]
+    },
+    "detective": {
+      "label": "Detective",
+      "source": { "book": "SR2", "page": 52 },
+      "contacts": 6,
+      "lifestyle": { "key": "low", "months": 1 },
+      "vehicles": [
+        { "name": "Ford Americar" }
+      ],
+      "gear": [
+        { "type": "weapon", "name": "Ares Predator" },
+        { "type": "weapon", "name": "Walther Palm Pistol" },
+        { "type": "armor", "name": "Armor Vest" },
+        { "type": "gear", "name": "Micro-Recorder" },
+        { "type": "gear", "name": "Pocket Secretary" }
+      ]
+    },
+    "dwarfMercenary": {
+      "label": "Dwarf Mercenary",
+      "source": { "book": "SR2", "page": 53 },
+      "contacts": 2,
+      "lifestyle": { "key": "low", "months": 1 },
+      "cyberware": [
+        { "name": "Smartlink I" }
+      ],
+      "gear": [
+        { "type": "armor", "name": "Armor Clothing" },
+        { "type": "weapon", "name": "FN HAR" },
+        { "type": "weapon", "name": "Defensive", "quantity": 2 }
+      ],
+      "missing": [
+        "Ammo details (100 rounds)"
+      ]
+    },
+    "elvenDecker": {
+      "label": "Elven Decker",
+      "source": { "book": "SR2", "page": 54 },
+      "contacts": 2,
+      "lifestyle": { "key": "middle", "months": 1 },
+      "cyberware": [
+        { "name": "Datajack" },
+        { "name": "Headware Memory (30 Mp)" }
+      ],
+      "cyberdecks": [
+        { "name": "Fuchi Cyber-4" }
+      ],
+      "vehicles": [
+        { "name": "Yamaha Rapier" }
+      ],
+      "programs": [
+        { "name": "Attack", "rating": 6 },
+        { "name": "Browse", "rating": 4 },
+        { "name": "Deception", "rating": 4 }
+      ],
+      "gear": [
+        { "type": "weapon", "name": "Ruger Super Warhawk" },
+        { "type": "gear", "name": "Bod Rating 5" },
+        { "type": "gear", "name": "Evasion Rating 4" },
+        { "type": "gear", "name": "Masking Rating 4" },
+        { "type": "gear", "name": "Sensors Rating 5" },
+        { "type": "gear", "name": "Electronic Shop" },
+        { "type": "gear", "name": "Table Top PC (100 mp)" }
+      ]
+    },
+    "formerCompanyMan": {
+      "label": "Former Company Man",
+      "source": { "book": "SR2", "page": 55 },
+      "contacts": 2,
+      "cyberware": [
+        { "name": "Datajack" },
+        { "name": "Muscle Replac. 1" },
+        { "name": "Smartlink II" },
+        { "name": "Wired Reflexes 2" }
+      ],
+      "vehicles": [
+        { "name": "Eurocar Westwind 2000" }
+      ],
+      "gear": [
+        { "type": "armor", "name": "Armor Clothing" },
+        { "type": "armor", "name": "Armor Jacket" },
+        { "type": "gear", "name": "Bug Scanner Lv 4" },
+        { "type": "gear", "name": "Earplug Phone" },
+        { "type": "gear", "name": "Phone Booster Pack" },
+        { "type": "gear", "name": "Low-Light Goggles" },
+        { "type": "weapon", "name": "Fichetti Military XI Smart" },
+        { "type": "weapon", "name": "Heckler & Koch HK227" },
+        { "type": "gear", "name": "Jammer Lv 4" },
+        { "type": "gear", "name": "Medkit" },
+        { "type": "gear", "name": "Survival Kit" },
+        { "type": "gear", "name": "Tranq Patch 5", "quantity": 2 },
+        { "type": "gear", "name": "Trauma Patch" },
+        { "type": "gear", "name": "White Noise Generator Lv 6" }
+      ],
+      "missing": [
+        "Ammo details (100 rounds)",
+        "Weapon model confirmation for “Fichetti Pistol”"
+      ]
+    },
+    "formerWageMage": {
+      "label": "Former Wage Mage",
+      "source": { "book": "SR2", "page": 56 },
+      "contacts": 2,
+      "gear": [
+        { "type": "armor", "name": "Armor Clothing" },
+        { "type": "gear", "name": "Hermetic library - Chip - Rating 3" },
+        { "type": "gear", "name": "Data Display (60Mp)" },
+        { "type": "weapon", "name": "Ruger Super Warhawk" }
+      ],
+      "spells": [
+        { "name": "Fireball", "force": 5 },
+        { "name": "Heal", "force": 3 },
+        { "name": "Mana Bolt", "force": 6 },
+        { "name": "Powerball", "force": 6 },
+        { "name": "Sleep", "force": 5 }
+      ]
+    },
+    "gangMember": {
+      "label": "Gang Member",
+      "source": { "book": "SR2", "page": 57 },
+      "contacts": 4,
+      "lifestyle": { "key": "squatter", "months": 1 },
+      "cyberware": [
+        { "name": "Eye Low-light" },
+        { "name": "Hand Razors" }
+      ],
+      "vehicles": [
+        { "name": "Yamaha Rapier" }
+      ],
+      "gear": [
+        { "type": "weapon", "name": "Knife" },
+        { "type": "gear", "name": "Simsense Player Unit" },
+        { "type": "gear", "name": "Simsense Program Chip", "quantity": 6 },
+        { "type": "weapon", "name": "Streetline Special" },
+        { "type": "armor", "name": "Synthetic Leather" }
+      ]
+    },
+    "mercenary": {
+      "label": "Mercenary",
+      "source": { "book": "SR2", "page": 58 },
+      "contacts": 2,
+      "cyberware": [
+        { "name": "Eye Low-light" },
+        { "name": "Radio receiver" },
+        { "name": "Wired Reflexes 1" }
+      ],
+      "gear": [
+        { "type": "weapon", "name": "Ares Predator" },
+        { "type": "armor", "name": "Armor Jacket" },
+        { "type": "weapon", "name": "Ingram Valiant" },
+        { "type": "gear", "name": "Smart Goggles" },
+        { "type": "weapon", "name": "Throwing Knife" }
+      ],
+      "missing": [
+        "Ammo details (clips/rounds)"
+      ]
+    },
+    "rigger": {
+      "label": "Rigger",
+      "source": { "book": "SR2", "page": 59 },
+      "contacts": 2,
+      "lifestyle": { "key": "middle", "months": 1 },
+      "cyberware": [
+        { "name": "Datajack" },
+        { "name": "Radio" },
+        { "name": "Smartlink I" },
+        { "name": "Vehicle Ctrl Rig 2" },
+        { "name": "Eye Low-light" },
+        { "name": "Eye Flare comp." },
+        { "name": "Eye Thermographic" }
+      ],
+      "vehicles": [
+        { "name": "Eurocar Westwind 2000" }
+      ],
+      "gear": [
+        { "type": "weapon", "name": "Ares Predator" },
+        { "type": "gear", "name": "Remote Control Deck (R3)" },
+        { "type": "gear", "name": "DocWagon", "expectedPrice": 50000 }
+      ],
+      "missing": [
+        "Surveillance Drones (specific drone models)",
+        "Hunter-Spotter Drone",
+        "Patrol Vehicle",
+        "Vehicle/drone weapon mount details (LMGs, missile launcher, ammo)"
+      ]
+    },
+    "shaman": {
+      "label": "Shaman",
+      "source": { "book": "SR2", "page": 60 },
+      "contacts": 2,
+      "lifestyle": { "key": "street", "months": 1 },
+      "gear": [
+        { "type": "weapon", "name": "Knife" },
+        { "type": "armor", "name": "Real Leather" },
+        { "type": "gear", "name": "Medicine Lodge Materials - Force 2" }
+      ],
+      "spells": [
+        { "name": "Mana Bolt", "force": 4 },
+        { "name": "Powerball", "force": 6 },
+        { "name": "Sleep", "force": 5 }
+      ],
+      "missing": [
+        "Totem selection (not modeled as gear)"
+      ]
+    },
+    "streetShaman": {
+      "label": "Street Shaman",
+      "source": { "book": "SR2", "page": 63 },
+      "contacts": 2,
+      "lifestyle": { "key": "street", "months": 1 },
+      "gear": [
+        { "type": "gear", "name": "Medicine Lodge Materials - Force 1" },
+        { "type": "gear", "name": "Medkit" },
+        { "type": "weapon", "name": "Ruger Super Warhawk" }
+      ],
+      "spells": [
+        { "name": "Mana Bolt", "force": 4 },
+        { "name": "Powerball", "force": 6 },
+        { "name": "Sleep", "force": 5 }
+      ],
+      "missing": [
+        "Totem selection (not modeled as gear)"
+      ]
+    },
+    "tribesman": {
+      "label": "Tribesman",
+      "source": { "book": "SR2", "page": 63 },
+      "contacts": 2,
+      "lifestyle": { "key": "street", "months": 1 },
+      "gear": [
+        { "type": "gear", "name": "Antidote Patch 4", "quantity": 3 },
+        { "type": "gear", "name": "Binoculars" },
+        { "type": "gear", "name": "Low-Light Goggles" },
+        { "type": "weapon", "name": "Standard Bow" },
+        { "type": "gear", "name": "Arrows", "quantity": 20 },
+        { "type": "weapon", "name": "Knife" },
+        { "type": "gear", "name": "Medkit" },
+        { "type": "armor", "name": "Real Leather" },
+        { "type": "gear", "name": "Survival Kit" },
+        { "type": "gear", "name": "Tranq Patch 5" },
+        { "type": "gear", "name": "Trauma Patch" }
+      ]
+    }
+  }
+}

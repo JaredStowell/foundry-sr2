@@ -20,7 +20,7 @@
         "Availability": "4/24hrs",
         "Cost": "1000",
         "Street Index": "1",
-        "BookPage": "sr2.???"
+        "BookPage": "sr2.278"
       },
       {
         "Name": "Bayonet",
@@ -97,7 +97,7 @@
         "Availability": "6/48hrs",
         "Cost": "3500",
         "Street Index": ".5",
-        "BookPage": "sr2.???"
+        "BookPage": "sr2.278"
       },
       {
         "Name": "Combat Axe",
@@ -108,7 +108,7 @@
         "Availability": "3/24hrs",
         "Cost": "750",
         "Street Index": "2",
-        "BookPage": "sr2.???"
+        "BookPage": "sr2.278"
       },
       {
         "Name": "Combat Axe Thrusting Point",
@@ -350,7 +350,7 @@
         "Availability": "3/6hrs",
         "Cost": "450",
         "Street Index": "1",
-        "BookPage": "sr2.???"
+        "BookPage": "sr2.278"
       },
       {
         "Name": "Sword",
@@ -383,7 +383,7 @@
         "Availability": "3/36hrs",
         "Cost": "1500",
         "Street Index": "2",
-        "BookPage": "sr2.???"
+        "BookPage": "sr2.278"
       },
       {
         "Name": "Club",
@@ -482,7 +482,7 @@
         "Availability": "3/36hrs",
         "Cost": "750",
         "Street Index": "1",
-        "BookPage": "sr2.???"
+        "BookPage": "sr2.254"
       },
       {
         "Name": "Halberd",
@@ -635,7 +635,7 @@
         "Availability": "24/14days",
         "Cost": "3000",
         "Street Index": "3",
-        "BookPage": "sr2.???"
+        "BookPage": "sr2.254"
       },
       {
         "Name": "Whip",
@@ -723,7 +723,7 @@
         "Availability": "4/48hrs",
         "Cost": "850",
         "Street Index": "2",
-        "BookPage": "sr2.???"
+        "BookPage": "sr2.278"
       },
       {
         "Name": "IMI",
@@ -756,7 +756,7 @@
         "Availability": "5/48hrs",
         "Cost": "950",
         "Street Index": "2",
-        "BookPage": "sr2.???"
+        "BookPage": "sr2.278"
       },
       {
         "Name": "Taser II",
@@ -10861,7 +10861,6 @@
         "Street Index": "1.5",
         "BookPage": "tss.16"
       },
-
       {
         "Name": "Anti-Armor Minigrenade",
         "Concealability": "8",
@@ -14195,7 +14194,7 @@
         "Street Index": "1.5"
       },
       {
-        "Name": "Goggles",
+        "Name": "Low-Light Goggles",
         "Concealability": "6",
         "Magnification": "20x",
         "Weight": "-",
@@ -14204,7 +14203,7 @@
         "Street Index": "2"
       },
       {
-        "Name": "Goggles",
+        "Name": "Thermographic Goggles",
         "Concealability": "6",
         "Magnification": "20x",
         "Weight": "-",
@@ -15802,7 +15801,12 @@
   },
   "Cyberdeck Other": {
     "Name": "Cyberdeck Other",
-    "attributes": ["Availability", "Cost", "Street Index", ""],
+    "attributes": [
+      "Availability",
+      "Cost",
+      "Street Index",
+      ""
+    ],
     "entries": [
       {
         "Name": "Off-line Store 100 Mp",
@@ -17682,7 +17686,7 @@
         "Street Index": "3"
       },
       {
-        "Name": "DocWagon",
+        "Name": "DocWagon Contract (Basic)",
         "Rating": "-",
         "Availability": "On Payment",
         "Weight": "-",
@@ -17690,7 +17694,7 @@
         "Street Index": "-"
       },
       {
-        "Name": "DocWagon",
+        "Name": "DocWagon Contract (Gold)",
         "Rating": "-",
         "Availability": "On Payment",
         "Weight": "-",
@@ -17698,7 +17702,7 @@
         "Street Index": "-"
       },
       {
-        "Name": "DocWagon",
+        "Name": "DocWagon Contract (Platinum)",
         "Rating": "-",
         "Availability": "On Payment",
         "Weight": "-",
@@ -19035,7 +19039,7 @@
         "Street Index": "1"
       },
       {
-        "Name": "Pocket Security",
+        "Name": "Pocket Secretary",
         "Concealability": "3",
         "Weight": ".5",
         "Availability": "Always",
@@ -19067,7 +19071,7 @@
         "Street Index": ".75"
       },
       {
-        "Name": "Wrist Phone w",
+        "Name": "Wrist Phone w/Flip-up Screen",
         "Concealability": "-",
         "Weight": "-",
         "Availability": "Always",
@@ -19944,6 +19948,22 @@
         "Weight": "2",
         "Availability": "Always",
         "Cost": "20000",
+        "Street Index": "1"
+      },
+      {
+        "Name": "Data Display (60Mp)",
+        "Concealability": "3",
+        "Weight": "2",
+        "Availability": "Always",
+        "Cost": "1200",
+        "Street Index": "1"
+      },
+      {
+        "Name": "Data Display (100Mp)",
+        "Concealability": "3",
+        "Weight": "2",
+        "Availability": "Always",
+        "Cost": "2000",
         "Street Index": "1"
       },
       {
@@ -21641,7 +21661,12 @@
   },
   "Magical Equipment": {
     "Name": "Magical Equipment",
-    "attributes": ["Availability", "Cost", "Street Index", ""],
+    "attributes": [
+      "Availability",
+      "Cost",
+      "Street Index",
+      ""
+    ],
     "entries": [
       {
         "Name": "Specific Spell Focus 1",
@@ -22415,7 +22440,12 @@
   },
   "Vehiclegear": {
     "Name": "Vehiclegear",
-    "attributes": ["Availability", "Cost", "Street Index", ""],
+    "attributes": [
+      "Availability",
+      "Cost",
+      "Street Index",
+      ""
+    ],
     "entries": [
       {
         "Name": "Anti-Theft System Level 1",
@@ -27038,7 +27068,12 @@
   },
   "Vehicle modifications": {
     "Name": "Vehicle modifications",
-    "attributes": ["Cost", "Equipment", "CF", ""],
+    "attributes": [
+      "Cost",
+      "Equipment",
+      "CF",
+      ""
+    ],
     "entries": [
       {
         "Name": "APPS (per seat)",
@@ -27443,7 +27478,7 @@
         "CF": "2"
       },
       {
-        "Name": "Hardpoint Dual Centerline ",
+        "Name": "Hardpoint Dual Centerline",
         "Cost": "1750",
         "Equipment": "-",
         "CF": "3"

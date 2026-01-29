@@ -163,10 +163,11 @@ export class SR2CharacterImporter {
           physicalAdept: isPhysicalAdept,
           tradition: data.magicalTradition?.name || ""
         },
-        resources: {
-          nuyen: data.cash || 0,
-          lifestyle: "street"
-        },
+	        resources: {
+	          nuyen: data.cash || 0,
+	          lifestyle: "street",
+	          lifestyles: [{ type: "street", months: 1 }]
+	        },
         details: {
           metatype: metatypeMap[data.race] || "human",
           age: data.age?.toString() || "",
@@ -372,7 +373,7 @@ export class SR2CharacterImporter {
           },
           initiative: { base: 6, dice: 1, current: 0 },
           magic: { awakened: false, physicalAdept: false, tradition: "" },
-          resources: { nuyen: 0, lifestyle: "street" },
+	          resources: { nuyen: 0, lifestyle: "street", lifestyles: [{ type: "street", months: 1 }] },
           details: {
             metatype: "human",
             age: "",
