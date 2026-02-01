@@ -2612,6 +2612,21 @@
   width: auto;
 }
 
+.shadowrun2e .sheet-header .sr2-header-resources .sr2-nuyen-resource {
+  margin-left: 6px;
+  width: 93px;
+}
+
+.shadowrun2e .sheet-header .sr2-header-resources .sr2-nuyen-resource .resource-label {
+  width: 100%;
+}
+
+.shadowrun2e .sheet-header .sr2-header-resources .resource input.nuyen-input {
+  width: 93px;
+  text-align: right;
+  padding: 0 6px;
+}
+
 .shadowrun2e .sheet-header .sr2-header-resources .resource select.metatype-select {
   width: 140px;
 }
@@ -2624,6 +2639,12 @@
 
 .shadowrun2e .sheet-header .sr2-header-resources .sr2-inline-formula {
   font-size: 13px;
+}
+
+.shadowrun2e .sheet-header .sr2-header-resources .sr2-weight-value {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .shadowrun2e .sheet-header .sr2-header-resources .resource-label {
@@ -2648,11 +2669,116 @@
   line-height: 1.1;
 }
 
+/* ===== NOTES TAB ===== */
+.shadowrun2e .tab.biography {
+  padding: 10px;
+}
+
+.shadowrun2e .tab.biography .sr2-notes-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--cyber-bg-secondary);
+  border: 1px solid var(--cyber-border);
+  padding: 10px;
+}
+
+.shadowrun2e .tab.biography .sr2-notes-panel h3 {
+  margin: 0;
+  color: var(--cyber-accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--cyber-border);
+  padding-bottom: 6px;
+  font-size: 12px;
+}
+
+.shadowrun2e .tab.biography .sr2-notes-textarea {
+  width: 100%;
+  flex: 1;
+  padding: 8px 10px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.shadowrun2e .sheet-header .sr2-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.shadowrun2e .sheet-header .sr2-header-title h1.charname {
+  flex: 1 1 240px;
+}
+
+.shadowrun2e .sheet-header .sr2-header-title h1.charname input {
+  width: 100%;
+}
+
+.shadowrun2e .sheet-header .sr2-creation-toggle--header {
+  white-space: nowrap;
+}
+
 .shadowrun2e .sheet-tabs {
   flex: 0;
 }
 
 /* ===== MAIN TAB (LAYOUT) ===== */
+.shadowrun2e .tab.main .sr2-creation-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 4px solid var(--cyber-accent-yellow);
+  border-radius: 6px;
+  background: rgba(255, 255, 0, 0.06);
+}
+
+.shadowrun2e .tab.main .sr2-creation-banner__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.shadowrun2e .tab.main .sr2-creation-banner__text {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--cyber-text-primary);
+}
+
+.shadowrun2e .tab.main .sr2-creation-banner__text strong {
+  color: var(--cyber-accent-yellow);
+}
+
+.shadowrun2e .tab.main .sr2-complete-creation {
+  width: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--cyber-accent-yellow);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--cyber-accent-yellow);
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.shadowrun2e .tab.main .sr2-creation-banner__note {
+  font-size: 11px;
+  color: var(--cyber-text-muted);
+}
+
+.shadowrun2e .tab.main .sr2-complete-creation:hover {
+  background: rgba(0, 0, 0, 0.35);
+  text-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+}
+
 .shadowrun2e .tab.main .sr2-main-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2675,6 +2801,15 @@
   font-size: 12px;
 }
 
+.shadowrun2e .tab.main .sr2-main-attributes h3[title] {
+  cursor: help;
+}
+
+.shadowrun2e .tab.main .sr2-main-attributes .sr2-points-row {
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
 .shadowrun2e .tab.main .sr2-attr-list {
   display: flex;
   flex-direction: column;
@@ -2683,9 +2818,27 @@
 
 .shadowrun2e .tab.main .sr2-attr-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 70px;
+  grid-template-columns: minmax(0, 1fr) 70px 18px;
   gap: 8px;
   align-items: center;
+}
+
+.shadowrun2e .tab.main .sr2-attr-row .attribute-roll {
+  margin: 0;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  justify-self: end;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.shadowrun2e .tab.main .sr2-attr-row .essence-available {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  width: 100%;
+  margin: 2px 0 0;
 }
 
 .shadowrun2e .tab.main .sr2-attr-row label {
@@ -2713,8 +2866,8 @@
   gap: 8px;
   align-items: center;
   padding: 6px 8px;
-  border: 1px solid var(--cyber-border);
-  background: var(--cyber-bg-primary);
+  border: none;
+  background: none;
 }
 
 .shadowrun2e .tab.main .sr2-pool-row label {
@@ -2730,7 +2883,7 @@
 }
 
 .shadowrun2e .tab.main .sr2-pool-controls .pool-adjust {
-  width: 22px;
+  min-width: 22px;
   height: 22px;
   margin: 0;
 }
@@ -2746,6 +2899,8 @@
   height: 22px;
   padding: 0 4px;
   text-align: center;
+  font-weight: 700;
+  color: var(--cyber-text-primary);
 }
 
 .shadowrun2e .tab.main .sr2-main-details .sr2-resource-header {
@@ -2770,6 +2925,19 @@
   gap: 6px;
 }
 
+.shadowrun2e .tab.main .sr2-main-magic-flags {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.shadowrun2e .tab.main .sr2-main-magic-flags select {
+  width: 100%;
+  height: 24px;
+  padding: 2px 4px;
+}
+
 .shadowrun2e .tab.main .sr2-main-field-row {
   display: grid;
   grid-template-columns: 120px minmax(0, 1fr);
@@ -2786,6 +2954,16 @@
   width: 100%;
   height: 24px;
   padding: 2px 4px;
+}
+
+.shadowrun2e .tab.main .sr2-main-field-row select {
+  width: 100%;
+  height: 24px;
+  padding: 2px 4px;
+}
+
+.shadowrun2e .tab.main .sr2-main-block {
+  margin-top: 10px;
 }
 
 @media (max-width: 900px) {
@@ -5015,6 +5193,15 @@ header.window-header.flexrow.draggable.resizable {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.shadowrun2e .search-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cyber-text-secondary);
+  white-space: nowrap;
 }
 
 .shadowrun2e .item-search {
@@ -9294,6 +9481,33 @@ form.shadowrun2e.follower .sheet-tabs.tabs .item:hover,
   border-bottom: 1px solid var(--cyber-border);
 }
 
+.sr2-quick-actions.window-app .window-header a.sr2-open-sheet {
+  width: 26px;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+  text-indent: 100px;
+  position: relative;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.sr2-quick-actions.window-app .window-header a.sr2-open-sheet:hover,
+.sr2-quick-actions.window-app .window-header a.sr2-open-sheet:focus {
+  background: transparent;
+  box-shadow: none;
+}
+
+.sr2-quick-actions.window-app .window-header a.sr2-open-sheet i {
+  font-size: 14px;
+  text-indent: 0;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
 .sr2-quick-actions.window-app .window-content {
   padding: 8px;
   background: rgba(10, 10, 10, 0.92);
@@ -9328,6 +9542,12 @@ form.shadowrun2e.follower .sheet-tabs.tabs .item:hover,
 
 .sr2-quick-actions .sr2-qa-initiative {
   align-items: center;
+}
+
+.sr2-quick-actions .sr2-qa-initiative-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .sr2-quick-actions .sr2-qa-line-label {
@@ -9365,4 +9585,15 @@ form.shadowrun2e.follower .sheet-tabs.tabs .item:hover,
   min-width: auto;
   font-size: 12px;
   line-height: 1.2;
+}
+
+.sr2-quick-actions .sr2-qa-initiative-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.sr2-quick-actions .sr2-qa-initiative-btn .sr2-qa-line-value {
+  color: inherit;
 }

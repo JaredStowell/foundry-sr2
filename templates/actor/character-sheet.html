@@ -4,10 +4,12 @@
 	  <header class="sheet-header">
     <img class="profile-img" src="{{actor.img}}" data-edit="img" title="{{actor.name}}" height="72" width="72"/>
     <div class="header-fields">
-	      <h1 class="charname"><input name="name" type="text" value="{{actor.name}}" placeholder="Character Name"/></h1>
-        {{#if (eq actor.type "follower")}}
-          <div class="header-subrow follower-leader">
-            <label class="resource-label">Leader</label>
+	      <div class="sr2-header-title">
+	        <h1 class="charname"><input name="name" type="text" value="{{actor.name}}" placeholder="Character Name"/></h1>
+	        </div>
+	        {{#if (eq actor.type "follower")}}
+	          <div class="header-subrow follower-leader">
+	            <label class="resource-label">Leader</label>
             <div class="follower-leader-fields">
               <span class="follower-leader-name">{{#if leaderName}}{{leaderName}}{{else}}—{{/if}}</span>
               {{#if leaderId}}
@@ -17,22 +19,18 @@
               {{/if}}
             </div>
 		      </div>
-		      {{/if}}
-	        <div class="sr2-header-resources">
-	          <div class="resource">
-	            <label class="resource-label">Metatype</label>
-	            <select class="metatype-select" name="system.details.metatype" data-dtype="String">
-	              <option value="human" {{#if (eq system.details.metatype "human")}}selected{{/if}}>Human</option>
-	              <option value="elf" {{#if (eq system.details.metatype "elf")}}selected{{/if}}>Elf</option>
-	              <option value="dwarf" {{#if (eq system.details.metatype "dwarf")}}selected{{/if}}>Dwarf</option>
-	              <option value="ork" {{#if (eq system.details.metatype "ork")}}selected{{/if}}>Ork</option>
-	              <option value="troll" {{#if (eq system.details.metatype "troll")}}selected{{/if}}>Troll</option>
-	            </select>
-	          </div>
-	          {{#if system.initiative}}
-	            <div class="resource sr2-initiative-resource">
-	              <label class="resource-label">Initiative</label>
-	              <div class="sr2-inline-controls sr2-initiative-inline">
+			        {{/if}}
+		        <div class="sr2-header-resources">
+		          {{#if system.resources}}
+		            <div class="resource sr2-nuyen-resource">
+		              <label class="resource-label">Nuyen (¥)</label>
+		              <input class="nuyen-input" type="number" name="system.resources.nuyen" value="{{system.resources.nuyen}}" data-dtype="Number"/>
+		            </div>
+		          {{/if}}
+		          {{#if system.initiative}}
+		            <div class="resource sr2-initiative-resource">
+		              <label class="resource-label">Initiative</label>
+		              <div class="sr2-inline-controls sr2-initiative-inline">
 	                <button type="button"
 	                        class="initiative-roll-btn sr2-small-action"
 	                        title="Roll {{system.initiative.dice}}d6+{{system.initiative.base}}">
@@ -60,6 +58,12 @@
 	                <button type="button" class="sr2-damage-adjust sr2-small-action" data-damage-type="stun" data-adjust="1" title="Increase Stun Damage">+</button>
 	              </div>
 	            </div>
+	            <div class="resource sr2-weight-resource">
+	              <label class="resource-label">Weight</label>
+	              <div class="sr2-inline-controls">
+	                <span class="sr2-weight-value">{{safeNumber totalWeight 0}} kg</span>
+	              </div>
+	            </div>
 	          {{/if}}
 	          {{#if (eq actor.type "contact")}}
 	            {{#if sr2Settings.contactLevels}}
@@ -76,61 +80,126 @@
 		  {{!-- Sheet Tab Navigation --}}
 		  <nav class="sheet-tabs tabs" data-group="primary">
 		    <a class="item" data-tab="main">Main</a>
-		    <a class="item" data-tab="attributes">Attributes</a>
 		    <a class="item" data-tab="skills">Skills</a>
 		    <a class="item" data-tab="gear">Gear</a>
 		    <a class="item" data-tab="augmentations">Augmentations</a>
-		    <a class="item" data-tab="magic">Magic</a>
+		    {{#if system.magic.awakened}}
+		      <a class="item" data-tab="magic">Magic</a>
+		    {{else}}
+		      {{#if system.magic.physicalAdept}}
+		        <a class="item" data-tab="magic">Magic</a>
+		      {{/if}}
+		    {{/if}}
 	    {{#if (eq actor.type "character")}}
 	      <a class="item" data-tab="connections">Connections</a>
     {{/if}}
     <a class="item" data-tab="biography">Notes</a>
   </nav>
 
-	  {{!-- Sheet Body --}}
-	  <section class="sheet-body">
+		  {{!-- Sheet Body --}}
+		  <section class="sheet-body">
 
-	    {{!-- Main Tab --}}
-	    <div class="tab main" data-group="primary" data-tab="main">
-	      <div class="sr2-main-grid">
-	        <section class="sr2-main-col sr2-main-attributes">
-	          <h3>Attributes</h3>
+		    {{!-- Main Tab --}}
+			    <div class="tab main" data-group="primary" data-tab="main">
+			      {{#if flags.shadowrun2e.creationMode}}
+			        <div class="sr2-creation-banner">
+			          <div class="sr2-creation-banner__row">
+			            <div class="sr2-creation-banner__text">
+			              <strong>Character Generation is active.</strong>
+			              Finalizing will permanently disable Character Generation changes for this character.
+			            </div>
+			            <button type="button" class="sr2-complete-creation">Finalize Character Generation</button>
+			          </div>
+			          {{#if (gt creationResources.budgetNuyen 0)}}
+			            <div class="sr2-points-row sr2-creation-banner__budget {{#if (lt creationResources.remainingNuyen 0)}}over-limit{{/if}}">
+			              <strong>Resource Budget (¥)</strong>:
+			              <span>{{creationResources.totalCost}}</span>
+			              <span>/</span>
+			              <span>{{creationResources.budgetNuyen}}</span>
+			              <span class="sr2-points-remaining">(Remaining: {{creationResources.remainingNuyen}})</span>
+			            </div>
+			            <div class="sr2-creation-banner__note">Starting cash: (unspent budget ÷ 10) + (3d6 × 1,000¥).</div>
+			          {{/if}}
+			        </div>
+			      {{/if}}
+			      <div class="sr2-main-grid">
+		        <section class="sr2-main-col sr2-main-attributes">
+		          <h3{{#if racialSummary}} title="{{racialSummary}}"{{/if}}>Attributes</h3>
+		          {{#if creationPoints.attributes.total}}
+	            <div class="sr2-points-row {{#if (lt creationPoints.attributes.remaining 0)}}over-limit{{/if}}">
+	              <strong>Attribute Points</strong>:
+	              <span>{{creationPoints.attributes.spent}}</span>
+	              <span>/</span>
+	              <span>{{creationPoints.attributes.total}}</span>
+	              <span class="sr2-points-remaining">(Remaining: {{creationPoints.attributes.remaining}})</span>
+	            </div>
+	          {{/if}}
 	          <div class="sr2-attr-list">
 	            <div class="sr2-attr-row">
 	              <label>Body</label>
 	              <input type="number" name="system.attributes.body.value" value="{{system.attributes.body.value}}" data-dtype="Number" min="{{system.attributes.body.min}}" max="{{system.attributes.body.max}}"/>
+	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="body" title="Roll Body">
+	                <i class="fas fa-dice-d6"></i>
+	              </button>
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Quickness</label>
 	              <input type="number" name="system.attributes.quickness.value" value="{{system.attributes.quickness.value}}" data-dtype="Number" min="{{system.attributes.quickness.min}}" max="{{system.attributes.quickness.max}}"/>
+	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="quickness" title="Roll Quickness">
+	                <i class="fas fa-dice-d6"></i>
+	              </button>
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Strength</label>
 	              <input type="number" name="system.attributes.strength.value" value="{{system.attributes.strength.value}}" data-dtype="Number" min="{{system.attributes.strength.min}}" max="{{system.attributes.strength.max}}"/>
+	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="strength" title="Roll Strength">
+	                <i class="fas fa-dice-d6"></i>
+	              </button>
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Charisma</label>
 	              <input type="number" name="system.attributes.charisma.value" value="{{system.attributes.charisma.value}}" data-dtype="Number" min="{{system.attributes.charisma.min}}" max="{{system.attributes.charisma.max}}"/>
+	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="charisma" title="Roll Charisma">
+	                <i class="fas fa-dice-d6"></i>
+	              </button>
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Intelligence</label>
 	              <input type="number" name="system.attributes.intelligence.value" value="{{system.attributes.intelligence.value}}" data-dtype="Number" min="{{system.attributes.intelligence.min}}" max="{{system.attributes.intelligence.max}}"/>
+	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="intelligence" title="Roll Intelligence">
+	                <i class="fas fa-dice-d6"></i>
+	              </button>
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Willpower</label>
 	              <input type="number" name="system.attributes.willpower.value" value="{{system.attributes.willpower.value}}" data-dtype="Number" min="{{system.attributes.willpower.min}}" max="{{system.attributes.willpower.max}}"/>
+	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="willpower" title="Roll Willpower">
+	                <i class="fas fa-dice-d6"></i>
+	              </button>
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Essence</label>
 	              <input type="number" name="system.attributes.essence.value" value="{{system.attributes.essence.value}}" data-dtype="Number" step="0.1" readonly/>
+	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="essence" title="Roll Essence">
+	                <i class="fas fa-dice-d6"></i>
+	              </button>
+	              {{#if essenceData}}
+	                <small class="essence-available">Available for Cyberware: {{essenceData.available}}</small>
+	              {{/if}}
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Magic</label>
 	              <input type="number" name="system.attributes.magic.value" value="{{system.attributes.magic.value}}" data-dtype="Number" readonly/>
+	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="magic" title="Roll Magic">
+	                <i class="fas fa-dice-d6"></i>
+	              </button>
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Reaction</label>
 	              <input type="number" name="system.attributes.reaction.value" value="{{system.attributes.reaction.value}}" data-dtype="Number" readonly/>
+	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="reaction" title="Roll Reaction">
+	                <i class="fas fa-dice-d6"></i>
+	              </button>
 	            </div>
 	          </div>
 		        </section>
@@ -140,9 +209,9 @@
 		            <div class="sr2-pool-row">
 		              <label>Combat Pool</label>
 		              <div class="sr2-pool-controls">
-		                <button class="pool-adjust" data-pool="combat" data-adjust="-1" title="Spend Combat Pool">-</button>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="combat" data-adjust="-1" title="Spend Combat Pool">-</button>
 		                <span>{{system.pools.combat.current}} / {{system.pools.combat.max}}</span>
-		                <button class="pool-adjust" data-pool="combat" data-adjust="1" title="Refresh Combat Pool">+</button>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="combat" data-adjust="1" title="Refresh Combat Pool">+</button>
 		              </div>
 		            </div>
 	
@@ -151,9 +220,9 @@
 		            <div class="sr2-pool-row">
 		              <label>Magic Pool</label>
 		              <div class="sr2-pool-controls">
-		                <button class="pool-adjust" data-pool="spell" data-adjust="-1">-</button>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="spell" data-adjust="-1">-</button>
 		                <span>{{system.pools.spell.current}} / {{system.pools.spell.max}}</span>
-		                <button class="pool-adjust" data-pool="spell" data-adjust="1">+</button>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="spell" data-adjust="1">+</button>
 		              </div>
 		            </div>
 		            {{/unless}}
@@ -163,9 +232,9 @@
 		            <div class="sr2-pool-row">
 		              <label>Hacking Pool</label>
 		              <div class="sr2-pool-controls">
-		                <button class="pool-adjust" data-pool="hacking" data-adjust="-1">-</button>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="hacking" data-adjust="-1">-</button>
 		                <span>{{system.pools.hacking.current}} / {{system.pools.hacking.max}}</span>
-		                <button class="pool-adjust" data-pool="hacking" data-adjust="1">+</button>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="hacking" data-adjust="1">+</button>
 		              </div>
 		            </div>
 		            {{/if}}
@@ -174,9 +243,9 @@
 		            <div class="sr2-pool-row">
 		              <label>Control Pool</label>
 		              <div class="sr2-pool-controls">
-		                <button class="pool-adjust" data-pool="control" data-adjust="-1">-</button>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="control" data-adjust="-1">-</button>
 		                <span>{{system.pools.control.current}} / {{system.pools.control.max}}</span>
-		                <button class="pool-adjust" data-pool="control" data-adjust="1">+</button>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="control" data-adjust="1">+</button>
 		              </div>
 		            </div>
 		            {{/if}}
@@ -185,9 +254,9 @@
 		            <div class="sr2-pool-row">
 		              <label>Task Pool</label>
 		              <div class="sr2-pool-controls">
-		                <button class="pool-adjust" data-pool="task" data-adjust="-1">-</button>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="task" data-adjust="-1">-</button>
 		                <span>{{system.pools.task.current}} / {{system.pools.task.max}}</span>
-		                <button class="pool-adjust" data-pool="task" data-adjust="1">+</button>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="task" data-adjust="1">+</button>
 		              </div>
 		            </div>
 		            {{/if}}
@@ -197,9 +266,9 @@
 		            <div class="sr2-pool-row">
 		              <label>Astral Pool</label>
 		              <div class="sr2-pool-controls">
-		                <button class="pool-adjust" data-pool="astral" data-adjust="-1">-</button>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="astral" data-adjust="-1">-</button>
 		                <span>{{system.pools.astral.current}} / {{system.pools.astral.max}}</span>
-		                <button class="pool-adjust" data-pool="astral" data-adjust="1">+</button>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="astral" data-adjust="1">+</button>
 		              </div>
 		            </div>
 		            {{/unless}}
@@ -208,8 +277,9 @@
 		            <div class="sr2-pool-row sr2-pool-row-karma">
 		              <label>Karma Pool</label>
 		              <div class="sr2-pool-controls">
-		                <input type="number" name="system.pools.karma.current" value="{{system.pools.karma.current}}" data-dtype="Number"/>
-		                <span>/ {{system.pools.karma.total}}</span>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="karma" data-adjust="-1" title="Spend Karma Pool">-</button>
+		                <span>{{safeNumber system.pools.karma.current 0}} / {{safeNumber system.pools.karma.total 0}}</span>
+		                <button type="button" class="pool-adjust sr2-damage-adjust sr2-small-action" data-pool="karma" data-adjust="1" title="Gain Karma Pool">+</button>
 		              </div>
 		            </div>
 		          </div>
@@ -222,73 +292,87 @@
 		          </div>
 		          {{/if}}
 		        </section>
-		        <section class="sr2-main-col sr2-main-details">
-		          <h3>Details</h3>
-		          <div class="sr2-main-block">
-		            <div class="sr2-resource-header">
-		              <label class="resource-label">Lifestyles</label>
-		              <button type="button" class="sr2-lifestyle-add sr2-small-action" title="Add Lifestyle">
-		                <i class="fas fa-plus"></i>
-		              </button>
-		            </div>
-		            <div class="sr2-lifestyles">
-		              {{#each system.resources.lifestyles as |life idx|}}
-		                <div class="sr2-lifestyle-row">
-		                  <select name="system.resources.lifestyles.{{idx}}.type" data-dtype="String">
-		                    <option value="street" {{#if (eq life.type "street")}}selected{{/if}}>Street</option>
-		                    <option value="squatter" {{#if (eq life.type "squatter")}}selected{{/if}}>Squatter</option>
-		                    <option value="low" {{#if (eq life.type "low")}}selected{{/if}}>Low</option>
-		                    <option value="middle" {{#if (eq life.type "middle")}}selected{{/if}}>Middle</option>
-		                    <option value="high" {{#if (eq life.type "high")}}selected{{/if}}>High</option>
-		                    <option value="luxury" {{#if (eq life.type "luxury")}}selected{{/if}}>Luxury</option>
-		                  </select>
-		                  <button type="button" class="sr2-lifestyle-delete" data-index="{{idx}}" title="Delete Lifestyle">
-		                    <i class="fas fa-trash"></i>
-		                  </button>
-		                </div>
-		              {{/each}}
-		            </div>
-		          </div>
-	
-		          <div class="sr2-main-fields">
-		            <div class="sr2-main-field-row">
-		              <label>Native Language</label>
-		              <input type="text" name="system.details.nativeLanguage" value="{{system.details.nativeLanguage}}" data-dtype="String"/>
-		            </div>
+			        <section class="sr2-main-col sr2-main-details">
+			          <h3>Details</h3>
+			          <div class="sr2-main-fields">
+			            <div class="sr2-main-field-row">
+			              <label>Metatype</label>
+			              <select name="system.details.metatype" data-dtype="String">
+			                <option value="human" {{#if (eq system.details.metatype "human")}}selected{{/if}}>Human</option>
+			                <option value="elf" {{#if (eq system.details.metatype "elf")}}selected{{/if}}>Elf</option>
+			                <option value="dwarf" {{#if (eq system.details.metatype "dwarf")}}selected{{/if}}>Dwarf</option>
+			                <option value="ork" {{#if (eq system.details.metatype "ork")}}selected{{/if}}>Ork</option>
+			                <option value="troll" {{#if (eq system.details.metatype "troll")}}selected{{/if}}>Troll</option>
+			              </select>
+			            </div>
+			            <div class="sr2-main-field-row">
+			              <label>Native Language</label>
+			              <input type="text" name="system.details.nativeLanguage" value="{{system.details.nativeLanguage}}" data-dtype="String"/>
+			            </div>
 		            <div class="sr2-main-field-row">
 		              <label>Dialect (Street)</label>
-		              <input type="text" name="system.details.dialectLanguage" value="{{system.details.dialectLanguage}}" data-dtype="String"/>
-		            </div>
-		          </div>
-		        </section>
-		      </div>
-		    </div>
+			              <input type="text" name="system.details.dialectLanguage" value="{{system.details.dialectLanguage}}" data-dtype="String"/>
+			            </div>
+			          </div>
 
-	    {{!-- Attributes Tab --}}
-	    <div class="tab attributes" data-group="primary" data-tab="attributes">
-	      <div class="attributes-section">
-	        <div class="sr2-creation-summary">
-          <label class="sr2-creation-toggle">
-            <input type="checkbox" name="flags.shadowrun2e.creationMode" {{#if flags.shadowrun2e.creationMode}}checked{{/if}}/>
-            Creation Mode
-          </label>
-          {{#if creationPoints.attributes.total}}
-            <div class="sr2-points-row {{#if (lt creationPoints.attributes.remaining 0)}}over-limit{{/if}}">
-              <strong>Attribute Points</strong>:
-              <span>{{creationPoints.attributes.spent}}</span>
-              <span>/</span>
-              <span>{{creationPoints.attributes.total}}</span>
-              <span class="sr2-points-remaining">(Remaining: {{creationPoints.attributes.remaining}})</span>
-            </div>
-          {{/if}}
-          {{#if racialSummary}}
-            <div class="sr2-racial-summary">{{racialSummary}}</div>
-          {{/if}}
-        </div>
-        <h3>Physical Attributes</h3>
-        <div class="attributes-grid">
-          <div class="attribute">
-            <label>Body</label>
+			          {{#if system.magic}}
+			            <div class="sr2-main-magic-flags">
+			              <label class="sr2-creation-toggle">
+			                <input type="checkbox" name="system.magic.awakened" {{#if system.magic.awakened}}checked{{/if}}/>
+			                Awakened Character
+			              </label>
+			              <label class="sr2-creation-toggle">
+			                <input type="checkbox" name="system.magic.physicalAdept" {{#if system.magic.physicalAdept}}checked{{/if}}/>
+			                Physical Adept
+			              </label>
+			              {{#if system.magic.awakened}}
+			                {{#unless system.magic.physicalAdept}}
+			                  <select name="system.magic.tradition" data-dtype="String">
+			                    <option value="">Select Tradition...</option>
+			                    <option value="hermetic" {{#if (eq system.magic.tradition "hermetic")}}selected{{/if}}>Hermetic</option>
+			                    <option value="shamanic" {{#if (eq system.magic.tradition "shamanic")}}selected{{/if}}>Shamanic</option>
+			                  </select>
+			                {{/unless}}
+			              {{/if}}
+			            </div>
+			          {{/if}}
+		
+			          <div class="sr2-main-block">
+			            <div class="sr2-resource-header">
+			              <label class="resource-label">Lifestyles</label>
+			              <button type="button" class="sr2-lifestyle-add sr2-small-action" title="Add Lifestyle">
+			                <i class="fas fa-plus"></i>
+			              </button>
+			            </div>
+			            <div class="sr2-lifestyles">
+			              {{#each system.resources.lifestyles as |life idx|}}
+			                <div class="sr2-lifestyle-row">
+			                  <select name="system.resources.lifestyles.{{idx}}.type" data-dtype="String">
+			                    <option value="street" {{#if (eq life.type "street")}}selected{{/if}}>Street</option>
+			                    <option value="squatter" {{#if (eq life.type "squatter")}}selected{{/if}}>Squatter</option>
+			                    <option value="low" {{#if (eq life.type "low")}}selected{{/if}}>Low</option>
+			                    <option value="middle" {{#if (eq life.type "middle")}}selected{{/if}}>Middle</option>
+			                    <option value="high" {{#if (eq life.type "high")}}selected{{/if}}>High</option>
+			                    <option value="luxury" {{#if (eq life.type "luxury")}}selected{{/if}}>Luxury</option>
+			                  </select>
+			                  <button type="button" class="sr2-lifestyle-delete" data-index="{{idx}}" title="Delete Lifestyle">
+			                    <i class="fas fa-trash"></i>
+			                  </button>
+			                </div>
+			              {{/each}}
+			            </div>
+			          </div>
+			        </section>
+			      </div>
+			    </div>
+
+		    {{!-- Attributes Tab (removed)
+		    <div class="tab attributes" data-group="primary" data-tab="attributes">
+		      <div class="attributes-section">
+	        <h3>Physical Attributes</h3>
+	        <div class="attributes-grid">
+	          <div class="attribute">
+	            <label>Body</label>
             <input type="number" name="system.attributes.body.value" value="{{system.attributes.body.value}}" data-dtype="Number" min="{{system.attributes.body.min}}" max="{{system.attributes.body.max}}"/>
             <button class="attribute-roll" data-attribute="body" title="Roll Body">
               <i class="fas fa-dice-d6"></i>
@@ -477,6 +561,8 @@
       </div>
     </div>
 
+		    --}}
+
     {{!-- Skills Tab --}}
     <div class="tab skills" data-group="primary" data-tab="skills">
       <div class="skills-header">
@@ -497,11 +583,12 @@
 	        </div>
 	      </div>
 
+      {{#if skills}}
       <div class="skills-list">
-		        <div class="skills-table-header">
-		          <div class="skill-name">Skill / Concentration</div>
-		          <div class="skill-allocated-rating">Allocated</div>
-		          <div class="skill-base-rating">Base</div>
+			        <div class="skills-table-header">
+			          <div class="skill-name">Skill / Concentration</div>
+			          <div class="skill-allocated-rating">Allocated</div>
+			          <div class="skill-base-rating">Base</div>
 		          <div class="skill-conc-rating">Concentration</div>
 		          <div class="skill-spec-rating">Specialization</div>
 		          <div class="skill-actions">Actions</div>
@@ -597,16 +684,11 @@
 	              </button>
 	            </div>
           </div>
-        </div>
-        {{/each}}
-        
-        {{#unless skills}}
-        <div class="no-skills">
-          <p>No skills added yet. Click "Add Skill" to get started.</p>
-        </div>
-        {{/unless}}
-      </div>
-    </div>
+	        </div>
+	        {{/each}}
+	      </div>
+	      {{/if}}
+	    </div>
 
     <div class="tab gear" data-group="primary" data-tab="gear">
       
@@ -623,11 +705,12 @@
         </div>
       </div>
 
-      <div class="items-list sr2-weapons-list">
-        <div class="items-table-header">
-          <div class="item-name">Weapon</div>
-          <div class="item-skill">Linked Skill</div>
-          <div class="item-damage">Damage</div>
+	      {{#if weapons}}
+	      <div class="items-list sr2-weapons-list">
+	        <div class="items-table-header">
+	          <div class="item-name">Weapon</div>
+	          <div class="item-skill">Linked Skill</div>
+	          <div class="item-damage">Damage</div>
           <div class="item-conceal">Conceal</div>
           <div class="item-ammo">Ammo</div>
           <div class="item-equipped">Equipped</div>
@@ -681,15 +764,10 @@
               <i class="fas fa-trash"></i>
             </button>
           </div>
-        </div>
-        {{/each}}
-        
-        {{#unless weapons}}
-        <div class="no-items">
-          <p>No weapons equipped. Browse the weapon catalog to add weapons.</p>
-        </div>
-        {{/unless}}
-      </div>
+	        </div>
+	        {{/each}}
+	      </div>
+	      {{/if}}
 
       {{!-- Armor Section --}}
       <div class="items-header">
@@ -704,11 +782,12 @@
         </div>
       </div>
 
-      <div class="items-list sr2-armor-list">
-        <div class="items-table-header">
-          <div class="item-name">Armor</div>
-          <div class="item-rating">Rating</div>
-          <div class="item-ballistic">Ballistic</div>
+	      {{#if armor}}
+	      <div class="items-list sr2-armor-list">
+	        <div class="items-table-header">
+	          <div class="item-name">Armor</div>
+	          <div class="item-rating">Rating</div>
+	          <div class="item-ballistic">Ballistic</div>
           <div class="item-impact">Impact</div>
           <div class="item-conceal">Conceal</div>
           <div class="item-equipped">Equipped</div>
@@ -741,15 +820,10 @@
               <i class="fas fa-trash"></i>
             </button>
           </div>
-        </div>
-        {{/each}}
-        
-        {{#unless armor}}
-        <div class="no-items">
-          <p>No armor equipped. Browse the armor catalog to add armor.</p>
-        </div>
-        {{/unless}}
-      </div>
+	        </div>
+	        {{/each}}
+	      </div>
+	      {{/if}}
 
       {{!-- General Equipment Section --}}
       <div class="items-header">
@@ -764,11 +838,12 @@
         </div>
       </div>
 
-      <div class="items-list sr2-gear-list">
-        <div class="items-table-header">
-          <div class="item-name">Item</div>
-          <div class="item-category">Category</div>
-          <div class="item-rating">Rating</div>
+	      {{#if gear}}
+	      <div class="items-list sr2-gear-list">
+	        <div class="items-table-header">
+	          <div class="item-name">Item</div>
+	          <div class="item-category">Category</div>
+	          <div class="item-rating">Rating</div>
           <div class="item-quantity">Qty</div>
           <div class="item-weight">Weight</div>
           <div class="item-equipped">Equipped</div>
@@ -801,79 +876,10 @@
               <i class="fas fa-trash"></i>
             </button>
           </div>
-        </div>
-        {{/each}}
-        
-        {{#unless gear}}
-        <div class="no-items">
-          <p>No equipment carried. Browse the equipment catalog to add gear.</p>
-        </div>
-        {{/unless}}
-      </div>
-
-      {{!-- Range Calculator --}}
-      <div class="range-calculator">
-        <h3>Range Calculator</h3>
-        <div class="range-controls">
-          <div class="weapon-select">
-            <label>Weapon:</label>
-            <select id="range-weapon-select" class="range-weapon-select">
-              <option value="">Select a ranged weapon...</option>
-              {{#each weapons as |weapon|}}
-                {{#if (eq weapon.system.weaponType "ranged")}}
-                  <option value="{{weapon._id}}" data-range-type="{{weapon.system.rangeType}}">{{weapon.name}}</option>
-                {{/if}}
-              {{/each}}
-            </select>
-          </div>
-          <div class="distance-input">
-            <label>Distance to Target:</label>
-            <input type="number" id="range-distance" class="range-distance" min="1" max="10000" placeholder="meters"/>
-            <span>meters</span>
-          </div>
-          <div class="range-result">
-            <label>Range Category:</label>
-            <span id="range-category" class="range-category">-</span>
-            <span id="range-modifier" class="range-modifier"></span>
-          </div>
-        </div>
-        <div class="range-bands" id="range-bands" style="display: none;">
-          <div class="range-band short">
-            <label>Short:</label>
-            <span id="short-range">-</span>m
-          </div>
-          <div class="range-band medium">
-            <label>Medium:</label>
-            <span id="medium-range">-</span>m
-          </div>
-          <div class="range-band long">
-            <label>Long:</label>
-            <span id="long-range">-</span>m
-          </div>
-          <div class="range-band extreme">
-            <label>Extreme:</label>
-            <span id="extreme-range">-</span>m
-          </div>
-        </div>
-      </div>
-
-      {{!-- Gear Summary --}}
-      <div class="gear-summary">
-        <div class="summary-stats">
-          <div class="stat">
-            <label>Total Weight:</label>
-            <span class="total-weight">{{totalWeight}} kg</span>
-          </div>
-          <div class="stat">
-            <label>Total Value:</label>
-            <span class="total-value">¥{{totalValue}}</span>
-          </div>
-          <div class="stat">
-            <label>Items Carried:</label>
-            <span class="total-items">{{totalItems}}</span>
-          </div>
-        </div>
-      </div>
+	        </div>
+	        {{/each}}
+	      </div>
+	      {{/if}}
 
     </div>
 
@@ -892,11 +898,12 @@
           </div>
         </div>
 
-        <div class="items-list">
-          <div class="items-table-header">
-            <div class="item-name">Name</div>
-            <div class="item-rating">Rating</div>
-            <div class="item-essence">Essence</div>
+	        {{#if cyberware}}
+	        <div class="items-list">
+	          <div class="items-table-header">
+	            <div class="item-name">Name</div>
+	            <div class="item-rating">Rating</div>
+	            <div class="item-essence">Essence</div>
             <div class="item-installed">Installed</div>
             <div class="item-actions">Actions</div>
           </div>
@@ -921,16 +928,11 @@
                 <i class="fas fa-trash"></i>
               </button>
             </div>
-          </div>
-          {{/each}}
-          
-          {{#unless cyberware}}
-          <div class="no-items">
-            <p>No cyberware installed. Browse the catalog to add cyberware.</p>
-          </div>
-          {{/unless}}
-        </div>
-      </div>
+	          </div>
+	          {{/each}}
+	        </div>
+	        {{/if}}
+	      </div>
 
       <div class="augmentation-section bioware-section bioware">
         <div class="items-header">
@@ -945,11 +947,12 @@
           </div>
         </div>
 
-        <div class="items-list">
-          <div class="items-table-header">
-            <div class="item-name">Name</div>
-            <div class="item-rating">Rating</div>
-            <div class="item-bioindex">Bio Index</div>
+	        {{#if bioware}}
+	        <div class="items-list">
+	          <div class="items-table-header">
+	            <div class="item-name">Name</div>
+	            <div class="item-rating">Rating</div>
+	            <div class="item-bioindex">Bio Index</div>
             <div class="item-installed">Installed</div>
             <div class="item-actions">Actions</div>
           </div>
@@ -974,105 +977,67 @@
                 <i class="fas fa-trash"></i>
               </button>
             </div>
-          </div>
-          {{/each}}
-          
-          {{#unless bioware}}
-          <div class="no-items">
-            <p>No bioware installed. Browse the catalog to add bioware.</p>
-          </div>
-          {{/unless}}
-        </div>
-      </div>
-    </div>
+	          </div>
+	          {{/each}}
+	        </div>
+	        {{/if}}
+	      </div>
+	    </div>
 
     {{!-- Magic Tab --}}
     <div class="tab magic" data-group="primary" data-tab="magic">
-      <div class="magic-section">
-        <h3>Magic Settings</h3>
-	        <div class="magic-controls">
-	          <label>
-	            <input type="checkbox" name="system.magic.awakened" {{#if system.magic.awakened}}checked{{/if}}/>
-	            Awakened Character
-	          </label>
-	          {{#if system.magic.awakened}}
-	          {{#unless system.magic.physicalAdept}}
-	            <div class="tradition-select">
-	              <label>Tradition:</label>
-	              <select name="system.magic.tradition" data-dtype="String">
-	                <option value="">Select Tradition...</option>
-	                <option value="hermetic" {{#if (eq system.magic.tradition "hermetic")}}selected{{/if}}>Hermetic</option>
-	                <option value="shamanic" {{#if (eq system.magic.tradition "shamanic")}}selected{{/if}}>Shamanic</option>
-	              </select>
-	            </div>
-	          {{/unless}}
-	          <div class="magic-stats">
-	            <div class="magic-stat">
-	              <label>Magic Rating:</label>
-	              <span>{{system.attributes.magic.value}}</span>
-	            </div>
-	            {{#unless system.magic.physicalAdept}}
-	              <div class="magic-stat">
-	                <label>Magic Pool:</label>
-	                <span>{{system.pools.spell.current}} / {{system.pools.spell.max}}</span>
-	              </div>
-	            {{/unless}}
-	          </div>
-	
-	          {{#unless system.magic.physicalAdept}}
-	          {{#if (eq system.magic.tradition "shamanic")}}
-	          <div class="totem-section">
-	            <h4>Totem Selection</h4>
-	            <div class="totem-controls">
-              {{#if selectedTotem}}
-                <div class="totem-display">
-                  <div class="totem-header">
-                    <h5>{{selectedTotem.name}}</h5>
-                    <button type="button" class="change-totem" title="Change Totem">
-                      <i class="fas fa-exchange-alt"></i> Change
-                    </button>
-                  </div>
-                  <div class="totem-details">
-                    <div class="totem-environment">
-                      <strong>Environment:</strong> {{selectedTotem.system.environment}}
-                    </div>
-                    <div class="totem-advantages">
-                      <strong>Advantages:</strong> {{selectedTotem.system.advantages}}
-                    </div>
-                    <div class="totem-disadvantages">
-                      <strong>Disadvantages:</strong> {{selectedTotem.system.disadvantages}}
-                    </div>
-                  </div>
-                </div>
-              {{else}}
-                <div class="no-totem">
-                  <p>No totem selected. Shamans must choose a totem to guide their magic.</p>
-                  <button type="button" class="browse-totems sr2-small-action" title="Browse Totems">
-                    <i class="fas fa-search"></i> Browse Totems
-                  </button>
-                </div>
-              {{/if}}
-            </div>
-	          </div>
-	          {{/if}}
-	          {{/unless}}
-	
-	          {{/if}}
-	        </div>
-	      </div>
-
 	      {{#if system.magic.awakened}}
 	      {{#unless system.magic.physicalAdept}}
+        {{#if (eq system.magic.tradition "shamanic")}}
+        <div class="totem-section">
+          <h4>Totem Selection</h4>
+          <div class="totem-controls">
+            {{#if selectedTotem}}
+              <div class="totem-display">
+                <div class="totem-header">
+                  <h5>{{selectedTotem.name}}</h5>
+                  <button type="button" class="change-totem" title="Change Totem">
+                    <i class="fas fa-exchange-alt"></i> Change
+                  </button>
+                </div>
+                <div class="totem-details">
+                  <div class="totem-environment">
+                    <strong>Environment:</strong> {{selectedTotem.system.environment}}
+                  </div>
+                  <div class="totem-advantages">
+                    <strong>Advantages:</strong> {{selectedTotem.system.advantages}}
+                  </div>
+                  <div class="totem-disadvantages">
+                    <strong>Disadvantages:</strong> {{selectedTotem.system.disadvantages}}
+                  </div>
+                </div>
+              </div>
+            {{else}}
+              <div class="no-totem">
+                <button type="button" class="browse-totems sr2-small-action" title="Browse Totems">
+                  <i class="fas fa-search"></i> Browse Totems
+                </button>
+              </div>
+            {{/if}}
+          </div>
+        </div>
+        {{/if}}
 	      <div class="items-header">
 	        <h3>Spells</h3>
 	        <div class="spell-info">
           {{#if creationPoints.force.total}}
-            <span class="spell-count">
-              Force Points: {{creationPoints.force.spent}} / {{creationPoints.force.total}}
-              (Remaining: {{creationPoints.force.remaining}})
-            </span>
+            <div class="sr2-points-row {{#if (lt creationPoints.force.remaining 0)}}over-limit{{/if}}">
+              <strong>Force Points</strong>:
+              <span>{{creationPoints.force.spent}}</span>
+              <span>/</span>
+              <span>{{creationPoints.force.total}}</span>
+              <span class="sr2-points-remaining">(Remaining: {{creationPoints.force.remaining}})</span>
+            </div>
           {{else}}
-            <span class="spell-count">Spells Known: {{spells.length}}</span>
+            <div class="sr2-points-row">
+              <strong>Spells Known</strong>:
+              <span>{{spells.length}}</span>
+            </div>
           {{/if}}
         </div>
         <div class="item-controls">
@@ -1085,11 +1050,12 @@
         </div>
       </div>
 
-      <div class="items-list spells">
-        <div class="items-table-header">
-          <div class="item-name">Spell</div>
-          <div class="item-force">Force</div>
-          <div class="item-range">Range</div>
+	      {{#if spells}}
+	      <div class="items-list spells">
+	        <div class="items-table-header">
+	          <div class="item-name">Spell</div>
+	          <div class="item-force">Force</div>
+	          <div class="item-range">Range</div>
           <div class="item-resist">Resist</div>
           <div class="item-dmg">Dmg</div>
           <div class="item-duration">Dur</div>
@@ -1132,30 +1098,19 @@
               <i class="fas fa-trash"></i>
             </button>
           </div>
-        </div>
-        {{/each}}
-        
-	        {{#unless spells}}
-	        <div class="no-items">
-	          <p>No spells learned. Browse the spell catalog to add spells.</p>
 	        </div>
-	        {{/unless}}
+	        {{/each}}
 	      </div>
+	      {{/if}}
 	      {{/unless}}
 	      {{/if}}
 
-      {{!-- Adept Powers (moved from Adept tab) --}}
-      <div class="adept-powers">
-        {{#if (gt system.attributes.magic.value 0)}}
-        <div class="adept-section">
-          <h3>Physical Adept Powers</h3>
-          <div class="adept-info">
-            <div class="adept-type">
-              <label>
-                <input type="checkbox" name="system.magic.physicalAdept" {{#if system.magic.physicalAdept}}checked{{/if}}/>
-                Physical Adept
-              </label>
-            </div>
+	      {{!-- Adept Powers (moved from Adept tab) --}}
+	      {{#if system.magic.physicalAdept}}
+	      <div class="adept-powers">
+	        <div class="adept-section">
+	          <h3>Physical Adept Powers</h3>
+	          <div class="adept-info">
             <div class="power-points">
               <div class="power-point-stat">
                 <label>Magic Rating:</label>
@@ -1187,11 +1142,12 @@
           </div>
         </div>
 
-        <div class="items-list">
-          <div class="items-table-header">
-            <div class="item-name">Power</div>
-            <div class="item-level">Level</div>
-            <div class="item-cost">Cost</div>
+		        {{#if adeptpowers}}
+		        <div class="items-list">
+		          <div class="items-table-header">
+		            <div class="item-name">Power</div>
+	            <div class="item-level">Level</div>
+	            <div class="item-cost">Cost</div>
             <div class="item-mods">Modifiers</div>
             <div class="item-actions">Actions</div>
           </div>
@@ -1220,21 +1176,12 @@
                 <i class="fas fa-trash"></i>
               </button>
             </div>
-          </div>
-          {{/each}}
-          
-          {{#unless adeptpowers}}
-          <div class="no-items">
-            <p>No adept powers learned. Browse the power catalog to add powers.</p>
-          </div>
-          {{/unless}}
-        </div>
-	        {{else}}
-	        <div class="no-magic">
-	          <p>This character is not Awakened. Enable “Awakened Character” to access Adept Powers.</p>
-	        </div>
-	        {{/if}}
+	          </div>
+		          {{/each}}
+		        </div>
+		        {{/if}}
 	      </div>
+	      {{/if}}
 	    </div>
 
     {{#if (eq actor.type "character")}}
@@ -1293,23 +1240,19 @@
                     </div>
                   {{/if}}
                 {{/if}}
-		            {{#if leaderContacts.length}}
-		              <div class="sr2-connections-list">
-		                {{#each leaderContacts as |c|}}
-		                  <div class="sr2-connection-row">
-	                    <span class="sr2-connection-name">{{c.name}}{{#if ../sr2Settings.contactLevels}} (L{{c.contactLevel}}){{/if}}</span>
+			            {{#if leaderContacts.length}}
+			              <div class="sr2-connections-list">
+			                {{#each leaderContacts as |c|}}
+			                  <div class="sr2-connection-row">
+		                    <span class="sr2-connection-name">{{c.name}}{{#if ../sr2Settings.contactLevels}} (L{{c.contactLevel}}){{/if}}</span>
                     <button type="button" class="open-connection" data-actor-id="{{c.id}}" title="Open Contact Sheet">
                       <i class="fas fa-external-link-alt"></i>
                     </button>
                   </div>
-                {{/each}}
-              </div>
-            {{else}}
-              <div class="no-items">
-                <p>No contacts linked.</p>
+	                {{/each}}
 	              </div>
-		            {{/if}}
-		          </div>
+			            {{/if}}
+			          </div>
 
 		          <div class="sr2-connections-section">
 		            <div class="sr2-section-header">
@@ -1326,23 +1269,19 @@
 		                </div>
 		              {{/if}}
 		            </div>
-		            {{#if leaderGangMembers.length}}
-		              <div class="sr2-connections-list">
-		                {{#each leaderGangMembers as |g|}}
-		                  <div class="sr2-connection-row">
-                    <span class="sr2-connection-name">{{g.name}}</span>
+			            {{#if leaderGangMembers.length}}
+			              <div class="sr2-connections-list">
+			                {{#each leaderGangMembers as |g|}}
+			                  <div class="sr2-connection-row">
+	                    <span class="sr2-connection-name">{{g.name}}</span>
                     <button type="button" class="open-connection" data-actor-id="{{g.id}}" title="Open Gang/Tribe Member Sheet">
                       <i class="fas fa-external-link-alt"></i>
                     </button>
                   </div>
-                {{/each}}
-              </div>
-            {{else}}
-              <div class="no-items">
-                <p>No gang/tribe members linked.</p>
-              </div>
-		            {{/if}}
-		          </div>
+	                {{/each}}
+	              </div>
+			            {{/if}}
+			          </div>
 
 		          <div class="sr2-connections-section">
 		            <div class="sr2-section-header">
@@ -1361,74 +1300,29 @@
 		                <h4>Followers</h4>
 		              {{/if}}
 		            </div>
-		            {{#if leaderFollowers.length}}
-		              <div class="sr2-connections-list">
-		                {{#each leaderFollowers as |f|}}
-		                  <div class="sr2-connection-row">
-                    <span class="sr2-connection-name">{{f.name}}</span>
+			            {{#if leaderFollowers.length}}
+			              <div class="sr2-connections-list">
+			                {{#each leaderFollowers as |f|}}
+			                  <div class="sr2-connection-row">
+	                    <span class="sr2-connection-name">{{f.name}}</span>
                     <button type="button" class="open-connection" data-actor-id="{{f.id}}" title="Open Follower Sheet">
                       <i class="fas fa-external-link-alt"></i>
                     </button>
                   </div>
-                {{/each}}
-              </div>
-            {{else}}
-              <div class="no-items">
-                <p>No followers linked.</p>
-              </div>
-            {{/if}}
-          </div>
-        </div>
-      </div>
+	                {{/each}}
+	              </div>
+	            {{/if}}
+	          </div>
+	        </div>
+	      </div>
     {{/if}}
 
-	    <div class="tab biography" data-group="primary" data-tab="biography">
-	      <div class="sr2-creation-resources">
-	        <h3>Creation Resources</h3>
-
-	        {{#if (gt creationResources.budgetNuyen 0)}}
-	          <div class="sr2-creation-summary">
-	            <div class="sr2-points-row {{#if (lt creationResources.remainingNuyen 0)}}over-limit{{/if}}">
-	              <strong>Resource Budget (¥)</strong>:
-              <span>{{creationResources.totalCost}}</span>
-              <span>/</span>
-              <span>{{creationResources.budgetNuyen}}</span>
-              <span class="sr2-points-remaining">(Remaining: {{creationResources.remainingNuyen}})</span>
-            </div>
-            <div class="sr2-cost-breakdown">
-              <div>Items: {{creationResources.itemCost}}</div>
-              <div>Lifestyles: {{creationResources.lifestyleCost}}</div>
-              {{#if creationResources.lifestyles}}
-                {{#each creationResources.lifestyles as |l|}}
-                  <div class="sr2-subcost">- {{capitalize l.lifestyleKey}} × {{l.lifestyleMonths}}: {{l.lifestyleCost}}</div>
-                {{/each}}
-              {{/if}}
-              <div>Extras: {{creationResources.extrasCost}}</div>
-            </div>
-
-            {{#if system.creation.resourcesFinalized}}
-              <div class="sr2-cost-breakdown">
-                <div>Starting Cash (unspent ÷ 10): {{system.creation.startingCashFromUnspent}}</div>
-                <div>Starting Cash Roll (3D6×1,000¥): {{system.creation.startingCashRoll}}</div>
-                <div><strong>Total Starting Cash:</strong> {{system.creation.startingCashFinal}}</div>
-              </div>
-              <button type="button" class="unfinalize-resources">Reopen Resources</button>
-            {{else}}
-              <button type="button" class="finalize-resources" {{#if (lt creationResources.remainingNuyen 0)}}disabled{{/if}}>Finalize Resources</button>
-              <p class="sr2-creation-note">
-                Finalizing sets Nuyen to (unspent ÷ 10 + 3D6×1,000¥) and marks the resource budget as complete.
-              </p>
-            {{/if}}
-          </div>
-        {{/if}}
-      </div>
-
-      <div class="resource">
-        <label class="resource-label">Nuyen (¥)</label>
-        <input class="nuyen-input" type="number" name="system.resources.nuyen" value="{{system.resources.nuyen}}" data-dtype="Number"/>
-      </div>
-      <textarea name="system.biography" rows="20" placeholder="Notes...">{{system.biography}}</textarea>
-    </div>
-
-  </section>
-</form>
+			    <div class="tab biography" data-group="primary" data-tab="biography">
+			      <div class="sr2-notes-panel">
+			        <h3>Notes</h3>
+			        <textarea class="sr2-notes-textarea" name="system.biography" rows="20" placeholder="Notes...">{{system.biography}}</textarea>
+			      </div>
+			    </div>
+	
+	  </section>
+	</form>

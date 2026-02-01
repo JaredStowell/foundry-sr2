@@ -171,6 +171,7 @@
           </div>
         </div>
 
+        {{#if weapons}}
         <div class="items-list">
           <div class="items-table-header">
             <div class="item-name">Weapon</div>
@@ -203,13 +204,8 @@
             </div>
           </div>
           {{/each}}
-          
-          {{#unless weapons}}
-          <div class="no-items">
-            <p>No weapons installed.</p>
-          </div>
-          {{/unless}}
         </div>
+        {{/if}}
       </div>
 
       {{!-- Modifications Section --}}
@@ -223,6 +219,7 @@
           </div>
         </div>
 
+        {{#if modifications}}
         <div class="items-list">
           <div class="items-table-header">
             <div class="item-name">Modification</div>
@@ -251,13 +248,8 @@
             </div>
           </div>
           {{/each}}
-          
-          {{#unless modifications}}
-          <div class="no-items">
-            <p>No modifications installed.</p>
-          </div>
-          {{/unless}}
         </div>
+        {{/if}}
       </div>
 
       {{!-- Gear Section --}}
@@ -271,6 +263,7 @@
           </div>
         </div>
 
+        {{#if gear}}
         <div class="items-list">
           <div class="items-table-header">
             <div class="item-name">Item</div>
@@ -299,13 +292,8 @@
             </div>
           </div>
           {{/each}}
-          
-          {{#unless gear}}
-          <div class="no-items">
-            <p>No equipment installed.</p>
-          </div>
-          {{/unless}}
         </div>
+        {{/if}}
       </div>
 
       <div class="weight-summary">

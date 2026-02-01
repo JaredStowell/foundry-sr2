@@ -1577,6 +1577,13 @@ Hooks.once("init", async function () {
     CONFIG.Actor.documentClass = SR2Actor;
     CONFIG.Item.documentClass = SR2Item;
 
+    // Ensure core Combat "Roll All" initiative works.
+    if (CONFIG.Combat) {
+        if (!CONFIG.Combat.initiative) CONFIG.Combat.initiative = {};
+        CONFIG.Combat.initiative.formula = "(@actor.initiative.dice)d6 + @actor.initiative.base";
+        CONFIG.Combat.initiative.decimals = 0;
+    }
+
     // Set default actor icons
     CONFIG.Actor.typeIcons = {
         character: "icons/svg/mystery-man.svg",
@@ -3151,10 +3158,189 @@ Hooks.on("createActor", async function (actor, options, userId) {
 });
 
 /* -------------------------------------------- */
+/*  Connection Folder Organization               */
+/* -------------------------------------------- */
+
+function sr2GetConnectionFolderParentId(folder) {
+    const parent = folder?.folder ?? folder?.parent;
+    if (typeof parent === "string") return parent;
+    return parent?.id ?? null;
+}
+
+function sr2GetConnectionFolderFlag(folder) {
+    try {
+        const flag = folder?.getFlag?.("shadowrun2e", "connectionFolder");
+        if (flag) return flag;
+    } catch (err) {
+        // Ignore.
+    }
+    return folder?.flags?.shadowrun2e?.connectionFolder ?? null;
+}
+
+function sr2ConnectionFolderFlagsMatch(actual, expected) {
+    if (!actual || !expected) return false;
+    if (actual.kind !== expected.kind) return false;
+    if ((actual.connectionType ?? null) !== (expected.connectionType ?? null)) return false;
+    if ((actual.leaderId ?? null) !== (expected.leaderId ?? null)) return false;
+    return true;
+}
+
+function sr2GetConnectionTypeFolderName(connectionType) {
+    if (connectionType === "contact") return "Contacts";
+    if (connectionType === "follower") return "Followers";
+    return null;
+}
+
+async function sr2EnsureActorConnectionFolderSegment({ name, parentId = null, expectedFlag }) {
+    const allFolders = globalThis.game?.folders ?? [];
+    const candidates = allFolders.filter(f => f?.type === "Actor" && sr2GetConnectionFolderParentId(f) === parentId);
+
+    const byFlag = candidates.find(f => sr2ConnectionFolderFlagsMatch(sr2GetConnectionFolderFlag(f), expectedFlag));
+    if (byFlag) {
+        return byFlag;
+    }
+
+    const byName = candidates.find(f => String(f?.name || "") === String(name || ""));
+    if (byName) {
+        if (game?.user?.isGM) {
+            try {
+                await byName.setFlag("shadowrun2e", "connectionFolder", expectedFlag);
+            } catch (err) {
+                // Ignore.
+            }
+        }
+        return byName;
+    }
+
+    if (!game?.user?.isGM) return null;
+
+    try {
+        return await Folder.create({
+            name,
+            type: "Actor",
+            folder: parentId,
+            flags: {
+                shadowrun2e: {
+                    connectionFolder: expectedFlag
+                }
+            }
+        });
+    } catch (err) {
+        console.warn("SR2E | Failed to create connection folder:", err);
+        return null;
+    }
+}
+
+async function sr2GetOrCreateActorConnectionFolder({ mode, leaderActor, connectionType }) {
+    const leaderId = leaderActor?.id;
+    const leaderName = String(leaderActor?.name || "").trim();
+    if (!leaderId || !leaderName) return null;
+
+    const typeFolderName = sr2GetConnectionTypeFolderName(connectionType);
+    if (!typeFolderName) return null;
+
+    const typeSegment = {
+        name: typeFolderName,
+        expectedFlag: { kind: "type", connectionType }
+    };
+
+    const playerSegment = {
+        name: leaderName,
+        expectedFlag: { kind: "player", leaderId }
+    };
+
+    let segments = [];
+    switch (String(mode || "disabled")) {
+        case "perType":
+            segments = [typeSegment];
+            break;
+        case "perPlayer":
+            segments = [playerSegment];
+            break;
+        case "perTypePerPlayer":
+            segments = [typeSegment, playerSegment];
+            break;
+        case "perPlayerPerType":
+            segments = [playerSegment, typeSegment];
+            break;
+        default:
+            return null;
+    }
+
+    let parentId = null;
+    let folder = null;
+    for (const segment of segments) {
+        folder = await sr2EnsureActorConnectionFolderSegment({
+            name: segment.name,
+            parentId,
+            expectedFlag: segment.expectedFlag
+        });
+        if (!folder?.id) return null;
+        parentId = folder.id;
+    }
+
+    return folder;
+}
+
+async function sr2ApplyNestedConnectionFolder(actor) {
+    if (!actor || !["contact", "follower"].includes(actor.type)) return;
+
+    const mode = sr2GetSystemSetting("nestedConnectionFolders", "disabled");
+    if (!mode || mode === "disabled") return;
+
+    const leaderId = actor.system?.details?.leaderId;
+    if (!leaderId) return;
+
+    const leader = globalThis.game?.actors?.get(leaderId);
+    if (!leader || leader.type !== "character") return;
+
+    const targetFolder = await sr2GetOrCreateActorConnectionFolder({
+        mode,
+        leaderActor: leader,
+        connectionType: actor.type
+    });
+    if (!targetFolder?.id) return;
+
+    const currentFolderId = actor.folder?.id ?? actor.folder ?? null;
+    if (currentFolderId === targetFolder.id) return;
+
+    try {
+        await actor.update({ folder: targetFolder.id }, { sr2AssigningConnectionFolder: true });
+        try {
+            globalThis.ui?.actors?.render?.();
+        } catch (err) {
+            // Ignore.
+        }
+    } catch (err) {
+        console.warn("SR2E | Failed to assign connection folder:", err);
+    }
+}
+
+Hooks.on("createActor", async function (actor, options, userId) {
+    if (typeof userId === "string" && userId !== game.user.id) return;
+    await sr2ApplyNestedConnectionFolder(actor);
+});
+
+Hooks.on("updateActor", async function (actor, changes, options, userId) {
+    if (options?.sr2AssigningConnectionFolder) return;
+    if (typeof userId === "string" && globalThis.game?.user?.id && userId !== game.user.id) return;
+    if (!actor || !["contact", "follower"].includes(actor.type)) return;
+
+    const getProperty = globalThis.foundry?.utils?.getProperty;
+    if (typeof getProperty !== "function") return;
+
+    if (getProperty(changes, "system.details.leaderId") === undefined) return;
+    await sr2ApplyNestedConnectionFolder(actor);
+});
+
+/* -------------------------------------------- */
 /*  Creation Nuyen Budget Enforcement           */
 /* -------------------------------------------- */
 
 function sr2IsCreationMode(actor) {
+    const completed = actor?.getFlag?.("shadowrun2e", "creationCompleted");
+    if (completed === true) return false;
+
     const flagged = actor?.getFlag?.("shadowrun2e", "creationMode");
     if (typeof flagged === "boolean") return flagged;
 
@@ -3164,6 +3350,69 @@ function sr2IsCreationMode(actor) {
         (Number(actor?.system?.creation?.forcePoints) || 0) > 0;
     return hasCreationPoints;
 }
+
+/* -------------------------------------------- */
+/*  Creation Mode Completion Lock               */
+/* -------------------------------------------- */
+
+Hooks.on("preUpdateActor", function (actor, changes, options, userId) {
+    if (typeof userId === "string" && globalThis.game?.user?.id && userId !== game.user.id) return;
+    if (!["character", "contact", "follower"].includes(actor.type)) return;
+
+    const getProperty = globalThis.foundry?.utils?.getProperty;
+    const setProperty = globalThis.foundry?.utils?.setProperty;
+    if (typeof getProperty !== "function" || typeof setProperty !== "function") return;
+
+    const toBool = (value) => {
+        if (value === undefined) return undefined;
+        if (value === null) return false;
+        if (typeof value === "boolean") return value;
+        if (typeof value === "number") return value !== 0;
+        if (typeof value === "string") {
+            const v = value.trim().toLowerCase();
+            if (v === "true") return true;
+            if (v === "false") return false;
+            if (v === "1") return true;
+            if (v === "0") return false;
+        }
+        return Boolean(value);
+    };
+
+    const currentCompleted = toBool(actor.getFlag?.("shadowrun2e", "creationCompleted")) === true;
+    const nextCompletedRaw = getProperty(changes, "flags.shadowrun2e.creationCompleted");
+    const nextCompleted = toBool(nextCompletedRaw);
+    const unsetCompleted = getProperty(changes, "flags.shadowrun2e.-=creationCompleted") !== undefined;
+
+    const shouldLock = currentCompleted || nextCompleted === true;
+    if (!shouldLock) return;
+
+    // Prevent unsetting or turning off completion once set.
+    if (unsetCompleted) {
+        try { delete changes.flags?.shadowrun2e?.["-=creationCompleted"]; } catch (err) { /* ignore */ }
+        setProperty(changes, "flags.shadowrun2e.creationCompleted", true);
+        if (currentCompleted) ui.notifications.warn("Character Generation is already finalized and cannot be reopened.");
+    }
+    if (nextCompleted === false) {
+        setProperty(changes, "flags.shadowrun2e.creationCompleted", true);
+        if (currentCompleted) ui.notifications.warn("Character Generation is already finalized and cannot be reopened.");
+    }
+
+    // If completion is being set (now or previously), force creationMode off and block attempts to re-enable.
+    const unsetCreationMode = getProperty(changes, "flags.shadowrun2e.-=creationMode") !== undefined;
+    if (unsetCreationMode) {
+        try { delete changes.flags?.shadowrun2e?.["-=creationMode"]; } catch (err) { /* ignore */ }
+        setProperty(changes, "flags.shadowrun2e.creationMode", false);
+    }
+
+    const nextCreationModeRaw = getProperty(changes, "flags.shadowrun2e.creationMode");
+    const nextCreationMode = toBool(nextCreationModeRaw);
+    if (nextCreationMode === true) {
+        setProperty(changes, "flags.shadowrun2e.creationMode", false);
+        if (currentCompleted) ui.notifications.warn("Character Generation is locked off for this actor.");
+    } else if (nextCompleted === true && nextCreationModeRaw === undefined) {
+        setProperty(changes, "flags.shadowrun2e.creationMode", false);
+    }
+});
 
 /* -------------------------------------------- */
 /*  Contact Levels Enforcement                  */
@@ -3613,6 +3862,23 @@ function registerSystemSettings() {
         default: true
     });
 
+    // Client-only: persist per-user size for the Token Quick Actions popup.
+    game.settings.register("shadowrun2e", "quickActionsWidth", {
+        name: "Token Quick Actions Width",
+        scope: "client",
+        config: false,
+        type: Number,
+        default: 300
+    });
+
+    game.settings.register("shadowrun2e", "quickActionsHeight", {
+        name: "Token Quick Actions Height",
+        scope: "client",
+        config: false,
+        type: Number,
+        default: 360
+    });
+
     // House rule: Metatype priority restrictions.
     // - Default: Metahumans require Metatype priority A.
     // - Enabled: Allow metahumans at priorities A–C.
@@ -3652,6 +3918,23 @@ function registerSystemSettings() {
         config: true,
         type: Boolean,
         default: false,
+        restricted: true
+    });
+
+    game.settings.register("shadowrun2e", "nestedConnectionFolders", {
+        name: "Nested Connection Folders",
+        hint: "Control how Connections are organized into nested folders.",
+        scope: "world",
+        config: true,
+        type: String,
+        choices: {
+            disabled: "Disabled",
+            perType: "Per Type",
+            perPlayer: "Per Player",
+            perTypePerPlayer: "Per Type Per Player",
+            perPlayerPerType: "Per Player Per Type"
+        },
+        default: "disabled",
         restricted: true
     });
 

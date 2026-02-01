@@ -650,6 +650,9 @@ export class SR2ItemBrowser extends Application {
   _isCreationBudgetActive(actor) {
     if (!actor) return false;
 
+    const completed = actor.getFlag?.("shadowrun2e", "creationCompleted");
+    if (completed === true) return false;
+
     const flag = actor.getFlag?.("shadowrun2e", "creationMode");
     let creationMode = false;
     if (typeof flag === "boolean") {

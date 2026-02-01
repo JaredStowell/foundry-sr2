@@ -141,6 +141,7 @@
         </div>
       </div>
 
+      {{#if programs}}
       <div class="programs-list">
         <div class="programs-table-header">
           <div class="program-name">Program</div>
@@ -192,13 +193,8 @@
           </div>
         </div>
         {{/each}}
-        
-        {{#unless programs}}
-        <div class="no-programs">
-          <p>No programs installed. Add programs to get started.</p>
-        </div>
-        {{/unless}}
       </div>
+      {{/if}}
     </div>
 
     {{!-- Notes Tab --}}

@@ -6,11 +6,32 @@
 let sr2QuickActionsApp = null;
 let sr2QuickActionsHooksInstalled = false;
 
+const SR2_QUICK_ACTIONS_DEFAULT_WIDTH = 300;
+const SR2_QUICK_ACTIONS_DEFAULT_HEIGHT = 360;
+
 function sr2GetQuickActionsEnabled() {
     try {
         return Boolean(game.settings.get("shadowrun2e", "tokenQuickActions"));
     } catch (err) {
         return true;
+    }
+}
+
+function sr2GetQuickActionsWidth() {
+    try {
+        const width = Number(game.settings.get("shadowrun2e", "quickActionsWidth"));
+        return Number.isFinite(width) && width > 0 ? width : SR2_QUICK_ACTIONS_DEFAULT_WIDTH;
+    } catch (err) {
+        return SR2_QUICK_ACTIONS_DEFAULT_WIDTH;
+    }
+}
+
+function sr2GetQuickActionsHeight() {
+    try {
+        const height = Number(game.settings.get("shadowrun2e", "quickActionsHeight"));
+        return Number.isFinite(height) && height > 0 ? height : SR2_QUICK_ACTIONS_DEFAULT_HEIGHT;
+    } catch (err) {
+        return SR2_QUICK_ACTIONS_DEFAULT_HEIGHT;
     }
 }
 
@@ -84,6 +105,31 @@ export class SR2QuickActionsPopup extends Application {
         this.token = token ?? null;
         this.actor = token?.actor ?? null;
         this._sr2NeedsPosition = true;
+        this._sr2SaveSizeTimeout = null;
+        this._sr2LastKnownWidth = null;
+        this._sr2LastKnownHeight = null;
+        this._sr2LastSavedWidth = sr2GetQuickActionsWidth();
+        this._sr2LastSavedHeight = sr2GetQuickActionsHeight();
+    }
+
+    /** @override */
+    _getHeaderButtons() {
+        const buttons = super._getHeaderButtons();
+        buttons.unshift({
+            label: "Open Sheet",
+            class: "sr2-open-sheet",
+            icon: "fas fa-user",
+            onclick: (event) => {
+                event?.preventDefault?.();
+                const actor = this.actor;
+                if (!actor?.sheet) {
+                    ui?.notifications?.warn("No sheet available for this actor.");
+                    return;
+                }
+                actor.sheet.render(true);
+            }
+        });
+        return buttons;
     }
 
     /** @override */
@@ -91,12 +137,14 @@ export class SR2QuickActionsPopup extends Application {
         return foundry.utils.mergeObject(super.defaultOptions, {
             id: "sr2-quick-actions",
             template: "systems/shadowrun2e/templates/apps/quick-actions.html",
-            width: 300,
-            height: 360,
+            width: sr2GetQuickActionsWidth(),
+            height: sr2GetQuickActionsHeight(),
             popOut: true,
             minimizable: false,
-            resizable: false,
+            resizable: true,
             draggable: true,
+            minWidth: 260,
+            minHeight: 220,
             classes: ["shadowrun2e", "sr2-quick-actions"]
         });
     }
@@ -115,6 +163,22 @@ export class SR2QuickActionsPopup extends Application {
             const num = Number(value);
             return Number.isFinite(num) ? num : fallback;
         };
+        let initiativeFormula = null;
+        let initiativeTitle = "Roll Initiative";
+        if (actor) {
+            const initiative = actor.system?.initiative || {};
+
+            let initiativeDice = parseInt(initiative.dice, 10);
+            if (!Number.isFinite(initiativeDice) || initiativeDice < 1) initiativeDice = 1;
+            if (initiativeDice > 10) initiativeDice = 10;
+
+            const baseFromReaction = actor.system?.attributes?.reaction?.value;
+            let initiativeBase = parseInt(initiative.base ?? baseFromReaction ?? 0, 10);
+            if (!Number.isFinite(initiativeBase) || initiativeBase < 0) initiativeBase = 0;
+
+            initiativeFormula = `${initiativeDice}d6+${initiativeBase}`;
+            initiativeTitle = `Roll Initiative (${initiativeFormula})`;
+        }
         const rawHealth = actor?.system?.health;
         const health = rawHealth ? {
             physical: {
@@ -170,6 +234,8 @@ export class SR2QuickActionsPopup extends Application {
             token: this.token ? { id: this.token.id, name: this.token.name } : null,
             health,
             showHealth,
+            initiativeFormula,
+            initiativeTitle,
             weapons,
             hasWeapons: weapons.length > 0,
             spells,
@@ -206,9 +272,65 @@ export class SR2QuickActionsPopup extends Application {
 
     /** @override */
     async close(options) {
+        try {
+            if (this._sr2SaveSizeTimeout) {
+                clearTimeout(this._sr2SaveSizeTimeout);
+                this._sr2SaveSizeTimeout = null;
+            }
+            this._sr2SaveSizeNow();
+        } catch (err) {
+            // Ignore save errors
+        }
         const result = await super.close(options);
         if (sr2QuickActionsApp === this) sr2QuickActionsApp = null;
         return result;
+    }
+
+    /** @override */
+    setPosition(position = {}) {
+        const result = super.setPosition(position);
+        this._sr2MaybeQueueSaveSize();
+        return result;
+    }
+
+    _sr2MaybeQueueSaveSize() {
+        const width = Math.round(Number(this.position?.width));
+        const height = Math.round(Number(this.position?.height));
+        if (!Number.isFinite(width) || width <= 0) return;
+        if (!Number.isFinite(height) || height <= 0) return;
+
+        if (width === this._sr2LastKnownWidth && height === this._sr2LastKnownHeight) return;
+        this._sr2LastKnownWidth = width;
+        this._sr2LastKnownHeight = height;
+
+        if (width === this._sr2LastSavedWidth && height === this._sr2LastSavedHeight) return;
+
+        if (this._sr2SaveSizeTimeout) clearTimeout(this._sr2SaveSizeTimeout);
+        this._sr2SaveSizeTimeout = setTimeout(() => {
+            this._sr2SaveSizeTimeout = null;
+            this._sr2SaveSizeNow();
+        }, 250);
+    }
+
+    _sr2SaveSizeNow() {
+        const settings = globalThis.game?.settings;
+        if (!settings) return;
+
+        const width = Math.round(Number(this.position?.width));
+        const height = Math.round(Number(this.position?.height));
+        if (!Number.isFinite(width) || width <= 0) return;
+        if (!Number.isFinite(height) || height <= 0) return;
+
+        if (width === this._sr2LastSavedWidth && height === this._sr2LastSavedHeight) return;
+        this._sr2LastSavedWidth = width;
+        this._sr2LastSavedHeight = height;
+
+        try {
+            void settings.set("shadowrun2e", "quickActionsWidth", width).catch(() => {});
+            void settings.set("shadowrun2e", "quickActionsHeight", height).catch(() => {});
+        } catch (err) {
+            // Ignore settings errors (e.g., during shutdown)
+        }
     }
 
     _positionNearToken() {

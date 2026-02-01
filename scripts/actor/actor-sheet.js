@@ -166,17 +166,19 @@ export class SR2ActorSheet extends ActorSheet {
       disableBuddies
     };
 
-    // Ensure shadowrun2e flags container exists for template bindings
-    if (!context.flags.shadowrun2e) context.flags.shadowrun2e = {};
+	    // Ensure shadowrun2e flags container exists for template bindings
+	    if (!context.flags.shadowrun2e) context.flags.shadowrun2e = {};
 
-    // Default: creation mode is enabled for characters created via priorities
-    if (typeof context.flags.shadowrun2e.creationMode !== "boolean") {
-      const hasCreationPoints =
-        (context.system.creation?.attributePoints || 0) > 0 ||
-        (context.system.creation?.skillPoints || 0) > 0 ||
-        (context.system.creation?.forcePoints || 0) > 0;
-      context.flags.shadowrun2e.creationMode = hasCreationPoints;
-    }
+	    // Default: creation mode is enabled for characters created via priorities
+	    if (context.flags.shadowrun2e.creationCompleted === true) {
+	      context.flags.shadowrun2e.creationMode = false;
+	    } else if (typeof context.flags.shadowrun2e.creationMode !== "boolean") {
+	      const hasCreationPoints =
+	        (context.system.creation?.attributePoints || 0) > 0 ||
+	        (context.system.creation?.skillPoints || 0) > 0 ||
+	        (context.system.creation?.forcePoints || 0) > 0;
+	      context.flags.shadowrun2e.creationMode = hasCreationPoints;
+	    }
 
     // Ensure health data structure exists with defaults
     if (!context.system.health) {
@@ -730,10 +732,11 @@ export class SR2ActorSheet extends ActorSheet {
 	    // Creation resources finalization
 	    html.find('.finalize-resources').click(this._onFinalizeResources.bind(this));
 	    html.find('.unfinalize-resources').click(this._onUnfinalizeResources.bind(this));
+	    html.find('.sr2-complete-creation').click(this._onCompleteCreation.bind(this));
 
-    // Lifestyle management (creation resources)
-    if (['character', 'contact', 'follower'].includes(this.actor.type)) {
-      html.find('.sr2-lifestyle-add').click(this._onLifestyleAdd.bind(this));
+	    // Lifestyle management (creation resources)
+	    if (['character', 'contact', 'follower'].includes(this.actor.type)) {
+	      html.find('.sr2-lifestyle-add').click(this._onLifestyleAdd.bind(this));
       html.find('.sr2-lifestyle-delete').click(this._onLifestyleDelete.bind(this));
     }
 
@@ -846,8 +849,13 @@ export class SR2ActorSheet extends ActorSheet {
     const poolType = element.dataset.pool;
     const adjustment = parseInt(element.dataset.adjust);
 
-    const currentValue = this.actor.system.pools[poolType].current;
-    const maxValue = this.actor.system.pools[poolType].max;
+    const pool = this.actor.system?.pools?.[poolType];
+    if (!pool) return;
+
+    const currentValue = Number(pool.current) || 0;
+    const maxValue = poolType === "karma"
+      ? (Number(pool.total) || 0)
+      : (Number(pool.max) || 0);
     const newValue = Math.clamped(currentValue + adjustment, 0, maxValue);
 
     this.actor.update({ [`system.pools.${poolType}.current`]: newValue });
@@ -1178,12 +1186,15 @@ export class SR2ActorSheet extends ActorSheet {
     });
   }
 
-  _isCreationMode() {
-    const flag = this.actor.getFlag("shadowrun2e", "creationMode");
-    if (typeof flag === "boolean") return flag;
+	  _isCreationMode() {
+	    const completed = this.actor.getFlag("shadowrun2e", "creationCompleted");
+	    if (completed === true) return false;
 
-    const creation = this.actor.system?.creation;
-    return Boolean(
+	    const flag = this.actor.getFlag("shadowrun2e", "creationMode");
+	    if (typeof flag === "boolean") return flag;
+
+	    const creation = this.actor.system?.creation;
+	    return Boolean(
       (creation?.attributePoints || 0) > 0 ||
       (creation?.skillPoints || 0) > 0 ||
       (creation?.forcePoints || 0) > 0
@@ -1419,9 +1430,9 @@ export class SR2ActorSheet extends ActorSheet {
     return Actor.createDialog();
   }
 
-  async _onFinalizeResources(event) {
-    event.preventDefault();
-    event.stopPropagation();
+	  async _onFinalizeResources(event) {
+	    event.preventDefault();
+	    event.stopPropagation();
 
     const budget = Number(this.actor.system?.creation?.startingNuyen) || 0;
     if (budget <= 0) return;
@@ -1477,12 +1488,12 @@ export class SR2ActorSheet extends ActorSheet {
                 <p><strong>Total Starting Cash:</strong> ${startingCashFinal}¥</p>`
     });
 
-    ui.notifications.info(`Resources finalized: ${startingCashFinal}¥ starting cash.`);
-  }
+	    ui.notifications.info(`Resources finalized: ${startingCashFinal}¥ starting cash.`);
+	  }
 
-  async _onUnfinalizeResources(event) {
-    event.preventDefault();
-    event.stopPropagation();
+	  async _onUnfinalizeResources(event) {
+	    event.preventDefault();
+	    event.stopPropagation();
 
     if (!this.actor.system?.creation?.resourcesFinalized) return;
 
@@ -1496,8 +1507,42 @@ export class SR2ActorSheet extends ActorSheet {
       ...(restoredBudget > 0 ? { "system.resources.nuyen": restoredBudget } : {})
     });
 
-    ui.notifications.info("Resource budget reopened.");
-  }
+	    ui.notifications.info("Resource budget reopened.");
+	  }
+
+		  async _onCompleteCreation(event) {
+		    event.preventDefault();
+		    event.stopPropagation();
+
+		    const alreadyCompleted = this.actor.getFlag?.("shadowrun2e", "creationCompleted") === true;
+		    if (alreadyCompleted) {
+		      ui.notifications.warn("Character Generation is already finalized for this character.");
+		      return;
+		    }
+
+		    const message = `<p><strong>Finalize Character Generation?</strong></p>
+		      <p>This will permanently disable Character Generation for <strong>${this.actor.name}</strong>.</p>
+		      <p>You will not be able to re-enter Character Generation or revert this.</p>`;
+
+		    let confirmed = false;
+		    if (globalThis.Dialog?.confirm) {
+		      confirmed = await Dialog.confirm({
+		        title: "Finalize Character Generation",
+		        content: message
+		      });
+		    } else {
+		      confirmed = confirm("Finalize Character Generation? This will permanently disable Character Generation and cannot be undone.");
+		    }
+
+	    if (!confirmed) return;
+
+		    await this.actor.update({
+		      "flags.shadowrun2e.creationMode": false,
+		      "flags.shadowrun2e.creationCompleted": true
+		    });
+
+		    ui.notifications.info("Character Generation finalized. This cannot be undone.");
+		  }
 
   _getNormalizedLifestylesFromActor() {
     const rawLifestyles = this.actor.system?.resources?.lifestyles;
@@ -2409,7 +2454,7 @@ export class SR2ActorSheet extends ActorSheet {
       const magicRating = Number(this.actor.system.attributes.magic.effective ?? this.actor.system.attributes.magic.value) || 0;
       const sorcerySkill = this._getHighestSorcerySkill();
 
-      // Calculate dice pool for spellcasting - in SR2E, use only the sorcery skill rating
+      // SR2 spellcasting: Spell Success Test uses Force dice; Magic Pool and foci add dice separately.
       if (magicRating <= 0) {
         ui.notifications.error("This character has no Magic rating.");
         return;
@@ -2419,7 +2464,7 @@ export class SR2ActorSheet extends ActorSheet {
         return;
       }
 
-      const dicePool = sorcerySkill;
+      const dicePool = force;
 
       const title = `Casting ${spell.name} (Force ${force})`;
 
@@ -2479,8 +2524,9 @@ export class SR2ActorSheet extends ActorSheet {
       if (!castResult?.rolled) return;
 
       // Calculate drain
-      const drainValue = this._calculateDrain(spell.system.drain, force);
-      const drainPool = this.actor.system.attributes.willpower.value + magicRating;
+      const misfireDrainMod = castResult.rollResult?.isCriticalFailure ? 2 : 0;
+      const drainValue = Math.max(2, this._calculateDrain(spell.system.drain, force) + misfireDrainMod);
+      const drainPool = Number(this.actor.system.attributes.willpower.value) || 0;
 
       // Show TN selection dialog and roll drain resistance
       const drainTitle = `Drain Resistance for ${spell.name}`;
@@ -2500,10 +2546,54 @@ export class SR2ActorSheet extends ActorSheet {
         };
       });
 
-      await this._showTargetNumberDialog(drainPool, drainTitle, 'drain', drainValue, null, {
+      const drainResult = await this._showTargetNumberDialog(drainPool, drainTitle, 'drain', drainValue, null, {
         baseSkillName: "Sorcery",
         additionalPools: remainingFocusPools
       });
+      if (!drainResult?.rolled) return;
+
+      const baseDrainLevel = sr2InferSpellDamageLevelFromDrain(spell.system.drain) || "";
+      const drainRollSuccesses = Number(drainResult?.rollResult?.successes) || 0;
+      if (!baseDrainLevel) return;
+
+      // SR2: Every 2 successes stages Drain down 1 level.
+      const drainStageDown = Math.floor(drainRollSuccesses / 2);
+      const levels = ["L", "M", "S", "D"];
+      const baseIndex = levels.indexOf(baseDrainLevel);
+      if (baseIndex < 0) return;
+      const finalIndex = Math.max(-1, baseIndex - drainStageDown);
+      if (finalIndex < 0) return; // Staged below Light: no Drain.
+
+      const drainBoxesByLevel = { L: 1, M: 3, S: 6, D: 10 };
+      const finalLevel = levels[finalIndex];
+      const drainBoxes = drainBoxesByLevel[finalLevel] ?? 0;
+      if (drainBoxes <= 0) return;
+
+      const isPhysicalDrain = force > magicRating;
+      const damageType = isPhysicalDrain ? "physical" : "stun";
+      const otherType = isPhysicalDrain ? "stun" : "physical";
+
+      const currentPrimary = Number(this.actor.system?.health?.[damageType]?.value) || 0;
+      const currentOther = Number(this.actor.system?.health?.[otherType]?.value) || 0;
+      const maxPrimary = Number(this.actor.system?.health?.[damageType]?.max) || 10;
+      const maxOther = Number(this.actor.system?.health?.[otherType]?.max) || 10;
+
+      let nextPrimary = currentPrimary + drainBoxes;
+      let carry = 0;
+
+      // SR2: excess Stun carries into Physical (overflow handling is limited by current 10-box tracks).
+      if (damageType === "stun" && nextPrimary > maxPrimary) {
+        carry = nextPrimary - maxPrimary;
+        nextPrimary = maxPrimary;
+      }
+
+      const updateData = { [`system.health.${damageType}.value`]: Math.max(0, Math.min(maxPrimary, nextPrimary)) };
+      if (carry > 0) {
+        const nextOther = Math.max(0, Math.min(maxOther, currentOther + carry));
+        updateData[`system.health.${otherType}.value`] = nextOther;
+      }
+
+      await this.actor.update(updateData);
     } catch (error) {
       console.error("SR2E | Failed to cast spell", error);
       ui.notifications.error("Spell casting failed (see console).");
@@ -4450,7 +4540,7 @@ export class SR2ActorSheet extends ActorSheet {
   /**
    * Handle weapon attack button clicks
    */
-  async _onWeaponAttack(event) {
+  async _onWeaponAttackWithMeleeDialog(event) {
     event.preventDefault();
     
     const weaponId = event.currentTarget.dataset.itemId;

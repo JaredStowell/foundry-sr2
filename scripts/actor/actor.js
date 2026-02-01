@@ -135,8 +135,11 @@ export class SR2Actor extends Actor {
       }
     }
 
-    // Combat Pool = (Modified Quickness + Modified Intelligence + Modified Willpower) / 2 + Combat Pool bonuses
-    systemData.pools.combat.max = Math.floor((modifiedAttrs.quickness + modifiedAttrs.intelligence + modifiedAttrs.willpower) / 2) + (modifiers.CPL || 0);
+    // Combat Pool = (Modified Quickness + Modified Intelligence + Modified Willpower) / 2 + Combat Pool bonuses,
+    // reduced by heavy-armor encumbrance (SR2 core, p. 84).
+    const baseCombatPool = Math.floor((modifiedAttrs.quickness + modifiedAttrs.intelligence + modifiedAttrs.willpower) / 2) + (modifiers.CPL || 0);
+    const armorCombatPoolPenalty = this._getHeavyArmorCombatPoolPenalty(modifiedAttrs.quickness);
+    systemData.pools.combat.max = Math.max(0, baseCombatPool - armorCombatPoolPenalty);
 
     const isSpellcaster = systemData.magic.awakened && !systemData.magic.physicalAdept;
     const powerFocusBonus = isSpellcaster ? this._getPowerFocusBonus() : 0;
@@ -167,9 +170,9 @@ export class SR2Actor extends Actor {
     // Task Pool = Modified Intelligence + highest relevant skill (simplified - using Intelligence base)
     systemData.pools.task.max = modifiedAttrs.intelligence;
 
-    // Astral Combat Pool = Modified Willpower + Modified Charisma (spellcasters only)
+    // Astral Combat Pool = floor((Intelligence + Willpower + Charisma) / 2) (spellcasters only)
     if (isSpellcaster) {
-      systemData.pools.astral.max = modifiedAttrs.willpower + modifiedAttrs.charisma;
+      systemData.pools.astral.max = Math.floor((modifiedAttrs.intelligence + modifiedAttrs.willpower + modifiedAttrs.charisma) / 2);
     } else {
       systemData.pools.astral.max = 0;
     }
@@ -288,6 +291,21 @@ export class SR2Actor extends Actor {
     }
 
     return highestRating;
+  }
+
+  _getHeavyArmorCombatPoolPenalty(modifiedQuickness) {
+    // SR2: Partial/Full Heavy Armor reduces Combat Pool by 1 die for every point of Ballistic Armor Rating
+    // over the character's Quickness.
+    const qck = Math.max(0, Number(modifiedQuickness) || 0);
+    const equippedArmor = this.items.filter(i => i.type === "armor" && i.system?.equipped);
+    if (!equippedArmor.length) return 0;
+
+    // Heuristic: treat any equipped armor piece with Ballistic >= 6 as "heavy armor".
+    const isHeavy = equippedArmor.some(a => (Number(a.system?.ballistic) || 0) >= 6);
+    if (!isHeavy) return 0;
+
+    const totalBallistic = equippedArmor.reduce((sum, a) => sum + (Number(a.system?.ballistic) || 0), 0);
+    return Math.max(0, totalBallistic - qck);
   }
 
   /**
