@@ -1,6 +1,6 @@
 {
-  "id": "shadowrun2e",
-  "title": "Shadowrun 2nd Edition",
+  "id": "shadowrun-2e",
+  "title": "Shadowrun 2E",
   "description": "A comprehensive system for playing Shadowrun 2nd Edition in Foundry VTT",
   "version": "1.0.22",
   "compatibility": {
