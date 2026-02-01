@@ -304,6 +304,7 @@
           "dermalArmor": 0,
           "diseaseResistance": 0
         },
+        "contactLevel": 1,
         "leaderId": ""
       }
     },
@@ -622,7 +623,12 @@
       "category": "",
       "rating": 0,
       "bondCost": 0,
-      "equipped": false
+      "equipped": false,
+      "focus": {
+        "spellId": "",
+        "spellClass": "",
+        "spiritType": ""
+      }
     },
     "cyberware": {
       "templates": ["base"],
@@ -652,7 +658,11 @@
       "duration": "instant",
       "drain": "2",
       "force": 1,
-      "class": "C"
+      "class": "C",
+      "spellLock": {
+        "assigned": false,
+        "enabled": false
+      }
     },
     "adeptpower": {
       "templates": ["base"],

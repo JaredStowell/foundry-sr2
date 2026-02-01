@@ -33,7 +33,7 @@
   },
   {
     "BookPage": "sr2.???",
-    "Name": "Fire Missle",
+    "Name": "Fire Missile",
     "Drain": "[(F/2)+1]S",
     "Type": "P",
     "Duration": "I",
@@ -115,7 +115,7 @@
     "BookPage": "sr2.151",
     "Name": "Manaball",
     "Drain": "(F/2)S",
-    "Type": "P",
+    "Type": "M",
     "Duration": "I",
     "Class": "C"
   },

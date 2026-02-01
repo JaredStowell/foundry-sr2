@@ -1,0 +1,55 @@
+<div class="sr2-qa">
+  <div class="sr2-qa-stack">
+    {{#if showHealth}}
+      <div class="sr2-qa-line sr2-qa-damage sr2-qa-damage-physical">
+        <div class="sr2-qa-line-label">Physical</div>
+        <div class="sr2-qa-line-value">{{health.physical.value}} / {{health.physical.max}}</div>
+      </div>
+      <div class="sr2-qa-line sr2-qa-damage sr2-qa-damage-stun">
+        <div class="sr2-qa-line-label">Stun</div>
+        <div class="sr2-qa-line-value">{{health.stun.value}} / {{health.stun.max}}</div>
+      </div>
+    {{/if}}
+    <div class="sr2-qa-line sr2-qa-initiative">
+      <div class="sr2-qa-line-label">Roll Initiative</div>
+      <button type="button" class="sr2-qa-icon-btn" data-action="roll-initiative" title="Roll Initiative">
+        <i class="fas fa-dice"></i>
+      </button>
+    </div>
+
+    {{#if hasWeapons}}
+      <div class="sr2-qa-divider">Weapons</div>
+      {{#each weapons as |weapon|}}
+        <div class="sr2-qa-line sr2-qa-item" data-item-id="{{weapon.id}}">
+          <div class="sr2-qa-item-name">
+            <span>{{weapon.name}}</span>
+          </div>
+          <div class="sr2-qa-item-actions">
+            <button type="button" class="sr2-qa-icon-btn sr2-qa-weapon-attack" data-item-id="{{weapon.id}}" title="Attack">
+              <i class="fas fa-crosshairs"></i>
+            </button>
+          </div>
+        </div>
+      {{/each}}
+    {{/if}}
+
+    {{#if hasSpells}}
+      <div class="sr2-qa-divider">Spells</div>
+      {{#each spells as |spell|}}
+        <div class="sr2-qa-line sr2-qa-item" data-item-id="{{spell.id}}">
+          <div class="sr2-qa-item-name">
+            <span>{{spell.name}}</span>
+          </div>
+          <div class="sr2-qa-item-actions">
+            <button type="button" class="sr2-qa-icon-btn sr2-qa-spell-lock-toggle spell-lock-toggle {{spell.lockClass}}" data-item-id="{{spell.id}}" title="{{spell.lockTitle}}">
+              <i class="fas {{spell.lockIcon}}"></i>
+            </button>
+            <button type="button" class="sr2-qa-icon-btn sr2-qa-spell-cast" data-item-id="{{spell.id}}" title="Cast Spell">
+              <i class="fas fa-magic"></i>
+            </button>
+          </div>
+        </div>
+      {{/each}}
+    {{/if}}
+  </div>
+</div>

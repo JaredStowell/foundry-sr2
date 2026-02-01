@@ -1,16 +1,19 @@
-// Import the initiative tracker
-import { SR2InitiativeTracker } from '../initiative-tracker.js';
 import {
     sr2ComputeCreationNuyenBudgetBreakdown,
     sr2ComputeAttributePointsSpent,
+    sr2ComputeContactLevelSummary,
     sr2ComputeForcePointsSpent,
     sr2ComputeSkillPointsSpent,
     sr2ComputeSkillRatingsFromAllocated,
+    sr2ComputeSpellLockCapacity,
     sr2Clamp,
     sr2FormatSignedModifier,
     sr2GetRacialAttributeBounds,
     sr2GetRacialModifiers,
     sr2GetRacialTraits,
+    sr2ParseFocusName,
+    sr2InferFocusBondCostForGearItem,
+    sr2NormalizeContactLevel,
     sr2SkillInferAllocatedRating
 } from "../sr2-rules.js";
 
@@ -75,6 +78,40 @@ function sr2FormatSpellDrain(rawDrain) {
     return `${formula} ${level}`;
 }
 
+const SR2_SPELL_CLASS_LABELS = {
+    C: "Combat",
+    D: "Detection",
+    H: "Health",
+    I: "Illusion",
+    M: "Manipulation"
+};
+
+function sr2NormalizeSpellClass(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+
+    const upper = raw.toUpperCase();
+    if (Object.prototype.hasOwnProperty.call(SR2_SPELL_CLASS_LABELS, upper)) return upper;
+
+    const lower = raw.toLowerCase();
+    const map = {
+        combat: "C",
+        detection: "D",
+        health: "H",
+        illusion: "I",
+        manipulation: "M"
+    };
+    return map[lower] || "";
+}
+
+function sr2GetSystemSetting(key, fallback) {
+    try {
+        return game?.settings?.get("shadowrun2e", key) ?? fallback;
+    } catch (err) {
+        return fallback;
+    }
+}
+
 /**
  * Extend the basic ActorSheet with Shadowrun 2E specific functionality
  */
@@ -94,15 +131,15 @@ export class SR2ActorSheet extends ActorSheet {
   }
 
   /** @override */
-  static get defaultOptions() {
-    return foundry.utils.mergeObject(super.defaultOptions, {
-      classes: ["shadowrun2e", "sheet", "actor"],
-      template: "systems/shadowrun2e/templates/actor/character-sheet.html",
-      width: 960,
-      height: 680,
-      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "attributes" }]
-    });
-  }
+	  static get defaultOptions() {
+	    return foundry.utils.mergeObject(super.defaultOptions, {
+	      classes: ["shadowrun2e", "sheet", "actor"],
+	      template: "systems/shadowrun2e/templates/actor/character-sheet.html",
+	      width: 960,
+	      height: 680,
+	      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "main" }]
+	    });
+	  }
 
   /** @override */
   get template() {
@@ -118,6 +155,16 @@ export class SR2ActorSheet extends ActorSheet {
 
     context.system = actorData.system;
     context.flags = actorData.flags;
+
+    const moreMetahumans = Boolean(sr2GetSystemSetting("moreMetahumans", false));
+    const contactLevels = Boolean(sr2GetSystemSetting("contactLevels", false));
+    const disableBuddies = contactLevels || Boolean(sr2GetSystemSetting("disableBuddies", false));
+
+    context.sr2Settings = {
+      moreMetahumans,
+      contactLevels,
+      disableBuddies
+    };
 
     // Ensure shadowrun2e flags container exists for template bindings
     if (!context.flags.shadowrun2e) context.flags.shadowrun2e = {};
@@ -191,6 +238,11 @@ export class SR2ActorSheet extends ActorSheet {
       await this._prepareSkillsData(context);
     }
 
+    if (actorData.type === "contact" && context.sr2Settings.contactLevels) {
+      if (!context.system.details) context.system.details = {};
+      context.system.details.contactLevel = sr2NormalizeContactLevel(context.system.details.contactLevel);
+    }
+
     // Racial modifiers/caps and creation point tracking
     if (['character', 'contact', 'follower'].includes(actorData.type)) {
       const metatype = context.system?.details?.metatype || "human";
@@ -217,7 +269,12 @@ export class SR2ActorSheet extends ActorSheet {
 
         context.leaderContacts = linkedActors
           .filter(a => a.type === "contact")
-          .map(a => ({ id: a.id, name: a.name }))
+          .map(a => ({
+            id: a.id,
+            name: a.name,
+            contactLevel: sr2NormalizeContactLevel(a.system?.details?.contactLevel),
+            sort: Number(a.sort) || 0
+          }))
           .sort((a, b) => a.name.localeCompare(b.name));
 
         const linkedFollowers = linkedActors
@@ -229,16 +286,63 @@ export class SR2ActorSheet extends ActorSheet {
           }))
           .sort((a, b) => a.name.localeCompare(b.name));
 
-        context.leaderGangMembers = linkedFollowers.filter(f => f.archetype === "gangMember");
-        context.leaderFollowers = linkedFollowers.filter(f => f.archetype !== "gangMember");
+        const gangArchetypes = new Set(["gangMember", "tribesman"]);
+        context.leaderGangMembers = linkedFollowers.filter(f => gangArchetypes.has(f.archetype));
+        context.leaderFollowers = linkedFollowers.filter(f => !gangArchetypes.has(f.archetype));
       }
-      if (!Array.isArray(context.leaderContacts)) context.leaderContacts = [];
-      if (!Array.isArray(context.leaderGangMembers)) context.leaderGangMembers = [];
-      if (!Array.isArray(context.leaderFollowers)) context.leaderFollowers = [];
+	      if (!Array.isArray(context.leaderContacts)) context.leaderContacts = [];
+	      if (!Array.isArray(context.leaderGangMembers)) context.leaderGangMembers = [];
+	      if (!Array.isArray(context.leaderFollowers)) context.leaderFollowers = [];
 
-      const attributePointsTotal = Number(context.system.creation?.attributePoints) || 0;
-      const skillPointsTotal = Number(context.system.creation?.skillPoints) || 0;
-      const forcePointsTotal = Number(context.system.creation?.forcePoints) || 0;
+	      // Connection counts and limits (creation-mode helpers)
+	      if (actorData.type === "character") {
+	        const contactLevelsEnabled = context.sr2Settings.contactLevels;
+	        const disableBuddies = context.sr2Settings.disableBuddies;
+	        const extras = context.system?.creation?.extras || {};
+
+	        const followersPurchased = Math.max(0, parseInt(extras.followers, 10) || 0) > 0;
+
+	        const contactsCount = (context.leaderContacts || []).length;
+	        let contactsLimit = Math.max(2, Math.max(0, parseInt(extras.contacts, 10) || 0));
+	        let contactsOver = contactsCount > contactsLimit;
+
+	        if (contactLevelsEnabled) {
+	          const charisma = Number(context.system?.attributes?.charisma?.value) || 0;
+	          context.contactLevelsSummary = sr2ComputeContactLevelSummary(context.leaderContacts, charisma);
+	          contactsLimit = context.contactLevelsSummary.counts.maxTotalContacts;
+	          contactsOver = Boolean(
+	            context.contactLevelsSummary.over.extraContacts ||
+	            context.contactLevelsSummary.over.extraLevel2 ||
+	            context.contactLevelsSummary.over.extraLevel3
+	          );
+	        }
+
+	        context.connectionCounts = {
+	          contacts: contactsCount,
+	          followers: context.leaderFollowers.length
+	        };
+
+	        context.connectionLimits = {
+	          contacts: contactsLimit,
+	          // SR2: one Followers purchase provides five followers.
+	          followers: followersPurchased ? 5 : 0
+	        };
+
+	        context.connectionOver = {
+	          contacts: contactsOver,
+	          followers: context.connectionCounts.followers > context.connectionLimits.followers
+	        };
+
+	        context.creationExtrasPurchased = {
+	          buddy: disableBuddies ? false : (Math.max(0, parseInt(extras.buddy, 10) || 0) > 0),
+	          gang: Math.max(0, parseInt(extras.gang, 10) || 0) > 0,
+	          followers: followersPurchased
+	        };
+	      }
+
+	      const attributePointsTotal = Number(context.system.creation?.attributePoints) || 0;
+	      const skillPointsTotal = Number(context.system.creation?.skillPoints) || 0;
+	      const forcePointsTotal = Number(context.system.creation?.forcePoints) || 0;
 
       const attributePointsSpent = sr2ComputeAttributePointsSpent(context.system.attributes, metatype);
       const skillPointsSpent = sr2ComputeSkillPointsSpent(context.skills || []);
@@ -288,7 +392,13 @@ export class SR2ActorSheet extends ActorSheet {
       context.racialSummary = [modsText, traitsText].filter(Boolean).join(" | ");
 
       // Creation resources helpers (lifestyle + extras)
-      context.creationResources = sr2ComputeCreationNuyenBudgetBreakdown(context.system, context.items);
+      const budgetOptions = {
+        disableBuddies: context.sr2Settings.disableBuddies
+      };
+      if (actorData.type === "character" && context.sr2Settings.contactLevels && context.contactLevelsSummary) {
+        budgetOptions.contactLevelsSummary = context.contactLevelsSummary;
+      }
+      context.creationResources = sr2ComputeCreationNuyenBudgetBreakdown(context.system, context.items, budgetOptions);
     }
 
     return context;
@@ -602,20 +712,24 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Skill management
     html.find('.base-skill-select').change(this._onBaseSkillChange.bind(this));
-    html.find('.concentration-select').change(this._onConcentrationChange.bind(this));
-    html.find('input[name*="specialization"]:not([name*="Rating"])').on('change', this._onSpecializationChange.bind(this));
-    html.find('input[name*="allocatedRating"]').on('change', this._onSkillAllocatedRatingChange.bind(this));
-    html.find('input[name*="allocatedRating"]').on('blur', this._onSkillAllocatedRatingChange.bind(this));
-    html.find('input[name*="allocatedRating"]').on('input', this._onSkillAllocatedRatingInput.bind(this));
-    html.find('.skill-roll').click(this._onSkillRoll.bind(this));
+	    html.find('.concentration-select').change(this._onConcentrationChange.bind(this));
+	    html.find('input[name*="specialization"]:not([name*="Rating"])').on('change', this._onSpecializationChange.bind(this));
+	    html.find('input[name*="allocatedRating"]').on('change', this._onSkillAllocatedRatingChange.bind(this));
+	    html.find('input[name*="allocatedRating"]').on('blur', this._onSkillAllocatedRatingChange.bind(this));
+	    html.find('input[name*="allocatedRating"]').on('input', this._onSkillAllocatedRatingInput.bind(this));
+	    html.find('.sr2-skill-allocated-adjust').click(this._onSkillAllocatedAdjust.bind(this));
+	    html.find('.skill-roll').click(this._onSkillRoll.bind(this));
 
-    // Leader quick-open (followers)
-    html.find('.open-leader').click(this._onOpenLeader.bind(this));
-    html.find('.open-connection').click(this._onOpenConnection.bind(this));
+	    // Leader quick-open (followers)
+	    html.find('.open-leader').click(this._onOpenLeader.bind(this));
+	    html.find('.open-connection').click(this._onOpenConnection.bind(this));
+	    html.find('.sr2-add-contact').click(this._onAddContact.bind(this));
+	    html.find('.sr2-adjust-contacts').click(this._onAdjustContacts.bind(this));
+	    html.find('.sr2-toggle-extra').click(this._onToggleExtra.bind(this));
 
-    // Creation resources finalization
-    html.find('.finalize-resources').click(this._onFinalizeResources.bind(this));
-    html.find('.unfinalize-resources').click(this._onUnfinalizeResources.bind(this));
+	    // Creation resources finalization
+	    html.find('.finalize-resources').click(this._onFinalizeResources.bind(this));
+	    html.find('.unfinalize-resources').click(this._onUnfinalizeResources.bind(this));
 
     // Lifestyle management (creation resources)
     if (['character', 'contact', 'follower'].includes(this.actor.type)) {
@@ -633,6 +747,7 @@ export class SR2ActorSheet extends ActorSheet {
     html.find('.browse-items').click(this._onBrowseItems.bind(this));
 
     // Spell casting
+    html.find('.spell-lock-toggle').click(this._onSpellLockToggle.bind(this));
     html.find('.spell-cast').click(this._onSpellCast.bind(this));
 
     // Weapon attacks
@@ -650,14 +765,9 @@ export class SR2ActorSheet extends ActorSheet {
     html.find('.cyberware-installed').change(this._onCyberwareInstall.bind(this));
     html.find('.bioware-installed').change(this._onBiowareInstall.bind(this));
 
-    // Damage box click handlers - use event delegation to handle clicks on child elements
-    html.find('.damage-boxes').on('click', '.damage-box, .damage-box *', this._onDamageBoxClick.bind(this));
-
-    // Damage box keyboard navigation
-    html.find('.damage-box').keydown(this._onDamageBoxKeydown.bind(this));
-
-    // Damage boxes focus management
-    html.find('.damage-boxes').on('focusin', this._onDamageBoxesFocusIn.bind(this));
+    // Damage quick controls (header)
+    html.find('.sr2-damage-adjust').click(this._onDamageAdjust.bind(this));
+    html.find('.sr2-damage-input').change(this._onDamageInputChange.bind(this));
 
     // Initiative roll button
     html.find('.initiative-roll-btn').click(this._onInitiativeRoll.bind(this));
@@ -765,7 +875,7 @@ export class SR2ActorSheet extends ActorSheet {
     // Build list of available pools for confirmation dialog
     const availablePools = [];
     if (true) availablePools.push('Combat');
-    if (isSpellcaster && magicAttribute > 0) availablePools.push('Spell');
+    if (isSpellcaster && magicAttribute > 0) availablePools.push('Magic');
     if (hasCyberdeck) availablePools.push('Hacking');
     if (hasControlRig) availablePools.push('Control');
     if ((this.actor.system.pools.task?.max || 0) > 0) availablePools.push('Task');
@@ -1144,25 +1254,56 @@ export class SR2ActorSheet extends ActorSheet {
     });
   }
 
-  _onSkillAllocatedRatingInput(event) {
-    const element = event.currentTarget;
-    const rating = parseInt(element.value, 10);
-    if (!Number.isFinite(rating)) {
-      element.style.borderColor = '';
-      return;
-    }
+	  _onSkillAllocatedRatingInput(event) {
+	    const element = event.currentTarget;
+	    const rating = parseInt(element.value, 10);
+	    if (!Number.isFinite(rating)) {
+	      element.style.borderColor = '';
+	      return;
+	    }
 
-    const maxAllocated = this._isCreationMode() ? 6 : 12;
-    if (rating < 0 || rating > maxAllocated) {
-      element.style.borderColor = '#ff6b6b';
-    } else {
-      element.style.borderColor = '';
-    }
-  }
+	    const maxAllocated = this._isCreationMode() ? 6 : 12;
+	    if (rating < 0 || rating > maxAllocated) {
+	      element.style.borderColor = '#ff6b6b';
+	    } else {
+	      element.style.borderColor = '';
+	    }
+	  }
 
-  _onOpenLeader(event) {
-    event.preventDefault();
-    event.stopPropagation();
+	  async _onSkillAllocatedAdjust(event) {
+	    event.preventDefault();
+	    event.stopPropagation();
+
+	    const button = event.currentTarget;
+	    const delta = parseInt(button?.dataset?.adjust, 10);
+	    if (!Number.isFinite(delta) || delta === 0) return;
+
+	    const row = button.closest(".skill-item");
+	    const skillId = button?.dataset?.skillId || row?.dataset?.itemId;
+	    if (!row || !skillId) return;
+
+	    const input = row.querySelector('input[name*="allocatedRating"]');
+	    if (!input) return;
+
+	    const current = parseInt(input.value, 10);
+	    const next = (Number.isFinite(current) ? current : 0) + delta;
+	    input.value = String(next);
+
+	    await this._onSkillAllocatedRatingChange({
+	      preventDefault: () => {},
+	      stopPropagation: () => {},
+	      currentTarget: input
+	    });
+
+	    const item = this.actor.items.get(skillId);
+	    if (item && !item.system?.isFree) {
+	      input.value = String(sr2SkillInferAllocatedRating(item.system));
+	    }
+	  }
+
+	  _onOpenLeader(event) {
+	    event.preventDefault();
+	    event.stopPropagation();
 
     const leaderId = event.currentTarget?.dataset?.leaderId;
     const leader = leaderId ? game?.actors?.get(leaderId) : null;
@@ -1174,9 +1315,9 @@ export class SR2ActorSheet extends ActorSheet {
     leader.sheet?.render(true);
   }
 
-  _onOpenConnection(event) {
-    event.preventDefault();
-    event.stopPropagation();
+	  _onOpenConnection(event) {
+	    event.preventDefault();
+	    event.stopPropagation();
 
     const actorId = event.currentTarget?.dataset?.actorId;
     const actor = actorId ? game?.actors?.get(actorId) : null;
@@ -1185,7 +1326,97 @@ export class SR2ActorSheet extends ActorSheet {
       return;
     }
 
-    actor.sheet?.render(true);
+	    actor.sheet?.render(true);
+	  }
+
+	  async _onAdjustContacts(event) {
+	    event.preventDefault();
+	    event.stopPropagation();
+
+	    if (!this._isCreationMode()) return;
+	    if (Boolean(sr2GetSystemSetting("contactLevels", false))) return;
+
+	    if (this.actor.system?.creation?.resourcesFinalized) {
+	      ui.notifications.warn("Resources are finalized. Reopen resources to purchase extras.");
+	      return;
+	    }
+
+	    const delta = parseInt(event.currentTarget?.dataset?.delta, 10);
+	    if (!Number.isFinite(delta) || delta === 0) return;
+
+	    const raw = Math.max(0, parseInt(this.actor.system?.creation?.extras?.contacts, 10) || 0);
+	    const current = Math.max(2, raw);
+	    const next = Math.max(2, current + delta);
+
+	    await this.actor.update({
+	      "system.creation.extras.contacts": next
+	    });
+	  }
+
+	  async _onToggleExtra(event) {
+	    event.preventDefault();
+	    event.stopPropagation();
+
+	    if (!this._isCreationMode()) return;
+
+	    if (this.actor.system?.creation?.resourcesFinalized) {
+	      ui.notifications.warn("Resources are finalized. Reopen resources to purchase extras.");
+	      return;
+	    }
+
+	    const extra = event.currentTarget?.dataset?.extra;
+	    const disableBuddies = Boolean(sr2GetSystemSetting("disableBuddies", false)) || Boolean(sr2GetSystemSetting("contactLevels", false));
+	    const allowed = disableBuddies ? ["gang", "followers"] : ["buddy", "gang", "followers"];
+	    if (!allowed.includes(extra)) return;
+
+	    const current = Math.max(0, parseInt(this.actor.system?.creation?.extras?.[extra], 10) || 0);
+	    const next = current > 0 ? 0 : 1;
+
+	    await this.actor.update({
+	      [`system.creation.extras.${extra}`]: next
+	    });
+	  }
+
+  async _onAddContact(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const leaderId = this.actor.id;
+
+    Hooks.once("renderDialog", (app, html) => {
+      try {
+        const jq = globalThis.jQuery;
+        const $html = (jq && html instanceof jq) ? html : $(html);
+
+        const form = $html.is("form") ? $html : $html.find("form");
+        if (!form.length) return;
+
+        const typeSelect = form.find('select[name="type"]');
+        if (!typeSelect.length) return;
+
+        const optionValues = typeSelect.find("option").map((_, el) => el.value).get();
+        const isSR2ActorCreateDialog =
+          optionValues.includes("character") &&
+          optionValues.includes("cyberdeck") &&
+          optionValues.includes("vehicle") &&
+          optionValues.includes("spirit");
+        if (!isSR2ActorCreateDialog) return;
+
+        setTimeout(() => {
+          try {
+            typeSelect.val("contact").trigger("change");
+            const leaderSelect = form.find('select[name="system.details.leaderId"]');
+            if (leaderSelect.length) leaderSelect.val(leaderId).trigger("change");
+          } catch (err) {
+            console.warn("SR2E | Failed to prefill Add Contact dialog:", err);
+          }
+        }, 0);
+      } catch (err) {
+        console.warn("SR2E | Failed to open Add Contact dialog:", err);
+      }
+    });
+
+    return Actor.createDialog();
   }
 
   async _onFinalizeResources(event) {
@@ -1196,7 +1427,27 @@ export class SR2ActorSheet extends ActorSheet {
     if (budget <= 0) return;
     if (this.actor.system?.creation?.resourcesFinalized) return;
 
-    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(this.actor.system, this.actor.items);
+    const contactLevelsEnabled = Boolean(sr2GetSystemSetting("contactLevels", false));
+    const disableBuddies = contactLevelsEnabled || Boolean(sr2GetSystemSetting("disableBuddies", false));
+
+    const budgetOptions = { disableBuddies };
+
+    if (contactLevelsEnabled) {
+      const charisma = Number(this.actor.system?.attributes?.charisma?.value) || 0;
+      const linkedContacts = game?.actors?.filter(a => a.type === "contact" && a.system?.details?.leaderId === this.actor.id) ?? [];
+      budgetOptions.contactLevelsSummary = sr2ComputeContactLevelSummary(
+        linkedContacts.map(a => ({ id: a.id, sort: Number(a.sort) || 0, contactLevel: a.system?.details?.contactLevel })),
+        charisma
+      );
+
+      const over = budgetOptions.contactLevelsSummary?.over;
+      if (over?.extraContacts || over?.extraLevel2 || over?.extraLevel3) {
+        ui.notifications.error("Contact limits exceeded. Reduce contacts or contact levels before finalizing resources.");
+        return;
+      }
+    }
+
+    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(this.actor.system, this.actor.items, budgetOptions);
     if ((breakdown.remainingNuyen || 0) < 0) {
       ui.notifications.error("Resource Budget exceeded. Reduce item/lifestyle/extras spending first.");
       return;
@@ -1416,8 +1667,142 @@ export class SR2ActorSheet extends ActorSheet {
 
     console.log("SR2E | Final dice pool:", dicePool, "Title:", finalTitle);
 
+    if (baseSkillName === "Conjuring") {
+      await this._onConjuringRoll(dicePool, finalTitle);
+      return;
+    }
+
     // Show TN selection dialog and roll
-    await this._showTargetNumberDialog(dicePool, finalTitle, 'skill');
+    await this._showTargetNumberDialog(dicePool, finalTitle, 'skill', 4, null, { baseSkillName });
+  }
+
+  async _promptConjuringDetails() {
+    const defaultForce = 4;
+
+    const content = `
+      <div class="sr2-conjuring-details">
+        <div class="form-group">
+          <label><strong>Spirit Type</strong></label>
+          <input type="text" name="spiritType" value="" placeholder="e.g. Water elemental, Hearth spirit"/>
+        </div>
+        <div class="form-group">
+          <label><strong>Spirit Force</strong></label>
+          <input type="number" name="spiritForce" value="${defaultForce}" min="1" max="30"/>
+        </div>
+        <p><em>SR2: Magic Pool does not apply to Conjuring tests.</em></p>
+      </div>
+    `;
+
+    return new Promise(resolve => {
+      let isResolved = false;
+      const finish = (result) => {
+        if (isResolved) return;
+        isResolved = true;
+        resolve(result);
+      };
+
+      const dialog = new Dialog({
+        title: "Conjuring",
+        content,
+        buttons: {
+          continue: {
+            icon: '<i class="fas fa-dice-d6"></i>',
+            label: "Continue",
+            callback: (html) => {
+              const spiritType = String(html.find('input[name="spiritType"]').val() || "").trim();
+              const force = Math.max(1, parseInt(html.find('input[name="spiritForce"]').val(), 10) || defaultForce);
+              finish({ ok: true, spiritType, force });
+            }
+          },
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: "Cancel",
+            callback: () => finish({ ok: false })
+          }
+        },
+        default: "continue",
+        close: () => finish({ ok: false })
+      });
+
+      dialog.render(true);
+    });
+  }
+
+  _sr2NormalizeSpiritType(value) {
+    return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+  }
+
+  _sr2DescribeConjuringDrain(force, charisma) {
+    const f = Math.max(1, Number(force) || 1);
+    const cha = Math.max(0, Number(charisma) || 0);
+
+    if (cha <= 0) return "";
+
+    if (f < (cha / 2)) return "L Stun";
+    if (f <= cha) return "M Stun";
+    if (f <= (2 * cha)) return "S Physical";
+    return "D Physical";
+  }
+
+  async _onConjuringRoll(conjuringDicePool, title) {
+    const details = await this._promptConjuringDetails();
+    if (!details?.ok) return;
+
+    const spiritType = String(details.spiritType || "").trim();
+    const force = Math.max(1, Number(details.force) || 1);
+    const normalizedSpiritType = this._sr2NormalizeSpiritType(spiritType);
+
+    const focusPools = [];
+    const equippedGear = this.actor.items.filter(i => i.type === "gear" && i.system?.equipped);
+    for (const item of equippedGear) {
+      const focus = sr2ParseFocusName(item.name);
+      if (!focus) continue;
+      if (focus.kind !== "spirit focus") continue;
+
+      const focusSpiritType = this._sr2NormalizeSpiritType(item.system?.focus?.spiritType);
+      if (!normalizedSpiritType || !focusSpiritType || focusSpiritType !== normalizedSpiritType) continue;
+
+      focusPools.push({
+        key: `focus-spirit-${item.id}`,
+        name: `${item.name} (${item.system?.focus?.spiritType || spiritType})`,
+        current: focus.rating,
+        max: focus.rating,
+        isActorPool: false
+      });
+    }
+
+    const conjuringTitle = spiritType ? `${title}: ${spiritType} (Force ${force})` : `${title} (Force ${force})`;
+    const conjuringResult = await this._showTargetNumberDialog(conjuringDicePool, conjuringTitle, "skill", force, null, {
+      baseSkillName: "Conjuring",
+      additionalPools: focusPools
+    });
+    if (!conjuringResult?.rolled) return;
+
+    const focusDiceUsed = {};
+    for (const { pool, dice } of (conjuringResult.poolsUsed || [])) {
+      if (pool?.isActorPool) continue;
+      if (!pool?.key) continue;
+      focusDiceUsed[pool.key] = (focusDiceUsed[pool.key] || 0) + (Number(dice) || 0);
+    }
+
+    const remainingFocusPools = focusPools.map(pool => {
+      const used = Number(focusDiceUsed[pool.key]) || 0;
+      return {
+        ...pool,
+        current: Math.max(0, (Number(pool.current) || 0) - used)
+      };
+    }).filter(pool => (Number(pool.current) || 0) > 0);
+
+    // SR2: Conjuring drain uses Charisma dice against TN = spirit Force (see Conjuring, p. 139).
+    const charisma = Number(this.actor.system?.attributes?.charisma?.value) || 0;
+    const drainDicePool = charisma;
+    const drainCode = this._sr2DescribeConjuringDrain(force, charisma);
+    const drainTitle = `Conjuring Drain Resistance${drainCode ? ` (${drainCode})` : ""}${spiritType ? `: ${spiritType}` : ""}`;
+
+    await this._showTargetNumberDialog(drainDicePool, drainTitle, "drain", force, null, {
+      baseSkillName: "Conjuring",
+      additionalPools: remainingFocusPools
+    });
   }
 
   /**
@@ -1454,12 +1839,23 @@ export class SR2ActorSheet extends ActorSheet {
     // Attributes roll their rating as dice pool (including modifiers)
     let dicePool = attributeValue + modifierValue;
 
+    // Power Focus adds dice to Magic tests (spellcasters only)
+    const isSpellcaster = Boolean(this.actor.system?.magic?.awakened) && !this.actor.system?.magic?.physicalAdept;
+    const powerFocusBonus = isSpellcaster ? (Number(this.actor._sr2PowerFocusBonus) || 0) : 0;
+    const appliesPowerFocus = attributeName === 'magic' && powerFocusBonus > 0;
+    if (appliesPowerFocus) {
+      dicePool += powerFocusBonus;
+    }
+
     // Ensure minimum dice pool of 1
     if (dicePool < 1) {
       dicePool = 1;
     }
 
-    const title = `${attributeName.charAt(0).toUpperCase() + attributeName.slice(1)} Test`;
+    let title = `${attributeName.charAt(0).toUpperCase() + attributeName.slice(1)} Test`;
+    if (appliesPowerFocus) {
+      title += ` [+${powerFocusBonus} Power Focus]`;
+    }
 
     // Show TN selection dialog and roll
     await this._showTargetNumberDialog(dicePool, title, 'attribute');
@@ -1468,10 +1864,13 @@ export class SR2ActorSheet extends ActorSheet {
   /**
    * Get available pools for dice rolling
    */
-  _getAvailablePools() {
+  _getAvailablePools(context = {}) {
     const pools = [];
     const poolData = this.actor.system.pools;
     const magicAttribute = this.actor.system.attributes.magic?.value || 0;
+    const baseSkillName = String(context?.baseSkillName || "");
+    const rollType = String(context?.rollType || "").toLowerCase();
+    const excludeMagicPool = baseSkillName === "Conjuring";
 
     // Check for cyberdeck and control rig
     const hasCyberdeck = this.actor.items.some(item => 
@@ -1485,16 +1884,23 @@ export class SR2ActorSheet extends ActorSheet {
        item.name.toLowerCase().includes('vehicle control rig'))
     );
 
+    const restrictToMagicPools = rollType === "spell" || rollType === "drain";
+
     // Define pool types with their visibility conditions
-    const poolTypes = [
-      { key: 'karma', name: 'Karma Pool', maxKey: 'total', condition: true },
-      { key: 'combat', name: 'Combat Pool', maxKey: 'max', condition: true },
-      { key: 'spell', name: 'Spell Pool', maxKey: 'max', condition: magicAttribute > 0 },
-      { key: 'hacking', name: 'Hacking Pool', maxKey: 'max', condition: hasCyberdeck },
-      { key: 'control', name: 'Control Pool', maxKey: 'max', condition: hasControlRig },
-      { key: 'task', name: 'Task Pool', maxKey: 'max', condition: (poolData.task?.max || 0) > 0 },
-      { key: 'astral', name: 'Astral Combat Pool', maxKey: 'max', condition: magicAttribute > 0 }
-    ];
+    const poolTypes = restrictToMagicPools
+      ? [
+          { key: 'karma', name: 'Karma Pool', maxKey: 'total', condition: true },
+          { key: 'spell', name: 'Magic Pool', maxKey: 'max', condition: magicAttribute > 0 && !excludeMagicPool }
+        ]
+      : [
+          { key: 'karma', name: 'Karma Pool', maxKey: 'total', condition: true },
+          { key: 'combat', name: 'Combat Pool', maxKey: 'max', condition: true },
+          { key: 'spell', name: 'Magic Pool', maxKey: 'max', condition: magicAttribute > 0 && !excludeMagicPool },
+          { key: 'hacking', name: 'Hacking Pool', maxKey: 'max', condition: hasCyberdeck },
+          { key: 'control', name: 'Control Pool', maxKey: 'max', condition: hasControlRig },
+          { key: 'task', name: 'Task Pool', maxKey: 'max', condition: (poolData.task?.max || 0) > 0 },
+          { key: 'astral', name: 'Astral Combat Pool', maxKey: 'max', condition: magicAttribute > 0 }
+        ];
 
     poolTypes.forEach(poolType => {
       // Only add pools that meet their visibility condition
@@ -1505,7 +1911,8 @@ export class SR2ActorSheet extends ActorSheet {
             key: poolType.key,
             name: poolType.name,
             current: pool.current || 0,
-            max: pool[poolType.maxKey] || 0
+            max: pool[poolType.maxKey] || 0,
+            isActorPool: true
           });
         }
       }
@@ -1517,8 +1924,13 @@ export class SR2ActorSheet extends ActorSheet {
   /**
    * Show Target Number selection dialog
    */
-  async _showTargetNumberDialog(dicePool, title, rollType, defaultTN = 4, weaponData = null) {
-    const availablePools = this._getAvailablePools();
+  async _showTargetNumberDialog(dicePool, title, rollType, defaultTN = 4, weaponData = null, context = {}) {
+    const enrichedContext = { ...(context || {}), rollType };
+    const additionalPools = Array.isArray(enrichedContext?.additionalPools) ? enrichedContext.additionalPools : [];
+    const availablePools = [
+      ...this._getAvailablePools(enrichedContext),
+      ...additionalPools
+    ];
     const isRangedAttack = rollType === 'attack' && weaponData && weaponData.system.weaponType === 'ranged';
 
     const rangedModifiersSection = isRangedAttack ? `
@@ -1685,175 +2097,188 @@ export class SR2ActorSheet extends ActorSheet {
       </div>
     `;
 
-    const dialog = new Dialog({
-      title: `${title} - Target Number Selection`,
-      content: content,
-      render: (html) => {
-        // Handle pool checkbox interactions
-        html.find('.pool-checkbox').change(function () {
-          const isChecked = $(this).is(':checked');
-          const poolKey = $(this).val();
-          const diceInput = html.find(`input[name="pool-${poolKey}-dice"]`);
-          const pool = availablePools.find(p => p.key === poolKey);
+    return new Promise(resolve => {
+      let isResolved = false;
+      const finish = (result) => {
+        if (isResolved) return;
+        isResolved = true;
+        resolve(result);
+      };
 
-          if (isChecked) {
-            diceInput.prop('disabled', false);
-            // Only default to 1 if the pool has dice available
-            if (pool && pool.current > 0) {
-              diceInput.val(1);
+      const dialog = new Dialog({
+        title: `${title} - Target Number Selection`,
+        content: content,
+        render: (html) => {
+          // Handle pool checkbox interactions
+          html.find('.pool-checkbox').change(function () {
+            const isChecked = $(this).is(':checked');
+            const poolKey = $(this).val();
+            const diceInput = html.find(`input[name="pool-${poolKey}-dice"]`);
+            const pool = availablePools.find(p => p.key === poolKey);
+
+            if (isChecked) {
+              diceInput.prop('disabled', false);
+              // Only default to 1 if the pool has dice available
+              if (pool && pool.current > 0) {
+                diceInput.val(1);
+              } else {
+                diceInput.val(0);
+              }
             } else {
+              diceInput.prop('disabled', true);
               diceInput.val(0);
             }
-          } else {
-            diceInput.prop('disabled', true);
-            diceInput.val(0);
-          }
-        });
+          });
 
-        // Handle ranged modifier calculations
-        if (isRangedAttack) {
-          const updateTotalModifier = () => {
-            let totalModifier = 0;
-            html.find('.modifier-select').each(function() {
-              totalModifier += parseInt($(this).val()) || 0;
-            });
-            html.find('#total-tn-modifier').text(totalModifier >= 0 ? `+${totalModifier}` : `${totalModifier}`);
-          };
-
-          html.find('.modifier-select').change(updateTotalModifier);
-          updateTotalModifier(); // Initial calculation
-        }
-      },
-      buttons: {
-        roll: {
-          icon: '<i class="fas fa-dice-d6"></i>',
-          label: "Roll",
-          callback: async (html) => {
-            let baseTargetNumber = parseInt(html.find('#target-number').val());
-            const diceModifier = parseInt(html.find('#dice-modifier').val()) || 0;
-            let finalDicePool = dicePool + diceModifier;
-
-            // Calculate ranged combat modifiers if applicable
-            let tnModifier = 0;
-            let modifierDetails = [];
-            
-            if (isRangedAttack) {
-              const recoilMod = parseInt(html.find('select[name="recoil-modifier"]').val()) || 0;
-              const visibilityMod = parseInt(html.find('select[name="visibility-modifier"]').val()) || 0;
-              const coverMod = parseInt(html.find('select[name="cover-modifier"]').val()) || 0;
-              const multipleTargetsMod = parseInt(html.find('select[name="multiple-targets-modifier"]').val()) || 0;
-              const targetMovementMod = parseInt(html.find('select[name="target-movement-modifier"]').val()) || 0;
-              const attackerMeleeMod = parseInt(html.find('select[name="attacker-melee-modifier"]').val()) || 0;
-              const attackerMovementMod = parseInt(html.find('select[name="attacker-movement-modifier"]').val()) || 0;
-              const accessoriesMod = parseInt(html.find('select[name="accessories-modifier"]').val()) || 0;
-              const otherMod = parseInt(html.find('select[name="other-modifier"]').val()) || 0;
-
-              tnModifier = recoilMod + visibilityMod + coverMod + multipleTargetsMod + 
-                          targetMovementMod + attackerMeleeMod + attackerMovementMod + 
-                          accessoriesMod + otherMod;
-
-              // Build modifier details for display
-              if (recoilMod !== 0) modifierDetails.push(`Recoil: ${recoilMod >= 0 ? '+' : ''}${recoilMod}`);
-              if (visibilityMod !== 0) modifierDetails.push(`Visibility: ${visibilityMod >= 0 ? '+' : ''}${visibilityMod}`);
-              if (coverMod !== 0) modifierDetails.push(`Cover: ${coverMod >= 0 ? '+' : ''}${coverMod}`);
-              if (multipleTargetsMod !== 0) modifierDetails.push(`Multiple Targets: ${multipleTargetsMod >= 0 ? '+' : ''}${multipleTargetsMod}`);
-              if (targetMovementMod !== 0) modifierDetails.push(`Target Movement: ${targetMovementMod >= 0 ? '+' : ''}${targetMovementMod}`);
-              if (attackerMeleeMod !== 0) modifierDetails.push(`Attacker in Melee: ${attackerMeleeMod >= 0 ? '+' : ''}${attackerMeleeMod}`);
-              if (attackerMovementMod !== 0) modifierDetails.push(`Attacker Movement: ${attackerMovementMod >= 0 ? '+' : ''}${attackerMovementMod}`);
-              if (accessoriesMod !== 0) modifierDetails.push(`Accessories: ${accessoriesMod >= 0 ? '+' : ''}${accessoriesMod}`);
-              if (otherMod !== 0) modifierDetails.push(`Other: ${otherMod >= 0 ? '+' : ''}${otherMod}`);
-            }
-
-            const finalTargetNumber = Math.max(2, baseTargetNumber + tnModifier);
-
-            // Handle pool dice
-            const poolsUsed = [];
-            let totalPoolDice = 0;
-
-            availablePools.forEach(pool => {
-              const checkbox = html.find(`input[name="pool-${pool.key}"]`);
-              const diceInput = html.find(`input[name="pool-${pool.key}-dice"]`);
-
-              if (checkbox.is(':checked')) {
-                const diceUsed = parseInt(diceInput.val()) || 0;
-                // Validate that we don't use more dice than available
-                const actualDiceUsed = Math.min(diceUsed, pool.current);
-                if (actualDiceUsed > 0) {
-                  totalPoolDice += actualDiceUsed;
-                  poolsUsed.push({ pool: pool, dice: actualDiceUsed });
-                }
-              }
-            });
-
-            // Add pool dice to final dice pool
-            finalDicePool += totalPoolDice;
-
-            // Ensure minimum dice pool of 1
-            if (finalDicePool < 1) {
-              finalDicePool = 1;
-            }
-
-            // Update actor's pool values
-            if (poolsUsed.length > 0) {
-              const updateData = {};
-              poolsUsed.forEach(({ pool, dice }) => {
-                const newCurrent = Math.max(0, pool.current - dice);
-                updateData[`system.pools.${pool.key}.current`] = newCurrent;
+          // Handle ranged modifier calculations
+          if (isRangedAttack) {
+            const updateTotalModifier = () => {
+              let totalModifier = 0;
+              html.find('.modifier-select').each(function() {
+                totalModifier += parseInt($(this).val()) || 0;
               });
-              await this.actor.update(updateData);
-            }
+              html.find('#total-tn-modifier').text(totalModifier >= 0 ? `+${totalModifier}` : `${totalModifier}`);
+            };
 
-            // Create enhanced title with pool info and modifiers
-            let finalTitle = `${title} (TN ${finalTargetNumber})`;
-            if (tnModifier !== 0) {
-              finalTitle += ` [Base TN ${baseTargetNumber} ${tnModifier >= 0 ? '+' : ''}${tnModifier}]`;
-            }
-            if (poolsUsed.length > 0) {
-              const poolInfo = poolsUsed.map(({ pool, dice }) => `${dice} ${pool.name}`).join(', ');
-              finalTitle += ` [+${totalPoolDice} from ${poolInfo}]`;
-            }
-
-            // Roll the dice
-            this.actor.rollDice(finalDicePool, finalTargetNumber, finalTitle);
-
-            // Show modifier breakdown in chat if there were ranged modifiers
-            if (isRangedAttack && modifierDetails.length > 0) {
-              const modifierChatData = {
-                user: game.user.id,
-                speaker: ChatMessage.getSpeaker({ actor: this.actor }),
-                content: `
-                  <div class="ranged-modifiers-breakdown">
-                    <h4>Ranged Combat Modifiers Applied:</h4>
-                    <ul>
-                      ${modifierDetails.map(detail => `<li>${detail}</li>`).join('')}
-                    </ul>
-                    <p><strong>Total TN Modifier: ${tnModifier >= 0 ? '+' : ''}${tnModifier}</strong></p>
-                  </div>
-                `
-              };
-              ChatMessage.create(modifierChatData);
-            }
+            html.find('.modifier-select').change(updateTotalModifier);
+            updateTotalModifier(); // Initial calculation
           }
         },
-        cancel: {
-          icon: '<i class="fas fa-times"></i>',
-          label: "Cancel"
-        }
-      },
-      default: "roll",
-      render: (html) => {
-        // Enable/disable pool dice inputs when checkboxes are toggled
-        html.find('input[type="checkbox"]').change(function () {
-          const diceInput = html.find(`input[name="${this.name}-dice"]`);
-          diceInput.prop('disabled', !this.checked);
-          if (!this.checked) {
-            diceInput.val(0);
-          }
-        });
-      }
-    });
+        buttons: {
+          roll: {
+            icon: '<i class="fas fa-dice-d6"></i>',
+            label: "Roll",
+            callback: async (html) => {
+              const baseTargetNumber = parseInt(html.find('#target-number').val());
+              let finalDicePool = dicePool;
 
-    dialog.render(true);
+              // Calculate ranged combat modifiers if applicable
+              let tnModifier = 0;
+              let modifierDetails = [];
+            
+              if (isRangedAttack) {
+                const recoilMod = parseInt(html.find('select[name="recoil-modifier"]').val()) || 0;
+                const visibilityMod = parseInt(html.find('select[name="visibility-modifier"]').val()) || 0;
+                const coverMod = parseInt(html.find('select[name="cover-modifier"]').val()) || 0;
+                const multipleTargetsMod = parseInt(html.find('select[name="multiple-targets-modifier"]').val()) || 0;
+                const targetMovementMod = parseInt(html.find('select[name="target-movement-modifier"]').val()) || 0;
+                const attackerMeleeMod = parseInt(html.find('select[name="attacker-melee-modifier"]').val()) || 0;
+                const attackerMovementMod = parseInt(html.find('select[name="attacker-movement-modifier"]').val()) || 0;
+                const accessoriesMod = parseInt(html.find('select[name="accessories-modifier"]').val()) || 0;
+                const otherMod = parseInt(html.find('select[name="other-modifier"]').val()) || 0;
+
+                tnModifier = recoilMod + visibilityMod + coverMod + multipleTargetsMod + 
+                            targetMovementMod + attackerMeleeMod + attackerMovementMod + 
+                            accessoriesMod + otherMod;
+
+                // Build modifier details for display
+                if (recoilMod !== 0) modifierDetails.push(`Recoil: ${recoilMod >= 0 ? '+' : ''}${recoilMod}`);
+                if (visibilityMod !== 0) modifierDetails.push(`Visibility: ${visibilityMod >= 0 ? '+' : ''}${visibilityMod}`);
+                if (coverMod !== 0) modifierDetails.push(`Cover: ${coverMod >= 0 ? '+' : ''}${coverMod}`);
+                if (multipleTargetsMod !== 0) modifierDetails.push(`Multiple Targets: ${multipleTargetsMod >= 0 ? '+' : ''}${multipleTargetsMod}`);
+                if (targetMovementMod !== 0) modifierDetails.push(`Target Movement: ${targetMovementMod >= 0 ? '+' : ''}${targetMovementMod}`);
+                if (attackerMeleeMod !== 0) modifierDetails.push(`Attacker in Melee: ${attackerMeleeMod >= 0 ? '+' : ''}${attackerMeleeMod}`);
+                if (attackerMovementMod !== 0) modifierDetails.push(`Attacker Movement: ${attackerMovementMod >= 0 ? '+' : ''}${attackerMovementMod}`);
+                if (accessoriesMod !== 0) modifierDetails.push(`Accessories: ${accessoriesMod >= 0 ? '+' : ''}${accessoriesMod}`);
+                if (otherMod !== 0) modifierDetails.push(`Other: ${otherMod >= 0 ? '+' : ''}${otherMod}`);
+              }
+
+              const finalTargetNumber = Math.max(2, baseTargetNumber + tnModifier);
+
+              // Handle pool dice
+              const poolsUsed = [];
+              let totalPoolDice = 0;
+
+              availablePools.forEach(pool => {
+                const checkbox = html.find(`input[name="pool-${pool.key}"]`);
+                const diceInput = html.find(`input[name="pool-${pool.key}-dice"]`);
+
+                if (checkbox.is(':checked')) {
+                  const diceUsed = parseInt(diceInput.val()) || 0;
+                  // Validate that we don't use more dice than available
+                  const actualDiceUsed = Math.min(diceUsed, pool.current);
+                  if (actualDiceUsed > 0) {
+                    totalPoolDice += actualDiceUsed;
+                    poolsUsed.push({ pool: pool, dice: actualDiceUsed });
+                  }
+                }
+              });
+
+              // Add pool dice to final dice pool
+              finalDicePool += totalPoolDice;
+
+              // Ensure minimum dice pool of 1
+              if (finalDicePool < 1) {
+                finalDicePool = 1;
+              }
+
+              // Update actor's pool values
+              if (poolsUsed.length > 0) {
+                const updateData = {};
+                poolsUsed.forEach(({ pool, dice }) => {
+                  if (!pool.isActorPool) return;
+                  const newCurrent = Math.max(0, pool.current - dice);
+                  updateData[`system.pools.${pool.key}.current`] = newCurrent;
+                });
+                if (Object.keys(updateData).length > 0) {
+                  await this.actor.update(updateData);
+                }
+              }
+
+              // Create enhanced title with pool info and modifiers
+              let finalTitle = `${title} (TN ${finalTargetNumber})`;
+              if (tnModifier !== 0) {
+                finalTitle += ` [Base TN ${baseTargetNumber} ${tnModifier >= 0 ? '+' : ''}${tnModifier}]`;
+              }
+              if (poolsUsed.length > 0) {
+                const poolInfo = poolsUsed.map(({ pool, dice }) => `${dice} ${pool.name}`).join(', ');
+                finalTitle += ` [+${totalPoolDice} from ${poolInfo}]`;
+              }
+
+              // Roll the dice
+              const rollResult = await this.actor.rollDice(finalDicePool, finalTargetNumber, finalTitle);
+
+              // Show modifier breakdown in chat if there were ranged modifiers
+              if (isRangedAttack && modifierDetails.length > 0) {
+                const modifierChatData = {
+                  user: game.user.id,
+                  speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+                  content: `
+                    <div class="ranged-modifiers-breakdown">
+                      <h4>Ranged Combat Modifiers Applied:</h4>
+                      <ul>
+                        ${modifierDetails.map(detail => `<li>${detail}</li>`).join('')}
+                      </ul>
+                      <p><strong>Total TN Modifier: ${tnModifier >= 0 ? '+' : ''}${tnModifier}</strong></p>
+                    </div>
+                  `
+                };
+                ChatMessage.create(modifierChatData);
+              }
+
+              finish({
+                rolled: true,
+                rollResult,
+                finalDicePool,
+                finalTargetNumber,
+                baseTargetNumber,
+                tnModifier,
+                poolsUsed
+              });
+            }
+          },
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: "Cancel",
+            callback: () => finish({ rolled: false })
+          }
+        },
+        default: "roll",
+        close: () => finish({ rolled: false })
+      });
+
+      dialog.render(true);
+    });
   }
 
   /**
@@ -1875,6 +2300,101 @@ export class SR2ActorSheet extends ActorSheet {
   }
 
   /**
+   * Handle spell lock assignment and toggling
+   */
+  async _onSpellLockToggle(event) {
+    event.preventDefault();
+
+    const spellId = event.currentTarget.dataset.itemId;
+    const spell = this.actor.items.get(spellId);
+    if (!spell || spell.type !== "spell") return;
+
+    const spellLock = spell.system?.spellLock ?? {};
+    const isAssigned = Boolean(spellLock.assigned);
+    const isEnabled = Boolean(spellLock.enabled);
+
+    if (!isAssigned) {
+      const capacity = sr2ComputeSpellLockCapacity(this.actor.items);
+      if (capacity.remaining <= 0) {
+        if (capacity.total <= 0) {
+          ui.notifications.error("No Spell Locks found. Add Spell Lock gear to assign one to a spell.");
+        } else {
+          ui.notifications.error(`All Spell Locks are already assigned (${capacity.assigned}/${capacity.total}).`);
+        }
+        return;
+      }
+
+      const confirmed = game.settings.get("core", "noCanvas") ||
+        confirm(`Are you sure you want to use a spell lock on ${spell.name}?`);
+
+      if (!confirmed) return;
+
+      try {
+        await spell.update({
+          "system.spellLock.assigned": true,
+          "system.spellLock.enabled": true
+        });
+        await this._syncSpellLockEffects();
+        if (this.rendered) this.render(false);
+      } catch (error) {
+        console.error("SR2E | Failed to assign Spell Lock", error);
+        ui.notifications.error("Failed to assign Spell Lock (see console).");
+      }
+
+      return;
+    }
+
+    try {
+      await spell.update({ "system.spellLock.enabled": !isEnabled });
+      await this._syncSpellLockEffects();
+      if (this.rendered) this.render(false);
+    } catch (error) {
+      console.error("SR2E | Failed to toggle Spell Lock", error);
+      ui.notifications.error("Failed to toggle Spell Lock (see console).");
+    }
+  }
+
+  async _syncSpellLockEffects() {
+    try {
+      const enabledLockedSpells = this.actor.items.filter(i =>
+        i.type === "spell" &&
+        i.system?.spellLock?.assigned &&
+        i.system?.spellLock?.enabled
+      );
+
+      const hasInvisibility = enabledLockedSpells.some(spell =>
+        String(spell.name || "").toLowerCase().includes("invisibility")
+      );
+
+      const existingInvisibility = this.actor.effects.find(e =>
+        e.getFlag("shadowrun2e", "spellLockInvisibilityEffect") === true
+      );
+
+      if (!hasInvisibility) {
+        if (existingInvisibility) await existingInvisibility.delete();
+        return;
+      }
+
+      if (!existingInvisibility) {
+        await this.actor.createEmbeddedDocuments("ActiveEffect", [{
+          name: "Spell Lock: Invisibility",
+          icon: "icons/svg/invisible.svg",
+          changes: [],
+          disabled: false,
+          flags: { shadowrun2e: { spellLockInvisibilityEffect: true } }
+        }]);
+        return;
+      }
+
+      if (existingInvisibility.disabled) {
+        await existingInvisibility.update({ disabled: false });
+      }
+    } catch (error) {
+      console.error("SR2E | Failed to sync spell lock effects", error);
+    }
+  }
+
+  /**
    * Handle spell casting
    */
   async _onSpellCast(event) {
@@ -1886,7 +2406,7 @@ export class SR2ActorSheet extends ActorSheet {
 
     try {
       const force = Math.max(1, Number(spell.system.force) || 1);
-      const magicRating = Number(this.actor.system.attributes.magic.value) || 0;
+      const magicRating = Number(this.actor.system.attributes.magic.effective ?? this.actor.system.attributes.magic.value) || 0;
       const sorcerySkill = this._getHighestSorcerySkill();
 
       // Calculate dice pool for spellcasting - in SR2E, use only the sorcery skill rating
@@ -1903,8 +2423,60 @@ export class SR2ActorSheet extends ActorSheet {
 
       const title = `Casting ${spell.name} (Force ${force})`;
 
+      const spellClass = sr2NormalizeSpellClass(spell.system?.class);
+      const spellClassLabel = spellClass ? (SR2_SPELL_CLASS_LABELS[spellClass] || spellClass) : "";
+
+      const targets = Array.from(game.user?.targets ?? []);
+      const resistAttributeLabel = sr2InferSpellResistFromType(spell.system?.type);
+      const resistAttributeKey = resistAttributeLabel ? resistAttributeLabel.toLowerCase() : "";
+      let defaultCastTargetNumber = 4;
+      if (targets.length === 1 && resistAttributeKey) {
+        const targetActor = targets[0]?.actor;
+        const resistAttributeValue = Number(targetActor?.system?.attributes?.[resistAttributeKey]?.value);
+        if (Number.isFinite(resistAttributeValue) && resistAttributeValue > 0) {
+          defaultCastTargetNumber = sr2Clamp(resistAttributeValue, 2, 30);
+        }
+      }
+
+      const focusPools = [];
+      const equippedGear = this.actor.items.filter(i => i.type === "gear" && i.system?.equipped);
+      for (const item of equippedGear) {
+        const focus = sr2ParseFocusName(item.name);
+        if (!focus) continue;
+
+        if (focus.kind === "specific spell focus") {
+          const linkedSpellId = String(item.system?.focus?.spellId || "");
+          if (!linkedSpellId || linkedSpellId !== spell.id) continue;
+
+          focusPools.push({
+            key: `focus-specific-${item.id}`,
+            name: `${item.name} (${spell.name})`,
+            current: focus.rating,
+            max: focus.rating,
+            isActorPool: false
+          });
+        }
+
+        if (focus.kind === "spell type focus") {
+          const focusClass = sr2NormalizeSpellClass(item.system?.focus?.spellClass);
+          if (!focusClass || !spellClass || focusClass !== spellClass) continue;
+
+          focusPools.push({
+            key: `focus-category-${item.id}`,
+            name: `${item.name}${spellClassLabel ? ` (${spellClassLabel})` : ""}`,
+            current: focus.rating,
+            max: focus.rating,
+            isActorPool: false
+          });
+        }
+      }
+
       // Show TN selection dialog and roll for spellcasting
-      await this._showTargetNumberDialog(dicePool, title, 'spell', 4);
+      const castResult = await this._showTargetNumberDialog(dicePool, title, 'spell', defaultCastTargetNumber, null, {
+        baseSkillName: "Sorcery",
+        additionalPools: focusPools
+      });
+      if (!castResult?.rolled) return;
 
       // Calculate drain
       const drainValue = this._calculateDrain(spell.system.drain, force);
@@ -1912,7 +2484,26 @@ export class SR2ActorSheet extends ActorSheet {
 
       // Show TN selection dialog and roll drain resistance
       const drainTitle = `Drain Resistance for ${spell.name}`;
-      await this._showTargetNumberDialog(drainPool, drainTitle, 'drain', drainValue);
+
+      const focusDiceUsed = {};
+      for (const { pool, dice } of (castResult.poolsUsed || [])) {
+        if (pool?.isActorPool) continue;
+        if (!pool?.key) continue;
+        focusDiceUsed[pool.key] = (focusDiceUsed[pool.key] || 0) + (Number(dice) || 0);
+      }
+
+      const remainingFocusPools = focusPools.map(pool => {
+        const used = Number(focusDiceUsed[pool.key]) || 0;
+        return {
+          ...pool,
+          current: Math.max(0, (Number(pool.current) || 0) - used)
+        };
+      });
+
+      await this._showTargetNumberDialog(drainPool, drainTitle, 'drain', drainValue, null, {
+        baseSkillName: "Sorcery",
+        additionalPools: remainingFocusPools
+      });
     } catch (error) {
       console.error("SR2E | Failed to cast spell", error);
       ui.notifications.error("Spell casting failed (see console).");
@@ -2626,201 +3217,78 @@ export class SR2ActorSheet extends ActorSheet {
     });
   }
 
+  async _onDamageAdjust(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const button = event.currentTarget;
+    const damageType = String(button?.dataset?.damageType || "");
+    const adjust = parseInt(button?.dataset?.adjust, 10);
+    if (!["physical", "stun"].includes(damageType)) return;
+    if (!Number.isFinite(adjust) || adjust === 0) return;
+
+    const current = Number(this.actor.system?.health?.[damageType]?.value);
+    const max = Number(this.actor.system?.health?.[damageType]?.max);
+    const safeCurrent = Number.isFinite(current) ? current : 0;
+    const safeMax = Number.isFinite(max) ? max : 10;
+    const next = Math.max(0, Math.min(safeMax, safeCurrent + adjust));
+
+    await this.actor.update({ [`system.health.${damageType}.value`]: next });
+  }
+
+  async _onDamageInputChange(event) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    const input = event.currentTarget;
+    const damageType = String(input?.dataset?.damageType || "");
+    if (!["physical", "stun"].includes(damageType)) return;
+
+    const max = Number(this.actor.system?.health?.[damageType]?.max);
+    const safeMax = Number.isFinite(max) ? max : 10;
+
+    let next = parseInt(input.value, 10);
+    if (!Number.isFinite(next)) next = 0;
+    next = Math.max(0, Math.min(safeMax, next));
+
+    if (String(input.value) !== String(next)) {
+      input.value = String(next);
+    }
+
+    await this.actor.update({ [`system.health.${damageType}.value`]: next });
+  }
+
   /**
    * Handle initiative roll button clicks
    */
   async _onInitiativeRoll(event) {
     event.preventDefault();
+    event.stopPropagation();
 
     try {
-      // Validate actor exists and has required data
-      if (!this.actor) {
-        throw new Error("Actor not found");
-      }
+      const initiative = this.actor.system?.initiative || {};
 
-      if (!this.actor.system) {
-        throw new Error("Actor system data not found");
-      }
+      let initiativeDice = parseInt(initiative.dice, 10);
+      if (!Number.isFinite(initiativeDice) || initiativeDice < 1) initiativeDice = 1;
+      if (initiativeDice > 10) initiativeDice = 10;
 
-      // Validate initiative data structure exists
-      if (!this.actor.system.initiative) {
-        console.warn("SR2E | Initiative data missing, creating default structure");
-        await this.actor.update({
-          'system.initiative': {
-            dice: 1,
-            current: 0
-          }
-        });
-      }
+      const baseFromReaction = this.actor.system?.attributes?.reaction?.value;
+      let initiativeBase = parseInt(initiative.base ?? baseFromReaction ?? 0, 10);
+      if (!Number.isFinite(initiativeBase) || initiativeBase < 0) initiativeBase = 0;
 
-      // Validate attributes data structure exists
-      if (!this.actor.system.attributes) {
-        throw new Error("Actor attributes data not found");
-      }
+      const rollFormula = `${initiativeDice}d6 + ${initiativeBase}`;
+      const roll = await (new Roll(rollFormula)).evaluate({ async: true });
 
-      if (!this.actor.system.attributes.reaction) {
-        console.warn("SR2E | Reaction attribute missing, creating default structure");
-        await this.actor.update({
-          'system.attributes.reaction': {
-            value: 1
-          }
-        });
-      }
+      await roll.toMessage({
+        speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+        flavor: `${this.actor.name} rolls Initiative (${initiativeDice}d6+${initiativeBase})`
+      });
 
-      // Get initiative dice with validation and sensible defaults
-      let initiativeDice = this.actor.system.initiative.dice;
-
-      if (typeof initiativeDice !== 'number' || isNaN(initiativeDice) || initiativeDice < 1) {
-        console.warn(`SR2E | Invalid initiative dice value: ${initiativeDice}, defaulting to 1`);
-        initiativeDice = 1;
-        // Update the actor with the corrected value
-        await this.actor.update({
-          'system.initiative.dice': 1
-        });
-      }
-
-      // Cap initiative dice at reasonable maximum (10 dice)
-      if (initiativeDice > 10) {
-        console.warn(`SR2E | Initiative dice value too high: ${initiativeDice}, capping at 10`);
-        initiativeDice = 10;
-        await this.actor.update({
-          'system.initiative.dice': 10
-        });
-      }
-
-      // Get reaction bonus with validation and sensible defaults
-      let reactionBonus = this.actor.system.attributes.reaction.value;
-
-      if (typeof reactionBonus !== 'number' || isNaN(reactionBonus) || reactionBonus < 0) {
-        console.warn(`SR2E | Invalid reaction value: ${reactionBonus}, defaulting to 0`);
-        reactionBonus = 0;
-        // Update the actor with the corrected value
-        await this.actor.update({
-          'system.attributes.reaction.value': 0
-        });
-      }
-
-      // Cap reaction at reasonable maximum (30 for heavily augmented characters)
-      if (reactionBonus > 30) {
-        console.warn(`SR2E | Reaction value too high: ${reactionBonus}, capping at 30`);
-        reactionBonus = 30;
-        await this.actor.update({
-          'system.attributes.reaction.value': 30
-        });
-      }
-
-      // Create the roll formula (e.g., "3d6 + 12")
-      const rollFormula = `${initiativeDice}d6 + ${reactionBonus}`;
-
-      console.log(`SR2E | Rolling initiative for ${this.actor.name}: ${rollFormula}`);
-
-      // Create and evaluate the roll using Foundry's Roll class
-      // Note: Using standard d6 without exploding dice for initiative
-      let roll;
-      try {
-        roll = new Roll(rollFormula);
-        await roll.evaluate();
-      } catch (rollError) {
-        console.error("SR2E | Error creating or evaluating roll:", rollError);
-        throw new Error(`Failed to create initiative roll with formula ${rollFormula}: ${rollError.message}`);
-      }
-
-      // Validate roll results
-      if (!roll || typeof roll.total !== 'number' || isNaN(roll.total)) {
-        throw new Error(`Invalid roll result: ${roll?.total}`);
-      }
-
-      // Extract dice results with error handling
-      let diceResults = [];
-      let diceTotal = 0;
-
-      try {
-        if (roll.terms && roll.terms[0] && roll.terms[0].results) {
-          diceResults = roll.terms[0].results.map(r => r.result);
-          diceTotal = diceResults.reduce((sum, die) => sum + die, 0);
-        } else {
-          // Fallback: calculate dice total from final total minus reaction bonus
-          diceTotal = roll.total - reactionBonus;
-          diceResults = [`${diceTotal} (total)`];
-        }
-      } catch (extractError) {
-        console.warn("SR2E | Could not extract individual dice results:", extractError);
-        diceTotal = roll.total - reactionBonus;
-        diceResults = [`${diceTotal} (total)`];
-      }
-
-      const finalTotal = roll.total;
-
-      // Validate final total is reasonable
-      if (finalTotal < 1 || finalTotal > 100) {
-        console.warn(`SR2E | Unusual initiative total: ${finalTotal}`);
-      }
-
-      // Update the actor's current initiative with error handling
-      try {
-        await this.actor.update({
-          'system.initiative.current': finalTotal
-        });
-      } catch (updateError) {
-        console.error("SR2E | Failed to update actor initiative:", updateError);
-        ui.notifications.error("Failed to save initiative result. You may not have permission to modify this character.");
-        // Continue with display and chat message even if update fails
-      }
-
-      // Display the result in the UI with error handling
-      try {
-        this._displayInitiativeResult(diceResults, diceTotal, reactionBonus, finalTotal, rollFormula);
-      } catch (displayError) {
-        console.error("SR2E | Failed to display initiative result:", displayError);
-        ui.notifications.warn("Initiative rolled successfully but display failed. Check chat for results.");
-      }
-
-      // Send roll to chat with error handling
-      try {
-        await roll.toMessage({
-          speaker: ChatMessage.getSpeaker({ actor: this.actor }),
-          flavor: `${this.actor.name} rolls Initiative`
-        });
-      } catch (chatError) {
-        console.error("SR2E | Failed to send initiative roll to chat:", chatError);
-        ui.notifications.warn("Initiative rolled successfully but failed to post to chat.");
-      }
-
-      // Automatically add character to initiative tracker with error handling
-      try {
-        await this._addToInitiativeTracker(finalTotal);
-      } catch (trackerError) {
-        console.error("SR2E | Failed to add to initiative tracker:", trackerError);
-        ui.notifications.warn(`Initiative rolled (${finalTotal}) but failed to add to tracker. You can add manually.`);
-      }
-
-      console.log(`SR2E | ${this.actor.name} rolled initiative: ${rollFormula} = ${finalTotal}`);
-      ui.notifications.info(`${this.actor.name} rolled initiative: ${finalTotal}`);
-
+      const total = Number(roll.total) || 0;
+      await this.actor.update({ "system.initiative.current": total });
     } catch (error) {
       console.error("SR2E | Error rolling initiative:", error);
-
-      // Provide specific error messages based on error type
-      let errorMessage = "Failed to roll initiative.";
-
-      if (error.message.includes("not found")) {
-        errorMessage = "Character data is missing or corrupted. Try refreshing the sheet.";
-      } else if (error.message.includes("permission")) {
-        errorMessage = "You don't have permission to modify this character.";
-      } else if (error.message.includes("roll")) {
-        errorMessage = "Failed to calculate dice roll. Check character's initiative and reaction values.";
-      } else {
-        errorMessage = `Initiative roll failed: ${error.message}`;
-      }
-
-      ui.notifications.error(errorMessage);
-
-      // Try to refresh the sheet to show current state
-      try {
-        this.render(false);
-      } catch (renderError) {
-        console.error("SR2E | Failed to refresh sheet after initiative error:", renderError);
-      }
+      ui.notifications.error("Failed to roll initiative (see console).");
     }
   }
 
@@ -3778,7 +4246,18 @@ export class SR2ActorSheet extends ActorSheet {
       for (const i of this.actor.items) {
         if (i.id === excludeItemId) continue;
         if (i.type === "spell") spent += Math.max(0, Number(i.system.force) || 0);
-        if (i.type === "gear") spent += Math.max(0, Number(i.system.bondCost) || 0);
+        if (i.type === "gear") {
+          const quantity = Math.max(1, Number(i.system.quantity) || 1);
+          const explicitBondCost = Math.max(0, Number(i.system.bondCost) || 0);
+          const perItemCost = explicitBondCost > 0
+            ? explicitBondCost
+            : sr2InferFocusBondCostForGearItem({
+              category: i.system.category,
+              name: i.name,
+              price: i.system.price ?? i.system.cost ?? 0
+            });
+          if (perItemCost > 0) spent += perItemCost * quantity;
+        }
       }
       return spent;
     };

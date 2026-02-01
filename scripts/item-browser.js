@@ -2,7 +2,11 @@
  * Item Browser for Shadowrun 2E
  * Allows browsing and adding items from JSON data files
  */
-import { sr2InferFocusBondCostForGearItem } from "./sr2-rules.js";
+import {
+  sr2ComputeContactLevelSummary,
+  sr2ComputeCreationNuyenBudgetBreakdown,
+  sr2InferFocusBondCostForGearItem
+} from "./sr2-rules.js";
 
 export class SR2ItemBrowser extends Application {
 
@@ -60,19 +64,20 @@ export class SR2ItemBrowser extends Application {
     this._filterItems();
 
     const buyer = this._getBuyerActor();
-    const buyerNuyen = this._getActorNuyen(buyer);
+    const purchaseFunds = this._getPurchaseFunds(buyer);
+    const buyerNuyen = purchaseFunds.value;
     for (const item of this.filteredItems) {
       const costValue = item._buyCostValue ?? null;
       const costDisplay = item._buyCostDisplay ?? "?";
       const cost = { value: costValue, display: costDisplay };
 
-      item.showBuy = costValue !== null;
+      item.showBuy = costValue !== null && this._supportsNuyenPurchases();
       item.buyCostDisplay = costDisplay;
       item.buyCostValue = costValue;
       item.canBuy = Boolean(buyer) && costValue !== null && buyerNuyen >= costValue;
       item.buyDisabled = !item.canBuy;
       item.buyButtonClass = item.canBuy ? "can-buy" : "cant-buy";
-      item.buyTitle = this._getBuyTitle({ buyer, buyerNuyen, cost, item });
+      item.buyTitle = this._getBuyTitle({ buyer, purchaseFunds, buyerNuyen, cost, item });
     }
     
     return {
@@ -454,32 +459,42 @@ export class SR2ItemBrowser extends Application {
       return;
     }
 
-    const buyerNuyen = this._getActorNuyen(buyer);
+    const purchaseFunds = this._getPurchaseFunds(buyer);
+    const buyerNuyen = purchaseFunds.value;
     if (buyerNuyen < cost.value) {
-      ui.notifications.warn(`Not enough nuyen to buy ${itemData.name}.`);
+      const label = purchaseFunds.mode === "creation" ? "resource budget" : "nuyen";
+      ui.notifications.warn(`Not enough ${label} to buy ${itemData.name}.`);
       return;
     }
 
-    try {
-      await buyer.update({ "system.resources.nuyen": buyerNuyen - cost.value });
-    } catch (error) {
-      console.error("Failed to deduct nuyen:", error);
-      ui.notifications.error("Failed to deduct nuyen for purchase.");
-      return;
+    if (purchaseFunds.mode !== "creation") {
+      try {
+        await buyer.update({ "system.resources.nuyen": buyerNuyen - cost.value });
+      } catch (error) {
+        console.error("Failed to deduct nuyen:", error);
+        ui.notifications.error("Failed to deduct nuyen for purchase.");
+        return;
+      }
     }
 
     const createdItem = await this.addItem(itemData, { notify: false });
     if (!createdItem) {
-      try {
-        const currentNuyen = this._getActorNuyen(buyer);
-        await buyer.update({ "system.resources.nuyen": currentNuyen + cost.value });
-      } catch (error) {
-        console.error("Failed to refund nuyen after purchase failure:", error);
+      if (purchaseFunds.mode !== "creation") {
+        try {
+          const currentNuyen = this._getActorNuyen(buyer);
+          await buyer.update({ "system.resources.nuyen": currentNuyen + cost.value });
+        } catch (error) {
+          console.error("Failed to refund nuyen after purchase failure:", error);
+        }
       }
       return;
     }
 
-    ui.notifications.info(`Bought ${itemData.name} for ${cost.value}¥.`);
+    if (purchaseFunds.mode === "creation") {
+      ui.notifications.info(`Added ${itemData.name} to purchases (¥${cost.value} from resource budget).`);
+    } else {
+      ui.notifications.info(`Bought ${itemData.name} for ¥${cost.value}.`);
+    }
     this._cancelScheduledRender();
     this.render(false);
   }
@@ -620,6 +635,70 @@ export class SR2ItemBrowser extends Application {
     return Number.isFinite(value) ? value : 0;
   }
 
+  _supportsNuyenPurchases() {
+    return ["cyberware", "bioware", "weapon", "armor", "gear"].includes(this.itemType);
+  }
+
+  _getSystemSetting(key, fallback) {
+    try {
+      return game?.settings?.get("shadowrun2e", key) ?? fallback;
+    } catch (err) {
+      return fallback;
+    }
+  }
+
+  _isCreationBudgetActive(actor) {
+    if (!actor) return false;
+
+    const flag = actor.getFlag?.("shadowrun2e", "creationMode");
+    let creationMode = false;
+    if (typeof flag === "boolean") {
+      creationMode = flag;
+    } else {
+      const creation = actor.system?.creation;
+      creationMode = Boolean(
+        (creation?.attributePoints || 0) > 0 ||
+        (creation?.skillPoints || 0) > 0 ||
+        (creation?.forcePoints || 0) > 0
+      );
+    }
+    if (!creationMode) return false;
+
+    const startingNuyen = Number(actor.system?.creation?.startingNuyen) || 0;
+    if (startingNuyen <= 0) return false;
+
+    return !actor.system?.creation?.resourcesFinalized;
+  }
+
+  _getCreationBudgetRemaining(actor) {
+    const contactLevelsEnabled = Boolean(this._getSystemSetting("contactLevels", false));
+    const disableBuddies = contactLevelsEnabled || Boolean(this._getSystemSetting("disableBuddies", false));
+    const budgetOptions = { disableBuddies };
+
+    if (contactLevelsEnabled && actor?.type === "character") {
+      const charisma = Number(actor.system?.attributes?.charisma?.value) || 0;
+      const linkedContacts = game?.actors?.filter(a =>
+        a.type === "contact" && a.system?.details?.leaderId === actor.id
+      ) ?? [];
+
+      budgetOptions.contactLevelsSummary = sr2ComputeContactLevelSummary(
+        linkedContacts.map(a => ({ id: a.id, sort: Number(a.sort) || 0, contactLevel: a.system?.details?.contactLevel })),
+        charisma
+      );
+    }
+
+    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(actor.system, actor.items, budgetOptions);
+    return Number(breakdown?.remainingNuyen) || 0;
+  }
+
+  _getPurchaseFunds(actor) {
+    if (this._supportsNuyenPurchases() && this._isCreationBudgetActive(actor)) {
+      return { mode: "creation", value: this._getCreationBudgetRemaining(actor) };
+    }
+
+    return { mode: "nuyen", value: this._getActorNuyen(actor) };
+  }
+
   _parseNuyenCost(rawCost) {
     if (rawCost === undefined || rawCost === null) return { value: null, display: "?" };
 
@@ -633,10 +712,14 @@ export class SR2ItemBrowser extends Application {
     return Number.isFinite(value) ? { value, display } : { value: null, display };
   }
 
-  _getBuyTitle({ buyer, buyerNuyen, cost, item }) {
+  _getBuyTitle({ buyer, purchaseFunds, buyerNuyen, cost, item }) {
     if (!buyer) return "No buyer available";
     if (cost.value === null) return "Can't buy: cost is not a number";
-    if (buyerNuyen < cost.value) return `Can't buy: need ${cost.value}¥`;
+    if (buyerNuyen < cost.value) {
+      const label = purchaseFunds.mode === "creation" ? "resource budget" : "nuyen";
+      return `Can't buy: need ¥${cost.value} (${label})`;
+    }
+    if (purchaseFunds.mode === "creation") return `Add to purchases for ¥${cost.value} (resource budget)`;
     if (buyer === this.actor) return `Buy for ${cost.value}¥`;
     return `Buy for ${cost.value}¥ (paid by ${buyer.name})`;
   }

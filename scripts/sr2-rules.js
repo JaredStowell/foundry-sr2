@@ -42,6 +42,100 @@ export const SR2_EXTRAS_COSTS = {
     followers: 200000
 };
 
+export const SR2_CONTACT_LEVEL_RULES = {
+    // Two free level 1 contacts.
+    freeContacts: 2,
+    // Purchase limits (excluding the two free contacts).
+    maxExtraContactsMultiplier: 3, // max extra level 1 contacts
+    maxExtraLevel2Multiplier: 2, // max extra upgrades to level 2
+    maxExtraLevel3Multiplier: 1, // max extra upgrades to level 3
+    // Costs.
+    costExtraContact: 5000,
+    costUpgradeToLevel2: 3000,
+    costUpgradeToLevel3: 7000,
+    // Allowed contact level range.
+    minLevel: 1,
+    maxLevel: 3
+};
+
+export function sr2NormalizeContactLevel(value) {
+    const num = parseInt(value, 10);
+    if (!Number.isFinite(num)) return SR2_CONTACT_LEVEL_RULES.minLevel;
+    return Math.max(SR2_CONTACT_LEVEL_RULES.minLevel, Math.min(SR2_CONTACT_LEVEL_RULES.maxLevel, num));
+}
+
+export function sr2ComputeContactLevelSummary(contacts, charisma, options = {}) {
+    const freeContacts = Math.max(
+        0,
+        parseInt(options?.freeContacts ?? SR2_CONTACT_LEVEL_RULES.freeContacts, 10) || 0
+    );
+    const cha = Math.max(0, parseInt(charisma, 10) || 0);
+
+    const normalized = (contacts || [])
+        .map(c => ({
+            id: String(c?.id || ""),
+            sort: Number(c?.sort) || 0,
+            contactLevel: sr2NormalizeContactLevel(c?.contactLevel)
+        }))
+        .sort((a, b) => (a.sort - b.sort) || a.id.localeCompare(b.id));
+
+    const totalContacts = normalized.length;
+    const freeSlots = Math.max(0, Math.min(freeContacts, totalContacts));
+    const extraContacts = Math.max(0, totalContacts - freeSlots);
+
+    const maxExtraContacts = SR2_CONTACT_LEVEL_RULES.maxExtraContactsMultiplier * cha;
+    const maxExtraLevel2 = SR2_CONTACT_LEVEL_RULES.maxExtraLevel2Multiplier * cha;
+    const maxExtraLevel3 = SR2_CONTACT_LEVEL_RULES.maxExtraLevel3Multiplier * cha;
+
+    const maxTotalContacts = freeContacts + maxExtraContacts;
+
+    const totalLevel2 = normalized.filter(c => c.contactLevel >= 2).length;
+    const totalLevel3 = normalized.filter(c => c.contactLevel >= 3).length;
+
+    // The "two free contacts" are an allowance, not a specific set of actors.
+    // For limit checks, we treat up to `freeSlots` contacts as exempt and pick the highest-level contacts first
+    // (to minimize the number of "extra" Level 2/3 upgrades counted against Charisma-based maxima).
+    const exemptedLevel3 = Math.min(freeSlots, totalLevel3);
+    const remainingSlots = freeSlots - exemptedLevel3;
+    const exemptedLevel2 = exemptedLevel3 + Math.min(remainingSlots, Math.max(0, totalLevel2 - exemptedLevel3));
+
+    const extraLevel2 = Math.max(0, totalLevel2 - exemptedLevel2);
+    const extraLevel3 = Math.max(0, totalLevel3 - exemptedLevel3);
+
+    const contactsBaseCost = extraContacts * SR2_CONTACT_LEVEL_RULES.costExtraContact;
+    const contactsLevel2Cost = totalLevel2 * SR2_CONTACT_LEVEL_RULES.costUpgradeToLevel2;
+    const contactsLevel3Cost = totalLevel3 * SR2_CONTACT_LEVEL_RULES.costUpgradeToLevel3;
+    const contactsTotalCost = contactsBaseCost + contactsLevel2Cost + contactsLevel3Cost;
+
+    return {
+        freeContacts,
+        charisma: cha,
+        counts: {
+            totalContacts,
+            maxTotalContacts,
+            extraContacts,
+            maxExtraContacts,
+            extraLevel2,
+            maxExtraLevel2,
+            extraLevel3,
+            maxExtraLevel3,
+            totalLevel2,
+            totalLevel3
+        },
+        costs: {
+            contactsBaseCost,
+            contactsLevel2Cost,
+            contactsLevel3Cost,
+            contactsTotalCost
+        },
+        over: {
+            extraContacts: extraContacts > maxExtraContacts,
+            extraLevel2: extraLevel2 > maxExtraLevel2,
+            extraLevel3: extraLevel3 > maxExtraLevel3
+        }
+    };
+}
+
 export function sr2IsPriorityLetter(value) {
     return ["A", "B", "C", "D", "E"].includes(value);
 }
@@ -59,17 +153,23 @@ export function sr2ComputeItemNuyenSpent(items) {
     return spent;
 }
 
-export function sr2ComputeCreationExtrasCost(extras) {
-    const contacts = Math.max(0, parseInt(extras?.contacts, 10) || 0);
-    const buddy = Math.max(0, parseInt(extras?.buddy, 10) || 0);
-    const gang = Math.max(0, parseInt(extras?.gang, 10) || 0);
-    const followers = Math.max(0, parseInt(extras?.followers, 10) || 0);
+export function sr2ComputeCreationExtrasCost(extras, options = {}) {
+    const contactLevelsSummary = options?.contactLevelsSummary;
 
-    // Characters start with two free contacts during creation (SR2 core).
-    const paidContacts = Math.max(0, contacts - 2);
+    const contacts = Math.max(0, parseInt(extras?.contacts, 10) || 0);
+    const buddy = options?.disableBuddies
+        ? 0
+        : Math.min(1, Math.max(0, parseInt(extras?.buddy, 10) || 0));
+    const gang = Math.min(1, Math.max(0, parseInt(extras?.gang, 10) || 0));
+    const followers = Math.min(1, Math.max(0, parseInt(extras?.followers, 10) || 0));
+
+    const contactsCost = (contactLevelsSummary && typeof contactLevelsSummary?.costs?.contactsTotalCost === "number")
+        ? Math.max(0, Number(contactLevelsSummary.costs.contactsTotalCost) || 0)
+        // Default SR2 behavior: Characters start with two free contacts during creation (SR2 core).
+        : Math.max(0, contacts - 2) * (SR2_EXTRAS_COSTS.contact || 0);
 
     return (
-        paidContacts * (SR2_EXTRAS_COSTS.contact || 0) +
+        contactsCost +
         buddy * (SR2_EXTRAS_COSTS.buddy || 0) +
         gang * (SR2_EXTRAS_COSTS.gang || 0) +
         followers * (SR2_EXTRAS_COSTS.followers || 0)
@@ -87,7 +187,7 @@ export function sr2ComputeCreationLifestyleCost(lifestyleKey, months) {
     };
 }
 
-export function sr2ComputeCreationNuyenBudgetBreakdown(system, items) {
+export function sr2ComputeCreationNuyenBudgetBreakdown(system, items, options = {}) {
     const budgetNuyen = Number(system?.creation?.startingNuyen) || 0;
     const itemCost = sr2ComputeItemNuyenSpent(items);
 
@@ -100,7 +200,7 @@ export function sr2ComputeCreationNuyenBudgetBreakdown(system, items) {
     const lifestyleCost = lifestyles.reduce((sum, l) => sum + (Number(l?.lifestyleCost) || 0), 0);
     const primaryLifestyle = lifestyles[0] ?? sr2ComputeCreationLifestyleCost("street", 1);
 
-    const extrasCost = sr2ComputeCreationExtrasCost(system?.creation?.extras);
+    const extrasCost = sr2ComputeCreationExtrasCost(system?.creation?.extras, options);
 
     const totalCost = itemCost + lifestyleCost + extrasCost;
     return {
@@ -247,44 +347,65 @@ export function sr2ComputeForcePointsSpent(items) {
         }
 
         if (item.type === "gear") {
-            const bondCost = Number(item.system.bondCost) || 0;
-            if (bondCost > 0) spent += bondCost;
+            const quantity = Math.max(1, Number(item.system.quantity) || 1);
+            const explicitBondCost = Math.max(0, Number(item.system.bondCost) || 0);
+            const perItemCost = explicitBondCost > 0
+                ? explicitBondCost
+                : sr2InferFocusBondCostForGearItem({
+                    category: item.system.category,
+                    name: item.name,
+                    price: item.system.price ?? item.system.cost ?? 0
+                });
+
+            if (perItemCost > 0) spent += perItemCost * quantity;
         }
     }
     return spent;
 }
 
-export function sr2InferFocusBondCostForGearItem({ category, name, price }) {
-    if (String(category || "").trim() !== "Magical Equipment") return 0;
-
+export function sr2ParseFocusName(name) {
     const itemName = String(name || "").trim();
-    if (!itemName) return 0;
+    if (!itemName) return null;
 
-    if (itemName === "Spell Lock") return 1;
+    if (itemName === "Spell Lock") {
+        return { kind: "spell lock", rating: 0, name: itemName };
+    }
 
-    const match = itemName.match(/^(Specific Spell Focus|Spell Type Focus|Spirit Focus|Power Focus|Weapon Focus)\\s+(\\d+)$/i);
-    if (!match) return 0;
+    const match = itemName.match(/^(Specific Spell Focus|Spell Type Focus|Spell Category Focus|Spirit Focus|Power Focus|Weapon Focus)\\s+(\\d+)$/i);
+    if (!match) return null;
 
-    const kind = String(match[1] || "").toLowerCase();
+    let kind = String(match[1] || "").toLowerCase();
+    if (kind === "spell category focus") kind = "spell type focus";
     const rating = parseInt(match[2], 10);
-    if (!Number.isFinite(rating) || rating <= 0) return 0;
+    if (!Number.isFinite(rating) || rating <= 0) return null;
 
-    if (kind === "specific spell focus") return rating;
-    if (kind === "spell type focus") return 3 * rating;
-    if (kind === "spirit focus") return 2 * rating;
-    if (kind === "power focus") return 5 * rating;
+    return { kind, rating, name: itemName };
+}
 
-    if (kind === "weapon focus") {
+export function sr2InferFocusBondCostForGearItem({ category, name, price }) {
+    const normalizedCategory = String(category || "").trim();
+    if (normalizedCategory && normalizedCategory !== "Magical Equipment") return 0;
+
+    const focus = sr2ParseFocusName(name);
+    if (!focus) return 0;
+    if (focus.kind === "spell lock") return 1;
+
+    if (focus.kind === "specific spell focus") return focus.rating;
+    if (focus.kind === "spell type focus") return 3 * focus.rating;
+    if (focus.kind === "spirit focus") return 2 * focus.rating;
+    if (focus.kind === "power focus") return 5 * focus.rating;
+
+    if (focus.kind === "weapon focus") {
         const numericPrice = Number(String(price ?? "").replace(/[^\d.]/g, ""));
-        const smallPrice = rating * 90000 + 200000;
-        const largePrice = rating * 90000 + 300000;
+        const smallPrice = focus.rating * 90000 + 200000;
+        const largePrice = focus.rating * 90000 + 300000;
 
-        if (numericPrice === largePrice) return 5 * rating;
-        if (numericPrice === smallPrice) return 4 * rating;
+        if (numericPrice === largePrice) return 5 * focus.rating;
+        if (numericPrice === smallPrice) return 4 * focus.rating;
 
         // Fallback: if we can't identify the exact table, treat a higher price as a large focus.
-        if (Number.isFinite(numericPrice) && numericPrice > smallPrice) return 5 * rating;
-        return 4 * rating;
+        if (Number.isFinite(numericPrice) && numericPrice > smallPrice) return 5 * focus.rating;
+        return 4 * focus.rating;
     }
 
     return 0;
@@ -294,4 +415,85 @@ export function sr2FormatSignedModifier(value) {
     const num = Number(value) || 0;
     if (num === 0) return "0";
     return num > 0 ? `+${num}` : `${num}`;
+}
+
+export function sr2CountSpellLocksPurchased(items) {
+    let total = 0;
+    for (const item of (items || [])) {
+        if (!item) continue;
+        if (item.type !== "gear") continue;
+
+        const name = String(item.name || "").trim().toLowerCase();
+        if (name !== "spell lock") continue;
+
+        const rawQuantity = Number(item.system?.quantity);
+        const quantity = Number.isFinite(rawQuantity) ? Math.max(0, Math.floor(rawQuantity)) : 1;
+        total += quantity;
+    }
+    return total;
+}
+
+export function sr2CountAssignedSpellLocks(items) {
+    let total = 0;
+    for (const item of (items || [])) {
+        if (!item) continue;
+        if (item.type !== "spell") continue;
+        if (item.system?.spellLock?.assigned) total += 1;
+    }
+    return total;
+}
+
+export function sr2ComputeSpellLockCapacity(items) {
+    const total = sr2CountSpellLocksPurchased(items);
+    const assigned = sr2CountAssignedSpellLocks(items);
+    return {
+        total,
+        assigned,
+        remaining: total - assigned
+    };
+}
+
+export function sr2InferSpellLockAugmentationModifiersFromSpellName(spellName) {
+    const name = String(spellName || "").trim();
+    if (!name) return {};
+
+    const increaseReflexesMatch = name.match(/^Increase Reflexes\s*\+(\d+)\s*(?:initiative\s+)?(?:die|dice)$/i);
+    if (increaseReflexesMatch) {
+        const dice = parseInt(increaseReflexesMatch[1], 10);
+        if (Number.isFinite(dice) && dice > 0) {
+            return { INI: dice };
+        }
+    }
+
+    return {};
+}
+
+export function sr2ComputeSpellLockAugmentationModifiers(items) {
+    const modifiers = {
+        BOD: 0,
+        QCK: 0,
+        STR: 0,
+        CHA: 0,
+        INT: 0,
+        WIL: 0,
+        RCT: 0,
+        INI: 0,
+        CPL: 0
+    };
+
+    for (const item of (items || [])) {
+        if (!item?.system) continue;
+        if (item.type !== "spell") continue;
+
+        const spellLock = item.system.spellLock;
+        if (!spellLock?.assigned || !spellLock?.enabled) continue;
+
+        const inferred = sr2InferSpellLockAugmentationModifiersFromSpellName(item.name);
+        for (const [key, value] of Object.entries(inferred)) {
+            if (!Object.prototype.hasOwnProperty.call(modifiers, key)) continue;
+            modifiers[key] += Number(value) || 0;
+        }
+    }
+
+    return modifiers;
 }

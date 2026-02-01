@@ -1139,8 +1139,27 @@ export class SR2InitiativeTracker extends Application {
     }
 }
 
-// Global instance
-let initiativeTracker = null;
+function sr2EnsureShadowrunNamespace() {
+    if (!game.shadowrun2e) game.shadowrun2e = {};
+}
+
+/**
+ * Get (or create) the global initiative tracker instance.
+ * This keeps the tracker consistent across sheets, token controls, and macros.
+ */
+export function sr2GetInitiativeTracker() {
+    sr2EnsureShadowrunNamespace();
+    if (!game.shadowrun2e.initiativeTracker) {
+        game.shadowrun2e.initiativeTracker = new SR2InitiativeTracker();
+    }
+    return game.shadowrun2e.initiativeTracker;
+}
+
+export function sr2OpenInitiativeTracker() {
+    const tracker = sr2GetInitiativeTracker();
+    tracker.render(true);
+    return tracker;
+}
 
 /**
  * Initialize the initiative tracker
@@ -1186,10 +1205,7 @@ export function initializeInitiativeTracker() {
                 icon: "fas fa-stopwatch",
                 button: true,
                 onClick: () => {
-                    if (!initiativeTracker) {
-                        initiativeTracker = new SR2InitiativeTracker();
-                    }
-                    initiativeTracker.render(true);
+                    sr2OpenInitiativeTracker();
                 }
             });
         }
@@ -1201,10 +1217,7 @@ export function initializeInitiativeTracker() {
         hint: "Opens the Shadowrun 2E Initiative Tracker",
         editable: [{ key: "KeyI", modifiers: ["Control"] }],
         onDown: () => {
-            if (!initiativeTracker) {
-                initiativeTracker = new SR2InitiativeTracker();
-            }
-            initiativeTracker.render(true);
+            sr2OpenInitiativeTracker();
         }
     });
 }

@@ -1,6 +1,8 @@
 /**
  * Extend the base Actor document to support Shadowrun 2E
  */
+import { sr2ComputeSpellLockAugmentationModifiers } from "../sr2-rules.js";
+
 export class SR2Actor extends Actor {
 
   /** @override */
@@ -113,12 +115,21 @@ export class SR2Actor extends Actor {
     // Update the reaction attribute with modifiers
     attrs.reaction.value = modifiedAttrs.reaction;
 
-    // Magic = Essence (rounded down) for awakened/adepts; 0 otherwise
+    // Magic is capped by Essence (rounded down) for awakened/adepts; 0 otherwise
     const isMagical = Boolean(systemData.magic?.awakened || systemData.magic?.physicalAdept);
     if (attrs.magic) {
       if (isMagical) {
         const essence = Number(attrs.essence?.value);
-        attrs.magic.value = Number.isFinite(essence) ? Math.floor(Math.max(0, essence)) : 0;
+        const maxMagic = Number.isFinite(essence) ? Math.floor(Math.max(0, essence)) : 0;
+
+        let magicValue = Number(attrs.magic.value);
+        if (!Number.isFinite(magicValue)) magicValue = maxMagic;
+
+        // Default to max Magic if not initialized (so awakened actors start with a Magic rating).
+        if (magicValue <= 0 && maxMagic > 0) magicValue = maxMagic;
+
+        // Clamp current Magic to Essence-derived maximum.
+        attrs.magic.value = Math.max(0, Math.min(magicValue, maxMagic));
       } else {
         attrs.magic.value = 0;
       }
@@ -128,11 +139,19 @@ export class SR2Actor extends Actor {
     systemData.pools.combat.max = Math.floor((modifiedAttrs.quickness + modifiedAttrs.intelligence + modifiedAttrs.willpower) / 2) + (modifiers.CPL || 0);
 
     const isSpellcaster = systemData.magic.awakened && !systemData.magic.physicalAdept;
+    const powerFocusBonus = isSpellcaster ? this._getPowerFocusBonus() : 0;
+    this._sr2PowerFocusBonus = powerFocusBonus;
 
-    // Spell Pool = highest Sorcery skill (spellcasters only)
+    if (attrs.magic) {
+      const baseMagic = Number(attrs.magic.value) || 0;
+      attrs.magic.powerFocusBonus = powerFocusBonus;
+      attrs.magic.effective = baseMagic + powerFocusBonus;
+    }
+
+    // Magic Pool (stored as `pools.spell`) = Sorcery + Power Focus (spellcasters only)
     if (isSpellcaster) {
       const sorcerySkill = this._getHighestSorcerySkill();
-      systemData.pools.spell.max = sorcerySkill;
+      systemData.pools.spell.max = sorcerySkill + powerFocusBonus;
     } else {
       systemData.pools.spell.max = 0;
     }
@@ -252,6 +271,25 @@ export class SR2Actor extends Actor {
     return highestLevel * 2;
   }
 
+  _getPowerFocusBonus() {
+    const powerFoci = this.items.filter(i =>
+      i.type === 'gear' &&
+      i.system?.equipped &&
+      /^Power Focus\\s+\\d+$/i.test(String(i.name || ""))
+    );
+
+    if (powerFoci.length === 0) return 0;
+
+    let highestRating = 0;
+    for (const focus of powerFoci) {
+      const match = String(focus.name || "").match(/^Power Focus\\s+(\\d+)$/i);
+      const rating = match ? parseInt(match[1], 10) : 0;
+      if (Number.isFinite(rating) && rating > highestRating) highestRating = rating;
+    }
+
+    return highestRating;
+  }
+
   /**
    * Calculate attribute modifiers from installed cyberware and bioware
    * Parses the "Mods" field to extract bonuses like +1BOD, +2RCT, etc.
@@ -310,6 +348,14 @@ export class SR2Actor extends Actor {
             modifiers[attribute] += finalValue;
           }
         }
+      }
+    }
+
+    // Spell Lock sustained spell bonuses (e.g., Increase Reflexes)
+    const spellLockModifiers = sr2ComputeSpellLockAugmentationModifiers(this.items);
+    for (const [key, value] of Object.entries(spellLockModifiers)) {
+      if (Object.prototype.hasOwnProperty.call(modifiers, key)) {
+        modifiers[key] += Number(value) || 0;
       }
     }
 

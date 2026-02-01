@@ -2,7 +2,7 @@
 
   {{!-- Sheet Header --}}
 	  <header class="sheet-header">
-    <img class="profile-img" src="{{actor.img}}" data-edit="img" title="{{actor.name}}" height="100" width="100"/>
+    <img class="profile-img" src="{{actor.img}}" data-edit="img" title="{{actor.name}}" height="72" width="72"/>
     <div class="header-fields">
 	      <h1 class="charname"><input name="name" type="text" value="{{actor.name}}" placeholder="Character Name"/></h1>
         {{#if (eq actor.type "follower")}}
@@ -18,40 +18,256 @@
             </div>
 		      </div>
 		      {{/if}}
-		      <div class="resource">
-		        <label class="resource-label">Metatype</label>
-		        <select class="metatype-select" name="system.details.metatype" data-dtype="String">
-	          <option value="human" {{#if (eq system.details.metatype "human")}}selected{{/if}}>Human</option>
-	          <option value="elf" {{#if (eq system.details.metatype "elf")}}selected{{/if}}>Elf</option>
-	          <option value="dwarf" {{#if (eq system.details.metatype "dwarf")}}selected{{/if}}>Dwarf</option>
-	          <option value="ork" {{#if (eq system.details.metatype "ork")}}selected{{/if}}>Ork</option>
-	          <option value="troll" {{#if (eq system.details.metatype "troll")}}selected{{/if}}>Troll</option>
-	        </select>
-	      </div>
-	    </div>
-	  </header>
+	        <div class="sr2-header-resources">
+	          <div class="resource">
+	            <label class="resource-label">Metatype</label>
+	            <select class="metatype-select" name="system.details.metatype" data-dtype="String">
+	              <option value="human" {{#if (eq system.details.metatype "human")}}selected{{/if}}>Human</option>
+	              <option value="elf" {{#if (eq system.details.metatype "elf")}}selected{{/if}}>Elf</option>
+	              <option value="dwarf" {{#if (eq system.details.metatype "dwarf")}}selected{{/if}}>Dwarf</option>
+	              <option value="ork" {{#if (eq system.details.metatype "ork")}}selected{{/if}}>Ork</option>
+	              <option value="troll" {{#if (eq system.details.metatype "troll")}}selected{{/if}}>Troll</option>
+	            </select>
+	          </div>
+	          {{#if system.initiative}}
+	            <div class="resource sr2-initiative-resource">
+	              <label class="resource-label">Initiative</label>
+	              <div class="sr2-inline-controls sr2-initiative-inline">
+	                <button type="button"
+	                        class="initiative-roll-btn sr2-small-action"
+	                        title="Roll {{system.initiative.dice}}d6+{{system.initiative.base}}">
+	                  <i class="fas fa-dice-d6"></i>
+	                </button>
+	                <span class="sr2-inline-formula">{{system.initiative.dice}}d6+{{system.initiative.base}}</span>
+	              </div>
+	            </div>
+	          {{/if}}
+	
+	          {{#if system.health}}
+	            <div class="resource sr2-damage-resource">
+	              <label class="resource-label">Physical</label>
+	              <div class="sr2-inline-controls">
+	                <button type="button" class="sr2-damage-adjust sr2-small-action" data-damage-type="physical" data-adjust="-1" title="Decrease Physical Damage">-</button>
+	                <input class="sr2-damage-input" type="number" name="system.health.physical.value" value="{{system.health.physical.value}}" data-dtype="Number" min="0" max="{{system.health.physical.max}}" data-damage-type="physical"/>
+	                <button type="button" class="sr2-damage-adjust sr2-small-action" data-damage-type="physical" data-adjust="1" title="Increase Physical Damage">+</button>
+	              </div>
+	            </div>
+	            <div class="resource sr2-damage-resource">
+	              <label class="resource-label">Stun</label>
+	              <div class="sr2-inline-controls">
+	                <button type="button" class="sr2-damage-adjust sr2-small-action" data-damage-type="stun" data-adjust="-1" title="Decrease Stun Damage">-</button>
+	                <input class="sr2-damage-input" type="number" name="system.health.stun.value" value="{{system.health.stun.value}}" data-dtype="Number" min="0" max="{{system.health.stun.max}}" data-damage-type="stun"/>
+	                <button type="button" class="sr2-damage-adjust sr2-small-action" data-damage-type="stun" data-adjust="1" title="Increase Stun Damage">+</button>
+	              </div>
+	            </div>
+	          {{/if}}
+	          {{#if (eq actor.type "contact")}}
+	            {{#if sr2Settings.contactLevels}}
+	              <div class="resource">
+	                <label class="resource-label">Contact Level</label>
+	                <input type="number" name="system.details.contactLevel" value="{{system.details.contactLevel}}" data-dtype="Number" min="1" max="3"/>
+	              </div>
+	            {{/if}}
+	          {{/if}}
+	        </div>
+		    </div>
+		  </header>
 
-  {{!-- Sheet Tab Navigation --}}
-  <nav class="sheet-tabs tabs" data-group="primary">
-    <a class="item" data-tab="attributes">Attributes</a>
-    <a class="item" data-tab="skills">Skills</a>
-    <a class="item" data-tab="combat">Combat</a>
-    <a class="item" data-tab="gear">Gear</a>
-    <a class="item" data-tab="augmentations">Augmentations</a>
-    <a class="item" data-tab="magic">Magic</a>
-    {{#if (eq actor.type "character")}}
-      <a class="item" data-tab="connections">Connections</a>
+		  {{!-- Sheet Tab Navigation --}}
+		  <nav class="sheet-tabs tabs" data-group="primary">
+		    <a class="item" data-tab="main">Main</a>
+		    <a class="item" data-tab="attributes">Attributes</a>
+		    <a class="item" data-tab="skills">Skills</a>
+		    <a class="item" data-tab="gear">Gear</a>
+		    <a class="item" data-tab="augmentations">Augmentations</a>
+		    <a class="item" data-tab="magic">Magic</a>
+	    {{#if (eq actor.type "character")}}
+	      <a class="item" data-tab="connections">Connections</a>
     {{/if}}
-    <a class="item" data-tab="biography">Biography</a>
+    <a class="item" data-tab="biography">Notes</a>
   </nav>
 
-  {{!-- Sheet Body --}}
-  <section class="sheet-body">
+	  {{!-- Sheet Body --}}
+	  <section class="sheet-body">
 
-    {{!-- Attributes Tab --}}
-    <div class="tab attributes" data-group="primary" data-tab="attributes">
-      <div class="attributes-section">
-        <div class="sr2-creation-summary">
+	    {{!-- Main Tab --}}
+	    <div class="tab main" data-group="primary" data-tab="main">
+	      <div class="sr2-main-grid">
+	        <section class="sr2-main-col sr2-main-attributes">
+	          <h3>Attributes</h3>
+	          <div class="sr2-attr-list">
+	            <div class="sr2-attr-row">
+	              <label>Body</label>
+	              <input type="number" name="system.attributes.body.value" value="{{system.attributes.body.value}}" data-dtype="Number" min="{{system.attributes.body.min}}" max="{{system.attributes.body.max}}"/>
+	            </div>
+	            <div class="sr2-attr-row">
+	              <label>Quickness</label>
+	              <input type="number" name="system.attributes.quickness.value" value="{{system.attributes.quickness.value}}" data-dtype="Number" min="{{system.attributes.quickness.min}}" max="{{system.attributes.quickness.max}}"/>
+	            </div>
+	            <div class="sr2-attr-row">
+	              <label>Strength</label>
+	              <input type="number" name="system.attributes.strength.value" value="{{system.attributes.strength.value}}" data-dtype="Number" min="{{system.attributes.strength.min}}" max="{{system.attributes.strength.max}}"/>
+	            </div>
+	            <div class="sr2-attr-row">
+	              <label>Charisma</label>
+	              <input type="number" name="system.attributes.charisma.value" value="{{system.attributes.charisma.value}}" data-dtype="Number" min="{{system.attributes.charisma.min}}" max="{{system.attributes.charisma.max}}"/>
+	            </div>
+	            <div class="sr2-attr-row">
+	              <label>Intelligence</label>
+	              <input type="number" name="system.attributes.intelligence.value" value="{{system.attributes.intelligence.value}}" data-dtype="Number" min="{{system.attributes.intelligence.min}}" max="{{system.attributes.intelligence.max}}"/>
+	            </div>
+	            <div class="sr2-attr-row">
+	              <label>Willpower</label>
+	              <input type="number" name="system.attributes.willpower.value" value="{{system.attributes.willpower.value}}" data-dtype="Number" min="{{system.attributes.willpower.min}}" max="{{system.attributes.willpower.max}}"/>
+	            </div>
+	            <div class="sr2-attr-row">
+	              <label>Essence</label>
+	              <input type="number" name="system.attributes.essence.value" value="{{system.attributes.essence.value}}" data-dtype="Number" step="0.1" readonly/>
+	            </div>
+	            <div class="sr2-attr-row">
+	              <label>Magic</label>
+	              <input type="number" name="system.attributes.magic.value" value="{{system.attributes.magic.value}}" data-dtype="Number" readonly/>
+	            </div>
+	            <div class="sr2-attr-row">
+	              <label>Reaction</label>
+	              <input type="number" name="system.attributes.reaction.value" value="{{system.attributes.reaction.value}}" data-dtype="Number" readonly/>
+	            </div>
+	          </div>
+		        </section>
+		        <section class="sr2-main-col sr2-main-pools">
+		          <h3>Dice Pools</h3>
+		          <div class="sr2-pools-list">
+		            <div class="sr2-pool-row">
+		              <label>Combat Pool</label>
+		              <div class="sr2-pool-controls">
+		                <button class="pool-adjust" data-pool="combat" data-adjust="-1" title="Spend Combat Pool">-</button>
+		                <span>{{system.pools.combat.current}} / {{system.pools.combat.max}}</span>
+		                <button class="pool-adjust" data-pool="combat" data-adjust="1" title="Refresh Combat Pool">+</button>
+		              </div>
+		            </div>
+	
+		            {{#if (gt system.attributes.magic.value 0)}}
+		            {{#unless system.magic.physicalAdept}}
+		            <div class="sr2-pool-row">
+		              <label>Magic Pool</label>
+		              <div class="sr2-pool-controls">
+		                <button class="pool-adjust" data-pool="spell" data-adjust="-1">-</button>
+		                <span>{{system.pools.spell.current}} / {{system.pools.spell.max}}</span>
+		                <button class="pool-adjust" data-pool="spell" data-adjust="1">+</button>
+		              </div>
+		            </div>
+		            {{/unless}}
+		            {{/if}}
+	
+		            {{#if system.hasCyberdeck}}
+		            <div class="sr2-pool-row">
+		              <label>Hacking Pool</label>
+		              <div class="sr2-pool-controls">
+		                <button class="pool-adjust" data-pool="hacking" data-adjust="-1">-</button>
+		                <span>{{system.pools.hacking.current}} / {{system.pools.hacking.max}}</span>
+		                <button class="pool-adjust" data-pool="hacking" data-adjust="1">+</button>
+		              </div>
+		            </div>
+		            {{/if}}
+	
+		            {{#if system.hasControlRig}}
+		            <div class="sr2-pool-row">
+		              <label>Control Pool</label>
+		              <div class="sr2-pool-controls">
+		                <button class="pool-adjust" data-pool="control" data-adjust="-1">-</button>
+		                <span>{{system.pools.control.current}} / {{system.pools.control.max}}</span>
+		                <button class="pool-adjust" data-pool="control" data-adjust="1">+</button>
+		              </div>
+		            </div>
+		            {{/if}}
+	
+		            {{#if (gt system.pools.task.max 0)}}
+		            <div class="sr2-pool-row">
+		              <label>Task Pool</label>
+		              <div class="sr2-pool-controls">
+		                <button class="pool-adjust" data-pool="task" data-adjust="-1">-</button>
+		                <span>{{system.pools.task.current}} / {{system.pools.task.max}}</span>
+		                <button class="pool-adjust" data-pool="task" data-adjust="1">+</button>
+		              </div>
+		            </div>
+		            {{/if}}
+	
+		            {{#if (gt system.attributes.magic.value 0)}}
+		            {{#unless system.magic.physicalAdept}}
+		            <div class="sr2-pool-row">
+		              <label>Astral Pool</label>
+		              <div class="sr2-pool-controls">
+		                <button class="pool-adjust" data-pool="astral" data-adjust="-1">-</button>
+		                <span>{{system.pools.astral.current}} / {{system.pools.astral.max}}</span>
+		                <button class="pool-adjust" data-pool="astral" data-adjust="1">+</button>
+		              </div>
+		            </div>
+		            {{/unless}}
+		            {{/if}}
+	
+		            <div class="sr2-pool-row sr2-pool-row-karma">
+		              <label>Karma Pool</label>
+		              <div class="sr2-pool-controls">
+		                <input type="number" name="system.pools.karma.current" value="{{system.pools.karma.current}}" data-dtype="Number"/>
+		                <span>/ {{system.pools.karma.total}}</span>
+		              </div>
+		            </div>
+		          </div>
+	
+		          {{#if @root.isGM}}
+		          <div class="gm-pool-controls">
+		            <button class="reset-all-pools" title="Reset all pools to maximum (GM only)">
+		              <i class="fas fa-sync-alt"></i> Reset All Pools
+		            </button>
+		          </div>
+		          {{/if}}
+		        </section>
+		        <section class="sr2-main-col sr2-main-details">
+		          <h3>Details</h3>
+		          <div class="sr2-main-block">
+		            <div class="sr2-resource-header">
+		              <label class="resource-label">Lifestyles</label>
+		              <button type="button" class="sr2-lifestyle-add sr2-small-action" title="Add Lifestyle">
+		                <i class="fas fa-plus"></i>
+		              </button>
+		            </div>
+		            <div class="sr2-lifestyles">
+		              {{#each system.resources.lifestyles as |life idx|}}
+		                <div class="sr2-lifestyle-row">
+		                  <select name="system.resources.lifestyles.{{idx}}.type" data-dtype="String">
+		                    <option value="street" {{#if (eq life.type "street")}}selected{{/if}}>Street</option>
+		                    <option value="squatter" {{#if (eq life.type "squatter")}}selected{{/if}}>Squatter</option>
+		                    <option value="low" {{#if (eq life.type "low")}}selected{{/if}}>Low</option>
+		                    <option value="middle" {{#if (eq life.type "middle")}}selected{{/if}}>Middle</option>
+		                    <option value="high" {{#if (eq life.type "high")}}selected{{/if}}>High</option>
+		                    <option value="luxury" {{#if (eq life.type "luxury")}}selected{{/if}}>Luxury</option>
+		                  </select>
+		                  <button type="button" class="sr2-lifestyle-delete" data-index="{{idx}}" title="Delete Lifestyle">
+		                    <i class="fas fa-trash"></i>
+		                  </button>
+		                </div>
+		              {{/each}}
+		            </div>
+		          </div>
+	
+		          <div class="sr2-main-fields">
+		            <div class="sr2-main-field-row">
+		              <label>Native Language</label>
+		              <input type="text" name="system.details.nativeLanguage" value="{{system.details.nativeLanguage}}" data-dtype="String"/>
+		            </div>
+		            <div class="sr2-main-field-row">
+		              <label>Dialect (Street)</label>
+		              <input type="text" name="system.details.dialectLanguage" value="{{system.details.dialectLanguage}}" data-dtype="String"/>
+		            </div>
+		          </div>
+		        </section>
+		      </div>
+		    </div>
+
+	    {{!-- Attributes Tab --}}
+	    <div class="tab attributes" data-group="primary" data-tab="attributes">
+	      <div class="attributes-section">
+	        <div class="sr2-creation-summary">
           <label class="sr2-creation-toggle">
             <input type="checkbox" name="flags.shadowrun2e.creationMode" {{#if flags.shadowrun2e.creationMode}}checked{{/if}}/>
             Creation Mode
@@ -155,6 +371,11 @@
 	            <button class="attribute-roll" data-attribute="magic" title="Roll Magic">
 	              <i class="fas fa-dice-d6"></i>
 	            </button>
+              {{#if system.attributes.magic.powerFocusBonus}}
+                <div class="magic-breakdown">
+                  <small>Power Focus: +{{system.attributes.magic.powerFocusBonus}} (Effective: {{system.attributes.magic.effective}})</small>
+                </div>
+              {{/if}}
 	          </div>
           <div class="attribute">
             <label>Reaction</label>
@@ -193,7 +414,7 @@
 	          {{#if (gt system.attributes.magic.value 0)}}
 	          {{#unless system.magic.physicalAdept}}
 	          <div class="pool">
-	            <label>Spell Pool</label>
+	            <label>Magic Pool</label>
 	            <button class="pool-adjust" data-pool="spell" data-adjust="-1">-</button>
 	            <span>{{system.pools.spell.current}} / {{system.pools.spell.max}}</span>
 	            <button class="pool-adjust" data-pool="spell" data-adjust="1">+</button>
@@ -268,24 +489,23 @@
             <span>{{creationPoints.skills.total}}</span>
             <span class="sr2-points-remaining">(Remaining: {{creationPoints.skills.remaining}})</span>
           </div>
-        {{/if}}
-        <div class="skill-controls">
-          <a class="item-control item-create" title="Add Skill" data-type="skill">
-            <i class="fas fa-plus"></i> Add Skill
-          </a>
-        </div>
-      </div>
+	        {{/if}}
+	        <div class="skill-controls">
+	          <a class="item-control item-create sr2-small-action" title="Add Skill" data-type="skill">
+	            <i class="fas fa-plus"></i> Add Skill
+	          </a>
+	        </div>
+	      </div>
 
       <div class="skills-list">
-        <div class="skills-table-header">
-          <div class="skill-name">Skill / Concentration</div>
-          <div class="skill-allocated-rating">Alloc</div>
-          <div class="skill-base-rating">Base</div>
-          <div class="skill-conc-rating">Conc</div>
-          <div class="skill-spec-rating">Spec</div>
-          <div class="skill-specialization">Specialization</div>
-          <div class="skill-actions">Actions</div>
-        </div>
+		        <div class="skills-table-header">
+		          <div class="skill-name">Skill / Concentration</div>
+		          <div class="skill-allocated-rating">Allocated</div>
+		          <div class="skill-base-rating">Base</div>
+		          <div class="skill-conc-rating">Concentration</div>
+		          <div class="skill-spec-rating">Specialization</div>
+		          <div class="skill-actions">Actions</div>
+		        </div>
         
         {{#each skills as |skill id|}}
         <div class="skill-item" data-item-id="{{skill._id}}">
@@ -321,10 +541,31 @@
                 {{/if}}
               </div>
             </div>
-            
-            <div class="skill-allocated-rating">
-              <input type="number" name="items.{{skill._id}}.system.allocatedRating" value="{{skill.system.allocatedRating}}" data-dtype="Number" min="0" max="12" title="Allocated Skill Rating" {{#if skill.system.isFree}}readonly{{/if}}/>
-            </div>
+	            
+	            <div class="skill-allocated-rating">
+	              <div class="sr2-inline-controls sr2-skill-alloc-controls">
+	                <button type="button"
+	                        class="sr2-skill-allocated-adjust sr2-small-action"
+	                        data-skill-id="{{skill._id}}"
+	                        data-adjust="-1"
+	                        title="Decrease Allocated Rating"
+	                        {{#if skill.system.isFree}}disabled{{/if}}>-</button>
+	                <input type="number"
+	                       name="items.{{skill._id}}.system.allocatedRating"
+	                       value="{{skill.system.allocatedRating}}"
+	                       data-dtype="Number"
+	                       min="0"
+	                       max="12"
+	                       title="Allocated Skill Rating"
+	                       {{#if skill.system.isFree}}readonly{{/if}}/>
+	                <button type="button"
+	                        class="sr2-skill-allocated-adjust sr2-small-action"
+	                        data-skill-id="{{skill._id}}"
+	                        data-adjust="1"
+	                        title="Increase Allocated Rating"
+	                        {{#if skill.system.isFree}}disabled{{/if}}>+</button>
+	              </div>
+	            </div>
 
             <div class="skill-base-rating">
               <span class="sr2-readonly-number">{{skill.system.baseRating}}</span>
@@ -338,28 +579,23 @@
               <span class="sr2-readonly-number">{{skill.system.specializationRating}}</span>
             </div>
             
-            <div class="skill-specialization">
-              <input type="text" name="items.{{skill._id}}.system.specialization" value="{{skill.system.specialization}}" placeholder="Enter specialization..." data-skill-id="{{skill._id}}" {{#unless skill.system.concentration}}disabled{{/unless}} {{#if skill.system.isFree}}readonly{{/if}}/>
-            </div>
-            
-            <div class="skill-actions">
-              <button class="skill-roll" data-skill-id="{{skill._id}}" data-roll-type="base" title="Roll Base Skill">
-                <i class="fas fa-dice-d6"></i> Base
-              </button>
-              {{#if skill.system.concentration}}
-              <button class="skill-roll" data-skill-id="{{skill._id}}" data-roll-type="concentration" title="Roll Concentration">
-                <i class="fas fa-dice-d6"></i> Conc
-              </button>
-              {{/if}}
-              {{#if skill.system.specialization}}
-              <button class="skill-roll" data-skill-id="{{skill._id}}" data-roll-type="specialization" title="Roll Specialization">
-                <i class="fas fa-dice-d6"></i> Spec
-              </button>
-              {{/if}}
-              <button class="item-delete" data-item-id="{{skill._id}}" title="Delete Skill">
-                <i class="fas fa-trash"></i>
-              </button>
-            </div>
+	            
+				            <div class="skill-actions">
+			              <button class="skill-roll" data-skill-id="{{skill._id}}" data-roll-type="base" title="Roll Base Skill"><i class="fas fa-dice-d6"></i></button>
+			              {{#if skill.system.concentration}}
+			              <button class="skill-roll" data-skill-id="{{skill._id}}" data-roll-type="concentration" title="Roll Concentration">
+			                <i class="fas fa-dice-d6"></i> C
+			              </button>
+	              {{/if}}
+	              {{#if skill.system.specialization}}
+	              <button class="skill-roll" data-skill-id="{{skill._id}}" data-roll-type="specialization" title="Roll Specialization">
+	                <i class="fas fa-dice-d6"></i> S
+	              </button>
+	              {{/if}}
+	              <button class="item-delete" data-item-id="{{skill._id}}" title="Delete Skill">
+	                <i class="fas fa-trash"></i>
+	              </button>
+	            </div>
           </div>
         </div>
         {{/each}}
@@ -372,315 +608,22 @@
       </div>
     </div>
 
-    {{!-- Combat Tab --}}
-    <div class="tab combat" data-group="primary" data-tab="combat">
-      <div class="combat-panel">
-        
-        {{!-- Health Condition Monitors Section --}}
-        <div class="health-monitors-section">
-          <h3>Condition Monitors
-            <i class="fas fa-info-circle help-icon" 
-               title="Track Physical and Stun damage. Click boxes to set damage level, or use keyboard navigation (Tab to focus, arrows to move, Enter/Space to select, 0 to clear, 1-9 for direct selection)."
-               aria-label="Help: How to use condition monitors"></i>
-          </h3>
-          
-          {{!-- Physical Damage Monitor --}}
-          <div class="damage-monitor physical-monitor" role="group" aria-labelledby="physical-damage-label">
-            <div class="monitor-header">
-              <label class="monitor-label" id="physical-damage-label">Physical Damage</label>
-              <span class="damage-counter" aria-live="polite">{{#if system.health.physical.value}}{{system.health.physical.value}}{{else}}0{{/if}}/{{#if system.health.physical.max}}{{system.health.physical.max}}{{else}}10{{/if}}</span>
-            </div>
-            <div class="damage-boxes" data-damage-type="physical" role="radiogroup" aria-labelledby="physical-damage-label">
-              <div class="damage-box" 
-                     data-box-number="1" 
-                     data-filled="{{#if (lte (1) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-                     role="radio"
-                     aria-checked="{{#if (lte (1) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-                     aria-label="Physical damage level 1"
-                     tabindex="0"
-                     title="Click to set physical damage to 1 or press Enter/Space">
-                  <span class="box-number" aria-hidden="true">1</span>
-              </div>
-              <div class="damage-box" 
-                     data-box-number="2" 
-                     data-filled="{{#if (lte (2) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-                     role="radio"
-                     aria-checked="{{#if (lte (2) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-                     aria-label="Physical damage level 2"
-                     tabindex="0"
-                     title="Click to set physical damage to 2 or press Enter/Space">
-                  <span class="box-number" aria-hidden="true">2</span>
-              </div>
-              <div class="damage-box" 
-                    data-box-number="3" 
-                    data-filled="{{#if (lte (3) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-                    role="radio"
-                    aria-checked="{{#if (lte (3) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-                    aria-label="Physical damage level 3"
-                    tabindex="0"
-                    title="Click to set physical damage to 3 or press Enter/Space">
-                  <span class="box-number" aria-hidden="true">3</span>
-              </div>
-              <div class="damage-box" 
-                    data-box-number="4" 
-                    data-filled="{{#if (lte (4) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-                    role="radio"
-                    aria-checked="{{#if (lte (4) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-                    aria-label="Physical damage level 4"
-                    tabindex="0"
-                    title="Click to set physical damage to 4 or press Enter/Space">
-                  <span class="box-number" aria-hidden="true">4</span>
-              </div>
-              <div class="damage-box" 
-                  data-box-number="5" 
-                  data-filled="{{#if (lte (5) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-                  role="radio"
-                  aria-checked="{{#if (lte (5) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-                  aria-label="Physical damage level 5"
-                  tabindex="0"
-                  title="Click to set physical damage to 5 or press Enter/Space">
-                <span class="box-number" aria-hidden="true">5</span>
-            </div>
-            <div class="damage-box" 
-                data-box-number="6" 
-                data-filled="{{#if (lte (6) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-                role="radio"
-                aria-checked="{{#if (lte (6) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-                aria-label="Physical damage level 6"
-                tabindex="0"
-                title="Click to set physical damage to 6 or press Enter/Space">
-              <span class="box-number" aria-hidden="true">6</span>
-          </div>
-          <div class="damage-box" 
-              data-box-number="7" 
-              data-filled="{{#if (lte (7) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-              role="radio"
-              aria-checked="{{#if (lte (7) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-              aria-label="Physical damage level 7"
-              tabindex="0"
-              title="Click to set physical damage to 7 or press Enter/Space">
-            <span class="box-number" aria-hidden="true">7</span>
-        </div>
-        <div class="damage-box" 
-              data-box-number="8" 
-              data-filled="{{#if (lte (8) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-              role="radio"
-              aria-checked="{{#if (lte (8) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-              aria-label="Physical damage level 8"
-              tabindex="0"
-              title="Click to set physical damage to 8 or press Enter/Space">
-              <span class="box-number" aria-hidden="true">8</span>
-        </div>
-          <div class="damage-box" 
-              data-box-number="9" 
-              data-filled="{{#if (lte (9) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-              role="radio"
-              aria-checked="{{#if (lte (9) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-              aria-label="Physical damage level 9"
-              tabindex="0"
-              title="Click to set physical damage to 9 or press Enter/Space">
-              <span class="box-number" aria-hidden="true">9</span>
-          </div>
-          <div class="damage-box" 
-              data-box-number="10" 
-              data-filled="{{#if (lte (10) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-              role="radio"
-              aria-checked="{{#if (lte (10) ../system.health.physical.value)}}true{{else}}false{{/if}}"
-              aria-label="Physical damage level 10"
-              tabindex="0"
-              title="Click to set physical damage to 10 or press Enter/Space">
-              <span class="box-number" aria-hidden="true">10</span>
-          </div>
-        </div>
-      </div>
-
-          {{!-- Stun Damage Monitor --}}
-          <div class="damage-monitor stun-monitor" role="group" aria-labelledby="stun-damage-label">
-            <div class="monitor-header">
-              <label class="monitor-label" id="stun-damage-label">Stun Damage</label>
-              <span class="damage-counter" aria-live="polite">{{#if system.health.stun.value}}{{system.health.stun.value}}{{else}}0{{/if}}/{{#if system.health.stun.max}}{{system.health.stun.max}}{{else}}10{{/if}}</span>
-            </div>
-            <div class="damage-boxes" data-damage-type="stun" role="radiogroup" aria-labelledby="stun-damage-label">
-              <div class="damage-box" 
-                     data-box-number="1" 
-                     data-filled="{{#if (lte (1) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-                     role="radio"
-                     aria-checked="{{#if (lte (1) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-                     aria-label="Stun damage level 1"
-                     tabindex="0"
-                     title="Click to set stun damage to 1 or press Enter/Space">
-                  <span class="box-number" aria-hidden="true">1</span>
-              </div>
-              <div class="damage-box" 
-                     data-box-number="2" 
-                     data-filled="{{#if (lte (2) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-                     role="radio"
-                     aria-checked="{{#if (lte (2) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-                     aria-label="Stun damage level 2"
-                     tabindex="0"
-                     title="Click to set stun damage to 2 or press Enter/Space">
-                  <span class="box-number" aria-hidden="true">2</span>
-              </div>
-              <div class="damage-box" 
-                    data-box-number="3" 
-                    data-filled="{{#if (lte (3) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-                    role="radio"
-                    aria-checked="{{#if (lte (3) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-                    aria-label="Stun damage level 3"
-                    tabindex="0"
-                    title="Click to set stun damage to 3 or press Enter/Space">
-                  <span class="box-number" aria-hidden="true">3</span>
-              </div>
-              <div class="damage-box" 
-                    data-box-number="4" 
-                    data-filled="{{#if (lte (4) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-                    role="radio"
-                    aria-checked="{{#if (lte (4) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-                    aria-label="Stun damage level 4"
-                    tabindex="0"
-                    title="Click to set stun damage to 4 or press Enter/Space">
-                  <span class="box-number" aria-hidden="true">4</span>
-              </div>
-              <div class="damage-box" 
-                  data-box-number="5" 
-                  data-filled="{{#if (lte (5) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-                  role="radio"
-                  aria-checked="{{#if (lte (5) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-                  aria-label="Stun damage level 5"
-                  tabindex="0"
-                  title="Click to set stun damage to 5 or press Enter/Space">
-                <span class="box-number" aria-hidden="true">5</span>
-            </div>
-            <div class="damage-box" 
-                data-box-number="6" 
-                data-filled="{{#if (lte (6) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-                role="radio"
-                aria-checked="{{#if (lte (6) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-                aria-label="Stun damage level 6"
-                tabindex="0"
-                title="Click to set stun damage to 6 or press Enter/Space">
-              <span class="box-number" aria-hidden="true">6</span>
-          </div>
-          <div class="damage-box" 
-              data-box-number="7" 
-              data-filled="{{#if (lte (7) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-              role="radio"
-              aria-checked="{{#if (lte (7) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-              aria-label="Stun damage level 7"
-              tabindex="0"
-              title="Click to set stun damage to 7 or press Enter/Space">
-            <span class="box-number" aria-hidden="true">7</span>
-        </div>
-        <div class="damage-box" 
-              data-box-number="8" 
-              data-filled="{{#if (lte (8) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-              role="radio"
-              aria-checked="{{#if (lte (8) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-              aria-label="Stun damage level 8"
-              tabindex="0"
-              title="Click to set stun damage to 8 or press Enter/Space">
-              <span class="box-number" aria-hidden="true">8</span>
-        </div>
-          <div class="damage-box" 
-              data-box-number="9" 
-              data-filled="{{#if (lte (9) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-              role="radio"
-              aria-checked="{{#if (lte (9) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-              aria-label="Stun damage level 9"
-              tabindex="0"
-              title="Click to set stun damage to 9 or press Enter/Space">
-              <span class="box-number" aria-hidden="true">9</span>
-          </div>
-          <div class="damage-box" 
-              data-box-number="10" 
-              data-filled="{{#if (lte (10) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-              role="radio"
-              aria-checked="{{#if (lte (10) ../system.health.stun.value)}}true{{else}}false{{/if}}"
-              aria-label="Stun damage level 10"
-              tabindex="0"
-              title="Click to set stun damage to 10 or press Enter/Space">
-              <span class="box-number" aria-hidden="true">10</span>
-          </div>
-        </div>
-            </div>
-          </div>
-        </div>
-
-        {{!-- Initiative Section --}}
-        <div class="initiative-section">
-          <h3>Initiative
-            <i class="fas fa-info-circle help-icon" 
-               title="Roll initiative using your character's Initiative dice + Reaction bonus. The result determines your action order in combat and calculates multiple action phases (every 10 points)."
-               aria-label="Help: How initiative works in Shadowrun 2E"></i>
-          </h3>
-          
-          {{!-- Initiative Roll Controls --}}
-          <div class="initiative-controls" role="group" aria-labelledby="initiative-section-label">
-            <div class="initiative-stats">
-              <div class="stat-display">
-                <label for="initiative-dice-display">Initiative Dice:</label>
-                <span class="stat-value" id="initiative-dice-display" aria-label="{{system.initiative.dice}} six-sided dice">{{system.initiative.dice}}d6</span>
-              </div>
-              <div class="stat-display">
-                <label for="reaction-bonus-display">Reaction Bonus:</label>
-                <span class="stat-value" id="reaction-bonus-display" aria-label="Plus {{system.attributes.reaction.value}} reaction bonus">+{{system.attributes.reaction.value}}</span>
-              </div>
-            </div>
-            
-            <div class="initiative-actions">
-              <button class="initiative-roll-btn" 
-                      type="button"
-                      aria-describedby="initiative-dice-display reaction-bonus-display"
-                      title="Roll {{system.initiative.dice}}d6 + {{system.attributes.reaction.value}} for initiative">
-                <i class="fas fa-dice-d6" aria-hidden="true"></i>
-                Roll Initiative
-              </button>
-            </div>
-          </div>
-
-          {{!-- Initiative Result Display --}}
-          <div class="initiative-result" style="display: none;" role="status" aria-live="polite" aria-label="Initiative roll result">
-            <div class="result-header">
-              <label id="initiative-result-label">Initiative Result:</label>
-            </div>
-            <div class="result-breakdown" aria-labelledby="initiative-result-label">
-              <span class="dice-result" aria-label="Dice roll result"></span>
-              <span class="bonus-result" aria-label="Reaction bonus"></span>
-              <span class="total-result" aria-label="Total initiative score"></span>
-            </div>
-            <div class="result-formula">
-              <span class="formula-text" aria-label="Initiative calculation formula"></span>
-            </div>
-          </div>
-        </div>
-
-        {{!-- Initiative Tracker Section --}}
-        <div class="initiative-tracker-section">
-          <h3>Combat Tracker</h3>
-          <div class="tracker-placeholder">
-            <p>Initiative tracker integration will appear here</p>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
     <div class="tab gear" data-group="primary" data-tab="gear">
       
       {{!-- Weapons Section --}}
       <div class="items-header">
         <h3>Weapons</h3>
         <div class="item-controls">
-          <button class="browse-items" data-type="weapon" title="Browse Weapons">
+          <button type="button" class="browse-items sr2-small-action" data-type="weapon" title="Browse Weapons">
             <i class="fas fa-search"></i> Browse Weapons
           </button>
-          <a class="item-control item-create" title="Add Custom Weapon" data-type="weapon">
+          <a class="item-control item-create sr2-small-action" title="Add Custom Weapon" data-type="weapon">
             <i class="fas fa-plus"></i> Add Custom
           </a>
         </div>
       </div>
 
-      <div class="items-list">
+      <div class="items-list sr2-weapons-list">
         <div class="items-table-header">
           <div class="item-name">Weapon</div>
           <div class="item-skill">Linked Skill</div>
@@ -752,16 +695,16 @@
       <div class="items-header">
         <h3>Armor</h3>
         <div class="item-controls">
-          <button class="browse-items" data-type="armor" title="Browse Armor">
+          <button type="button" class="browse-items sr2-small-action" data-type="armor" title="Browse Armor">
             <i class="fas fa-search"></i> Browse Armor
           </button>
-          <a class="item-control item-create" title="Add Custom Armor" data-type="armor">
+          <a class="item-control item-create sr2-small-action" title="Add Custom Armor" data-type="armor">
             <i class="fas fa-plus"></i> Add Custom
           </a>
         </div>
       </div>
 
-      <div class="items-list">
+      <div class="items-list sr2-armor-list">
         <div class="items-table-header">
           <div class="item-name">Armor</div>
           <div class="item-rating">Rating</div>
@@ -812,16 +755,16 @@
       <div class="items-header">
         <h3>Equipment & Gear</h3>
         <div class="item-controls">
-          <button class="browse-items" data-type="gear" title="Browse Equipment">
+          <button type="button" class="browse-items sr2-small-action" data-type="gear" title="Browse Equipment">
             <i class="fas fa-search"></i> Browse Equipment
           </button>
-          <a class="item-control item-create" title="Add Custom Equipment" data-type="gear">
+          <a class="item-control item-create sr2-small-action" title="Add Custom Equipment" data-type="gear">
             <i class="fas fa-plus"></i> Add Custom
           </a>
         </div>
       </div>
 
-      <div class="items-list">
+      <div class="items-list sr2-gear-list">
         <div class="items-table-header">
           <div class="item-name">Item</div>
           <div class="item-category">Category</div>
@@ -940,10 +883,10 @@
         <div class="items-header">
           <h3>Cyberware</h3>
           <div class="item-controls">
-            <button class="browse-items" data-type="cyberware" title="Browse Cyberware">
+            <button type="button" class="browse-items sr2-small-action" data-type="cyberware" title="Browse Cyberware">
               <i class="fas fa-search"></i> Browse Cyberware
             </button>
-            <a class="item-control item-create" title="Add Custom Cyberware" data-type="cyberware">
+            <a class="item-control item-create sr2-small-action" title="Add Custom Cyberware" data-type="cyberware">
               <i class="fas fa-plus"></i> Add Custom
             </a>
           </div>
@@ -993,10 +936,10 @@
         <div class="items-header">
           <h3>Bioware</h3>
           <div class="item-controls">
-            <button class="browse-items" data-type="bioware" title="Browse Bioware">
+            <button type="button" class="browse-items sr2-small-action" data-type="bioware" title="Browse Bioware">
               <i class="fas fa-search"></i> Browse Bioware
             </button>
-            <a class="item-control item-create" title="Add Custom Bioware" data-type="bioware">
+            <a class="item-control item-create sr2-small-action" title="Add Custom Bioware" data-type="bioware">
               <i class="fas fa-plus"></i> Add Custom
             </a>
           </div>
@@ -1070,7 +1013,7 @@
 	            </div>
 	            {{#unless system.magic.physicalAdept}}
 	              <div class="magic-stat">
-	                <label>Spell Pool:</label>
+	                <label>Magic Pool:</label>
 	                <span>{{system.pools.spell.current}} / {{system.pools.spell.max}}</span>
 	              </div>
 	            {{/unless}}
@@ -1104,7 +1047,7 @@
               {{else}}
                 <div class="no-totem">
                   <p>No totem selected. Shamans must choose a totem to guide their magic.</p>
-                  <button type="button" class="browse-totems" title="Browse Totems">
+                  <button type="button" class="browse-totems sr2-small-action" title="Browse Totems">
                     <i class="fas fa-search"></i> Browse Totems
                   </button>
                 </div>
@@ -1133,10 +1076,10 @@
           {{/if}}
         </div>
         <div class="item-controls">
-          <button class="browse-items" data-type="spell" title="Browse Spells">
+          <button type="button" class="browse-items sr2-small-action" data-type="spell" title="Browse Spells">
             <i class="fas fa-search"></i> Browse Spells
           </button>
-          <a class="item-control item-create" title="Add Custom Spell" data-type="spell">
+          <a class="item-control item-create sr2-small-action" title="Add Custom Spell" data-type="spell">
             <i class="fas fa-plus"></i> Add Custom
           </a>
         </div>
@@ -1179,6 +1122,9 @@
             <span>{{item.sr2Spell.drainDisplay}}</span>
           </div>
           <div class="item-actions">
+            <button class="spell-lock-toggle {{#if item.system.spellLock.assigned}}assigned{{#if item.system.spellLock.enabled}} enabled{{else}} disabled{{/if}}{{else}}unassigned{{/if}}" data-item-id="{{item._id}}" title="{{#if item.system.spellLock.assigned}}{{#if item.system.spellLock.enabled}}Disable Spell Lock{{else}}Enable Spell Lock{{/if}}{{else}}Assign Spell Lock{{/if}}">
+              <i class="fas {{#if item.system.spellLock.assigned}}fa-lock{{else}}fa-lock-open{{/if}}"></i>
+            </button>
             <button class="spell-cast" data-item-id="{{item._id}}" title="Cast Spell">
               <i class="fas fa-magic"></i>
             </button>
@@ -1232,10 +1178,10 @@
 
         <div class="items-header">
           <div class="item-controls">
-            <button class="browse-items" data-type="adeptpower" title="Browse Adept Powers">
+            <button type="button" class="browse-items sr2-small-action" data-type="adeptpower" title="Browse Adept Powers">
               <i class="fas fa-search"></i> Browse Powers
             </button>
-            <a class="item-control item-create" title="Add Custom Power" data-type="adeptpower">
+            <a class="item-control item-create sr2-small-action" title="Add Custom Power" data-type="adeptpower">
               <i class="fas fa-plus"></i> Add Custom
             </a>
           </div>
@@ -1292,17 +1238,66 @@
 	    </div>
 
     {{#if (eq actor.type "character")}}
-      <div class="tab connections" data-group="primary" data-tab="connections">
-        <div class="sr2-connections">
-          <h3>Connections</h3>
+	      <div class="tab connections" data-group="primary" data-tab="connections">
+	        <div class="sr2-connections">
+	          <h3>Connections</h3>
 
-          <div class="sr2-connections-section">
-            <h4>Contacts</h4>
-            {{#if leaderContacts.length}}
-              <div class="sr2-connections-list">
-                {{#each leaderContacts as |c|}}
-                  <div class="sr2-connection-row">
-                    <span class="sr2-connection-name">{{c.name}}</span>
+		          <div class="sr2-connections-section">
+		            <div class="sr2-section-header">
+		              {{#if flags.shadowrun2e.creationMode}}
+                    {{#if sr2Settings.contactLevels}}
+		                <h4 class="{{#if connectionOver.contacts}}over-limit{{/if}}">{{connectionCounts.contacts}}/{{connectionLimits.contacts}} Contacts</h4>
+		                <div class="sr2-section-actions">
+		                  <button type="button" class="sr2-small-action sr2-add-contact" title="Add Contact" {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+		                    <i class="fas fa-plus"></i>
+		                    Add Contact
+		                  </button>
+		                </div>
+                    {{else}}
+		                <h4 class="{{#if connectionOver.contacts}}over-limit{{/if}}">{{connectionCounts.contacts}}/{{connectionLimits.contacts}} Contacts</h4>
+		                <div class="sr2-section-actions">
+		                  <button type="button" class="sr2-small-action sr2-adjust-contacts" data-delta="-1" title="Remove Contact" {{#if (lte connectionLimits.contacts 2)}}disabled{{/if}} {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+		                    <i class="fas fa-minus"></i>
+		                  </button>
+			                  <button type="button" class="sr2-small-action sr2-adjust-contacts" data-delta="1" title="Purchase Contact (¥5,000)" {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+			                    <i class="fas fa-plus"></i>
+			                    Purchase Contact ¥5,000
+			                  </button>
+                      {{#unless sr2Settings.disableBuddies}}
+		                    <button type="button" class="sr2-small-action sr2-toggle-extra" data-extra="buddy" title="{{#if creationExtrasPurchased.buddy}}Unpurchase Buddy{{else}}Purchase Buddy (¥10,000){{/if}}" {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+		                      {{#if creationExtrasPurchased.buddy}}
+		                        Unpurchase Buddy
+		                      {{else}}
+		                        Purchase Buddy ¥10,000
+		                      {{/if}}
+		                    </button>
+                      {{/unless}}
+		                </div>
+                    {{/if}}
+		              {{else}}
+		                <h4>Contacts</h4>
+		                <div class="sr2-section-actions">
+		                  <button type="button" class="sr2-small-action sr2-add-contact" title="Add Contact">
+		                    <i class="fas fa-plus"></i>
+		                    Add Contact
+		                  </button>
+		                </div>
+		              {{/if}}
+		            </div>
+                {{#if flags.shadowrun2e.creationMode}}
+                  {{#if sr2Settings.contactLevels}}
+                    <div class="sr2-cost-breakdown">
+                      <div>Extra Contacts: {{contactLevelsSummary.counts.extraContacts}}/{{contactLevelsSummary.counts.maxExtraContacts}} (¥5,000 each)</div>
+                      <div>Extra L2 Upgrades: {{contactLevelsSummary.counts.extraLevel2}}/{{contactLevelsSummary.counts.maxExtraLevel2}} (+¥3,000 each)</div>
+                      <div>Extra L3 Upgrades: {{contactLevelsSummary.counts.extraLevel3}}/{{contactLevelsSummary.counts.maxExtraLevel3}} (+¥7,000 each)</div>
+                    </div>
+                  {{/if}}
+                {{/if}}
+		            {{#if leaderContacts.length}}
+		              <div class="sr2-connections-list">
+		                {{#each leaderContacts as |c|}}
+		                  <div class="sr2-connection-row">
+	                    <span class="sr2-connection-name">{{c.name}}{{#if ../sr2Settings.contactLevels}} (L{{c.contactLevel}}){{/if}}</span>
                     <button type="button" class="open-connection" data-actor-id="{{c.id}}" title="Open Contact Sheet">
                       <i class="fas fa-external-link-alt"></i>
                     </button>
@@ -1312,18 +1307,31 @@
             {{else}}
               <div class="no-items">
                 <p>No contacts linked.</p>
-              </div>
-            {{/if}}
-          </div>
+	              </div>
+		            {{/if}}
+		          </div>
 
-          <div class="sr2-connections-section">
-            <h4>Gang</h4>
-            {{#if leaderGangMembers.length}}
-              <div class="sr2-connections-list">
-                {{#each leaderGangMembers as |g|}}
-                  <div class="sr2-connection-row">
+		          <div class="sr2-connections-section">
+		            <div class="sr2-section-header">
+		              <h4>Gang/Tribe</h4>
+		              {{#if flags.shadowrun2e.creationMode}}
+		                <div class="sr2-section-actions">
+		                  <button type="button" class="sr2-small-action sr2-toggle-extra" data-extra="gang" title="{{#if creationExtrasPurchased.gang}}Unpurchase Gang/Tribe{{else}}Purchase Gang/Tribe (¥50,000){{/if}}" {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+		                    {{#if creationExtrasPurchased.gang}}
+		                      Unpurchase Gang/Tribe
+		                    {{else}}
+		                      Purchase Gang/Tribe ¥50,000
+		                    {{/if}}
+		                  </button>
+		                </div>
+		              {{/if}}
+		            </div>
+		            {{#if leaderGangMembers.length}}
+		              <div class="sr2-connections-list">
+		                {{#each leaderGangMembers as |g|}}
+		                  <div class="sr2-connection-row">
                     <span class="sr2-connection-name">{{g.name}}</span>
-                    <button type="button" class="open-connection" data-actor-id="{{g.id}}" title="Open Gang Member Sheet">
+                    <button type="button" class="open-connection" data-actor-id="{{g.id}}" title="Open Gang/Tribe Member Sheet">
                       <i class="fas fa-external-link-alt"></i>
                     </button>
                   </div>
@@ -1331,17 +1339,32 @@
               </div>
             {{else}}
               <div class="no-items">
-                <p>No gang members linked.</p>
+                <p>No gang/tribe members linked.</p>
               </div>
-            {{/if}}
-          </div>
+		            {{/if}}
+		          </div>
 
-          <div class="sr2-connections-section">
-            <h4>Followers</h4>
-            {{#if leaderFollowers.length}}
-              <div class="sr2-connections-list">
-                {{#each leaderFollowers as |f|}}
-                  <div class="sr2-connection-row">
+		          <div class="sr2-connections-section">
+		            <div class="sr2-section-header">
+		              {{#if flags.shadowrun2e.creationMode}}
+		                <h4 class="{{#if connectionOver.followers}}over-limit{{/if}}">{{connectionCounts.followers}}/{{connectionLimits.followers}} Followers</h4>
+		                <div class="sr2-section-actions">
+		                  <button type="button" class="sr2-small-action sr2-toggle-extra" data-extra="followers" title="{{#if creationExtrasPurchased.followers}}Unpurchase Followers{{else}}Purchase Followers (¥200,000){{/if}}" {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+		                    {{#if creationExtrasPurchased.followers}}
+		                      Unpurchase Followers
+		                    {{else}}
+		                      Purchase Followers ¥200,000
+		                    {{/if}}
+		                  </button>
+		                </div>
+		              {{else}}
+		                <h4>Followers</h4>
+		              {{/if}}
+		            </div>
+		            {{#if leaderFollowers.length}}
+		              <div class="sr2-connections-list">
+		                {{#each leaderFollowers as |f|}}
+		                  <div class="sr2-connection-row">
                     <span class="sr2-connection-name">{{f.name}}</span>
                     <button type="button" class="open-connection" data-actor-id="{{f.id}}" title="Open Follower Sheet">
                       <i class="fas fa-external-link-alt"></i>
@@ -1362,67 +1385,11 @@
 	    <div class="tab biography" data-group="primary" data-tab="biography">
 	      <div class="sr2-creation-resources">
 	        <h3>Creation Resources</h3>
-	        <div class="resource">
-	          <div class="sr2-resource-header">
-	            <label class="resource-label">Lifestyles</label>
-	            <button type="button" class="sr2-lifestyle-add" title="Add Lifestyle">
-	              <i class="fas fa-plus"></i>
-	              Add Lifestyle
-	            </button>
-	          </div>
-	          <div class="sr2-lifestyles">
-	            {{#each system.resources.lifestyles as |life idx|}}
-	              <div class="sr2-lifestyle-row">
-	                <select name="system.resources.lifestyles.{{idx}}.type" data-dtype="String">
-	                  <option value="street" {{#if (eq life.type "street")}}selected{{/if}}>Street</option>
-	                  <option value="squatter" {{#if (eq life.type "squatter")}}selected{{/if}}>Squatter</option>
-	                  <option value="low" {{#if (eq life.type "low")}}selected{{/if}}>Low</option>
-	                  <option value="middle" {{#if (eq life.type "middle")}}selected{{/if}}>Middle</option>
-	                  <option value="high" {{#if (eq life.type "high")}}selected{{/if}}>High</option>
-	                  <option value="luxury" {{#if (eq life.type "luxury")}}selected{{/if}}>Luxury</option>
-	                </select>
-	                <button type="button" class="sr2-lifestyle-delete" data-index="{{idx}}" title="Delete Lifestyle">
-	                  <i class="fas fa-trash"></i>
-	                </button>
-	              </div>
-	            {{/each}}
-	          </div>
-	        </div>
-	        <div class="resource">
-	          <label class="resource-label">Native Language</label>
-	          <input type="text" name="system.details.nativeLanguage" value="{{system.details.nativeLanguage}}" data-dtype="String"/>
-        </div>
-        <div class="resource">
-          <label class="resource-label">Dialect (Street)</label>
-          <input type="text" name="system.details.dialectLanguage" value="{{system.details.dialectLanguage}}" data-dtype="String"/>
-        </div>
 
-        <div class="sr2-extras">
-          <h4>Extras (SR2 Costs)</h4>
-          <div class="sr2-extras-grid">
-            <div class="resource">
-              <label class="resource-label">Contacts (first 2 free)</label>
-              <input type="number" name="system.creation.extras.contacts" value="{{system.creation.extras.contacts}}" data-dtype="Number" min="0"/>
-            </div>
-            <div class="resource">
-              <label class="resource-label">Buddy</label>
-              <input type="number" name="system.creation.extras.buddy" value="{{system.creation.extras.buddy}}" data-dtype="Number" min="0"/>
-            </div>
-            <div class="resource">
-              <label class="resource-label">Gang/Tribe</label>
-              <input type="number" name="system.creation.extras.gang" value="{{system.creation.extras.gang}}" data-dtype="Number" min="0"/>
-            </div>
-            <div class="resource">
-              <label class="resource-label">Followers</label>
-              <input type="number" name="system.creation.extras.followers" value="{{system.creation.extras.followers}}" data-dtype="Number" min="0"/>
-            </div>
-          </div>
-        </div>
-
-        {{#if (gt creationResources.budgetNuyen 0)}}
-          <div class="sr2-creation-summary">
-            <div class="sr2-points-row {{#if (lt creationResources.remainingNuyen 0)}}over-limit{{/if}}">
-              <strong>Resource Budget (¥)</strong>:
+	        {{#if (gt creationResources.budgetNuyen 0)}}
+	          <div class="sr2-creation-summary">
+	            <div class="sr2-points-row {{#if (lt creationResources.remainingNuyen 0)}}over-limit{{/if}}">
+	              <strong>Resource Budget (¥)</strong>:
               <span>{{creationResources.totalCost}}</span>
               <span>/</span>
               <span>{{creationResources.budgetNuyen}}</span>
@@ -1460,7 +1427,7 @@
         <label class="resource-label">Nuyen (¥)</label>
         <input class="nuyen-input" type="number" name="system.resources.nuyen" value="{{system.resources.nuyen}}" data-dtype="Number"/>
       </div>
-      <textarea name="system.biography" rows="20" placeholder="Character biography...">{{system.biography}}</textarea>
+      <textarea name="system.biography" rows="20" placeholder="Notes...">{{system.biography}}</textarea>
     </div>
 
   </section>

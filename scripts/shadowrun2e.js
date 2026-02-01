@@ -10,14 +10,15 @@ import { SR2VehicleSheet } from "./actor/vehicle-sheet.js";
 import { SR2SpiritSheet } from "./actor/spirit-sheet.js";
 import { SR2Item } from "./item/item.js";
 import { SR2ItemSheet } from "./item/item-sheet.js";
-import { initializeInitiativeTracker } from "./initiative-tracker.js";
 import { SR2ItemBrowser } from "./item-browser.js";
 import { SR2GearPurchaseApp } from "./gear-purchase.js";
 import { SR2DataImporter } from "./data-importer.js";
 import { SR2CharacterImporter } from "./character-importer.js";
+import { initializeQuickActions } from "./quick-actions.js";
 import "./hotbar.js";
 import {
     SR2_PRIORITY_TABLE,
+    sr2ComputeContactLevelSummary,
     sr2ComputeForcePointsSpent,
     sr2ComputeCreationNuyenBudgetBreakdown,
     sr2ComputeItemNuyenSpent,
@@ -36,11 +37,68 @@ const SR2_METAHUMAN_METATYPES = ["elf", "dwarf", "ork", "troll"];
 const SR2_METATYPE_VALUES = ["human", ...SR2_METAHUMAN_METATYPES];
 const SR2_ALLOWED_METATYPES_BY_PRIORITY = {
     A: SR2_METATYPE_VALUES,
-    B: SR2_METATYPE_VALUES,
-    C: SR2_METATYPE_VALUES,
+    B: ["human"],
+    C: ["human"],
     D: ["human"],
     E: ["human"]
 };
+
+function sr2GetSystemSetting(key, fallback) {
+    try {
+        return game?.settings?.get("shadowrun2e", key) ?? fallback;
+    } catch (err) {
+        return fallback;
+    }
+}
+
+function sr2GetAllowedMetatypesForPriority(priority) {
+    if (!sr2IsPriorityLetter(priority)) return null;
+    if (Boolean(sr2GetSystemSetting("moreMetahumans", false))) {
+        // House rule: allow metahumans at priorities A–C (default SR2 is A only).
+        if (["A", "B", "C"].includes(priority)) return SR2_METATYPE_VALUES;
+        return ["human"];
+    }
+    return SR2_ALLOWED_METATYPES_BY_PRIORITY[priority] ?? null;
+}
+
+function sr2AreContactLevelsEnabled() {
+    return Boolean(sr2GetSystemSetting("contactLevels", false));
+}
+
+function sr2AreBuddiesDisabled() {
+    // Contact Levels house rule implies no Buddies.
+    return sr2AreContactLevelsEnabled() || Boolean(sr2GetSystemSetting("disableBuddies", false));
+}
+
+function sr2GetContactLevelsSummaryForLeader(leaderActor, pendingContact = null) {
+    if (!sr2AreContactLevelsEnabled()) return null;
+    if (!leaderActor || leaderActor.type !== "character") return null;
+
+    const leaderId = leaderActor.id;
+    if (!leaderId) return null;
+
+    const charisma = Number(leaderActor.system?.attributes?.charisma?.value) || 0;
+    const linkedContacts = globalThis.game?.actors?.filter(a => a.type === "contact" && a.system?.details?.leaderId === leaderId) ?? [];
+    const contacts = linkedContacts.map(a => ({
+        id: a.id,
+        // Treat new/pending contacts as "last" so we don't shift free-contact selection unexpectedly.
+        sort: Number(a.sort) || 0,
+        contactLevel: a.system?.details?.contactLevel
+    }));
+
+    if (pendingContact && pendingContact.id) {
+        const idx = contacts.findIndex(c => c.id === pendingContact.id);
+        const pending = {
+            id: String(pendingContact.id),
+            sort: Number.isFinite(Number(pendingContact.sort)) ? Number(pendingContact.sort) : Number.MAX_SAFE_INTEGER,
+            contactLevel: pendingContact.contactLevel
+        };
+        if (idx >= 0) contacts[idx] = pending;
+        else contacts.push(pending);
+    }
+
+    return sr2ComputeContactLevelSummary(contacts, charisma);
+}
 
 const SR2_FOLLOWER_ARCHETYPES = {
     // Source reference: `ARCHETYPES.md` (OCR dump from SR2 archetype section).
@@ -652,6 +710,529 @@ const SR2_CONTACT_ARCHETYPES = {
             "Datajack",
             "Wired Reflexes 1"
         ]
+    },
+
+    // Source reference: Shadowrun Contacts Insert (FASA 7902), compiled by Tom Dowd.
+    // These entries are not present in `guide-raw.md`, so they won't auto-populate biographies.
+
+    armorer: {
+        label: "Armorer",
+        source: { book: "SR2 Contacts Insert", page: 14 },
+        attributes: { body: 3, quickness: 3, strength: 4, charisma: 4, intelligence: 7, willpower: 4 },
+        skills: [
+            { baseSkill: "Armed Combat B/R", baseRating: 5 },
+            { baseSkill: "Computer B/R", baseRating: 4 },
+            { baseSkill: "Computer", baseRating: 4 },
+            { baseSkill: "Electronics B/R", baseRating: 3 },
+            { baseSkill: "Electronics", baseRating: 4 },
+            { baseSkill: "Firearms B/R", baseRating: 6 },
+            { baseSkill: "Firearms", baseRating: 3 },
+            { baseSkill: "Gunnery B/R", baseRating: 5 },
+            { baseSkill: "Projectile Weapons B/R", baseRating: 4 },
+            { baseSkill: "Throwing Weapons B/R", baseRating: 3 },
+            { baseSkill: "Unarmed combat", baseRating: 2 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Datajack",
+            "Display Link",
+            "Headware Memory (100 Mp)"
+        ]
+    },
+    clubHabitue: {
+        label: "Club Habitué",
+        source: { book: "SR2 Contacts Insert", page: 14 },
+        attributes: { body: 3, quickness: 3, strength: 2, charisma: 4, intelligence: 2, willpower: 2 },
+        skills: [
+            { baseSkill: "Unarmed combat", baseRating: 2 },
+            { baseSkill: "Club Rumormill", baseRating: 2, category: "special" },
+            { baseSkill: "Day Job", baseRating: 3, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    clubOwner: {
+        label: "Club Owner",
+        source: { book: "SR2 Contacts Insert", page: 15 },
+        attributes: { body: 2, quickness: 2, strength: 2, charisma: 3, intelligence: 3, willpower: 3 },
+        skills: [
+            { baseSkill: "Etiquette: Media", baseRating: 4 },
+            { baseSkill: "Etiquette: Street", baseRating: 4 },
+            { baseSkill: "Negotiation", baseRating: 4 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    corporateDecker: {
+        label: "Corporate Decker",
+        source: { book: "SR2 Contacts Insert", page: 15 },
+        attributes: { body: 2, quickness: 3, strength: 1, intelligence: 4, willpower: 3 },
+        skills: [
+            { baseSkill: "Computer", baseRating: 5 },
+            { baseSkill: "Computer theory", baseRating: 4 },
+            { baseSkill: "Etiquette: Corporate", baseRating: 2 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Datajack"
+        ]
+    },
+    corporateOfficial: {
+        label: "Corporate Official",
+        source: { book: "SR2 Contacts Insert", page: 16 },
+        attributes: { body: 2, quickness: 2, strength: 3, charisma: 3, intelligence: 5, willpower: 4 },
+        skills: [
+            { baseSkill: "Etiquette: Corporate", baseRating: 5 },
+            { baseSkill: "Interrogation", baseRating: 4 },
+            { baseSkill: "Negotiation", baseRating: 4 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Datajack",
+            "Headware Memory (100 Mp)"
+        ]
+    },
+    corporateRigger: {
+        label: "Corporate Rigger",
+        source: { book: "SR2 Contacts Insert", page: 16 },
+        attributes: { body: 4, quickness: 6, strength: 3, charisma: 4, intelligence: 6, willpower: 4 },
+        skills: [
+            { baseSkill: "Car", baseRating: 6 },
+            { baseSkill: "Computer", baseRating: 3 },
+            { baseSkill: "Electronics", baseRating: 3 },
+            { baseSkill: "Etiquette: Corporate", baseRating: 4 },
+            { baseSkill: "Firearms", baseRating: 3 },
+            { baseSkill: "Gunnery", baseRating: 3 },
+            { baseSkill: "Rotor craft", baseRating: 5 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Eye Low-light",
+            "Eye Thermographic",
+            "Eye Flare comp.",
+            "Datajack",
+            "Vehicle Control Rig 1"
+        ]
+    },
+    corporateScientist: {
+        label: "Corporate Scientist",
+        source: { book: "SR2 Contacts Insert", page: 17 },
+        attributes: { body: 2, quickness: 2, strength: 1, intelligence: 8, willpower: 5 },
+        skills: [
+            { baseSkill: "Appropriate Science Skill", baseRating: 7, category: "knowledge" },
+            { baseSkill: "Computer", baseRating: 4 },
+            { baseSkill: "Etiquette: Corporate", baseRating: 2 },
+            { baseSkill: "Related Science Skill", baseRating: 6, category: "knowledge" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Datajack",
+            "Display Link",
+            "Headware Memory (500 Mp)"
+        ]
+    },
+    corporateWageSlave: {
+        label: "Corporate Wage Slave",
+        source: { book: "SR2 Contacts Insert", page: 17 },
+        attributes: { body: 2, quickness: 2, strength: 2, charisma: 2, intelligence: 2, willpower: 1 },
+        skills: [
+            { baseSkill: "Computer", baseRating: 2 },
+            { baseSkill: "Etiquette: Corporate", baseRating: 2 },
+            { baseSkill: "Being Ignored", baseRating: 6, category: "special" },
+            { baseSkill: "Corporate Rumormill", baseRating: 2, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    derNachtmachenPoliclubMember: {
+        label: "Der Nachtmachen Policlub Member",
+        source: { book: "SR2 Contacts Insert", page: 18 },
+        attributes: { body: 5, quickness: 4, strength: 3, charisma: 2, intelligence: 2, willpower: 4 },
+        skills: [
+            { baseSkill: "Armed Combat", baseRating: 5 },
+            { baseSkill: "Car", baseRating: 3 },
+            { baseSkill: "Etiquette: Street", baseRating: 3 },
+            { baseSkill: "Unarmed combat", baseRating: 4 },
+            { baseSkill: "Local Politics", baseRating: 4, category: "special" },
+            { baseSkill: "Rabble-Rousing", baseRating: 3, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    dockWorker: {
+        label: "Dock Worker",
+        source: { book: "SR2 Contacts Insert", page: 18 },
+        attributes: { body: 6, quickness: 3, strength: 6, charisma: 3, intelligence: 3, willpower: 4 },
+        skills: [
+            { baseSkill: "Athletics", baseRating: 3 },
+            { baseSkill: "Car", baseRating: 3 },
+            { baseSkill: "Etiquette: Corporate", baseRating: 2 },
+            { baseSkill: "Negotiation", baseRating: 2 },
+            { baseSkill: "Throwing Weapons", baseRating: 2 },
+            { baseSkill: "Unarmed combat", baseRating: 2 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    elfPoserGangMember: {
+        label: "Elf-Poser Gang Member",
+        source: { book: "SR2 Contacts Insert", page: 19 },
+        attributes: { body: 4, quickness: 4, strength: 2, charisma: 3, intelligence: 2, willpower: 2 },
+        skills: [
+            { baseSkill: "Armed Combat", baseRating: 2 },
+            { baseSkill: "Bike", baseRating: 3 },
+            { baseSkill: "Firearms", baseRating: 3 },
+            { baseSkill: "Unarmed combat", baseRating: 2 },
+            { baseSkill: "Elf Gang Speak", baseRating: 2, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    fan: {
+        label: "Fan",
+        source: { book: "SR2 Contacts Insert", page: 19 },
+        attributes: { body: 2, quickness: 2, strength: 2, charisma: 1, intelligence: 2, willpower: 1 },
+        skills: [
+            { baseSkill: "Etiquette (Varies)", baseRating: 2, category: "special" },
+            { baseSkill: "Useful Skill (Idol)", baseRating: 5, category: "special" },
+            { baseSkill: "History of Idol's Career", baseRating: 8, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Datajack"
+        ]
+    },
+    fireFighter: {
+        label: "Fire Fighter",
+        source: { book: "SR2 Contacts Insert", page: 20 },
+        attributes: { body: 5, quickness: 6, strength: 5, charisma: 3, intelligence: 3, willpower: 5 },
+        skills: [
+            { baseSkill: "Athletics", baseRating: 3 },
+            { baseSkill: "Biotech", baseRating: 3 },
+            { baseSkill: "Car", baseRating: 2 },
+            { baseSkill: "Fire Fighting", baseRating: 4, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    governmentAgent: {
+        label: "Government Agent",
+        source: { book: "SR2 Contacts Insert", page: 20 },
+        attributes: { body: 4, quickness: 6, strength: 4, charisma: 4, intelligence: 5, willpower: 4 },
+        skills: [
+            { baseSkill: "Car", baseRating: 3 },
+            { baseSkill: "Electronics", baseRating: 3 },
+            { baseSkill: "Etiquette: Agency", baseRating: 3 },
+            { baseSkill: "Etiquette: Political", baseRating: 1 },
+            { baseSkill: "Firearms", baseRating: 5 },
+            { baseSkill: "Interrogation", baseRating: 3 },
+            { baseSkill: "Rotor craft", baseRating: 2 },
+            { baseSkill: "Unarmed combat", baseRating: 4 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Datajack",
+            "Headware Memory (50 Mp)",
+            "Smartlink I",
+            "Wired Reflexes 1"
+        ]
+    },
+    governmentOfficial: {
+        label: "Government Official",
+        source: { book: "SR2 Contacts Insert", page: 21 },
+        attributes: { body: 2, quickness: 2, strength: 2, charisma: 6, intelligence: 6, willpower: 5 },
+        skills: [
+            { baseSkill: "Etiquette: Corporate", baseRating: 6 },
+            { baseSkill: "Etiquette: Political", baseRating: 6 },
+            { baseSkill: "Leadership", baseRating: 4 },
+            { baseSkill: "Negotiation", baseRating: 5 },
+            { baseSkill: "Economic Theory", baseRating: 2, category: "knowledge" },
+            { baseSkill: "Politics", baseRating: 4, category: "knowledge" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Datajack",
+            "Headware Memory (20 Mp)"
+        ]
+    },
+    mafiaDon: {
+        label: "Mafia Don",
+        source: { book: "SR2 Contacts Insert", page: 21 },
+        attributes: { body: 2, quickness: 2, strength: 2, charisma: 6, intelligence: 7, willpower: 6 },
+        skills: [
+            { baseSkill: "Etiquette: Family", baseRating: 5 },
+            { baseSkill: "Interrogation", baseRating: 3 },
+            { baseSkill: "Leadership", baseRating: 6 },
+            { baseSkill: "Negotiation", baseRating: 6 },
+            { baseSkill: "Local Politics", baseRating: 4, category: "special" },
+            { baseSkill: "Neighborhood Knowledge", baseRating: 3, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    mafiaSoldier: {
+        label: "Mafia Soldier",
+        source: { book: "SR2 Contacts Insert", page: 22 },
+        attributes: { body: 5, quickness: 4, strength: 4, charisma: 3, intelligence: 4, willpower: 3 },
+        skills: [
+            { baseSkill: "Car", baseRating: 3 },
+            { baseSkill: "Etiquette: Family", baseRating: 4 },
+            { baseSkill: "Etiquette: Street", baseRating: 5 },
+            { baseSkill: "Firearms", baseRating: 5 },
+            { baseSkill: "Interrogation", baseRating: 3 },
+            { baseSkill: "Unarmed combat", baseRating: 3 },
+            { baseSkill: "Local Rumormill", baseRating: 4, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    newsmanMediaEntrepreneur: {
+        label: "Newsman/Media Entrepreneur",
+        source: { book: "SR2 Contacts Insert", page: 22 },
+        attributes: { body: 3, quickness: 3, strength: 2, charisma: 6, intelligence: 5, willpower: 4 },
+        skills: [
+            { baseSkill: "Computer", baseRating: 2 },
+            { baseSkill: "Etiquette: Corporate", baseRating: 3 },
+            { baseSkill: "Etiquette: Media", baseRating: 5 },
+            { baseSkill: "Etiquette: Street", baseRating: 4 },
+            { baseSkill: "Etiquette: Tribal", baseRating: 3 },
+            { baseSkill: "Negotiation", baseRating: 4 },
+            { baseSkill: "Stealth", baseRating: 3 },
+            { baseSkill: "Unarmed combat", baseRating: 2 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    metroplexGuardsman: {
+        label: "Metroplex Guardsman",
+        source: { book: "SR2 Contacts Insert", page: 23 },
+        attributes: { body: 4, quickness: 4, strength: 4, charisma: 2, intelligence: 3, willpower: 3 },
+        skills: [
+            { baseSkill: "Etiquette: Corporate", baseRating: 2 },
+            { baseSkill: "Etiquette: Street", baseRating: 2 },
+            { baseSkill: "Firearms", baseRating: 5 },
+            { baseSkill: "Unarmed combat", baseRating: 4 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    orkRightsCommitteeMember: {
+        label: "Ork Rights Committee Member (ORC)",
+        source: { book: "SR2 Contacts Insert", page: 23 },
+        attributes: { body: 7, quickness: 2, strength: 6, charisma: 2, intelligence: 4, willpower: 4 },
+        skills: [
+            { baseSkill: "Etiquette: Political", baseRating: 3 },
+            { baseSkill: "Leadership", baseRating: 2 },
+            { baseSkill: "Negotiation", baseRating: 3 },
+            { baseSkill: "Sociology", baseRating: 3 },
+            { baseSkill: "Unarmed combat", baseRating: 3 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    orkShaman: {
+        label: "Ork Shaman",
+        source: { book: "SR2 Contacts Insert", page: 24 },
+        metatype: "ork",
+        attributes: { body: 5, quickness: 2, strength: 5, charisma: 4, intelligence: 5, willpower: 6 },
+        skills: [
+            { baseSkill: "Armed Combat", baseRating: 3 },
+            { baseSkill: "Conjuring", baseRating: 6 },
+            { baseSkill: "Magical theory", baseRating: 4 },
+            { baseSkill: "Sorcery", baseRating: 4 },
+            { baseSkill: "Unarmed combat", baseRating: 3 }
+        ],
+        magic: { awakened: true, physicalAdept: false, tradition: "shamanic" }
+    },
+    paramedic: {
+        label: "Paramedic",
+        source: { book: "SR2 Contacts Insert", page: 24 },
+        attributes: { body: 3, quickness: 4, strength: 3, charisma: 3, intelligence: 4, willpower: 3 },
+        skills: [
+            { baseSkill: "Biotech", baseRating: 5 },
+            { baseSkill: "Car", baseRating: 3 },
+            { baseSkill: "Cybertechnology", baseRating: 1 },
+            { baseSkill: "Firearms", baseRating: 2 },
+            { baseSkill: "Unarmed combat", baseRating: 2 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    pedestrian: {
+        label: "Pedestrian",
+        source: { book: "SR2 Contacts Insert", page: 25 },
+        attributes: { body: 3, quickness: 4, strength: 3, charisma: 3, intelligence: 3, willpower: 3 },
+        skills: [
+            { baseSkill: "Professional Skill", baseRating: 3, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    plainclothesCop: {
+        label: "Plainclothes Cop",
+        source: { book: "SR2 Contacts Insert", page: 25 },
+        attributes: { body: 4, quickness: 5, strength: 3, charisma: 3, intelligence: 4, willpower: 5 },
+        skills: [
+            { baseSkill: "Car", baseRating: 3 },
+            { baseSkill: "Etiquette: Law Enforcement", baseRating: 4 },
+            { baseSkill: "Etiquette: Street", baseRating: 7 },
+            { baseSkill: "Firearms", baseRating: 5 },
+            { baseSkill: "Military Theory", baseRating: 2, category: "knowledge" },
+            { baseSkill: "Psychology", baseRating: 4 },
+            { baseSkill: "Sociology", baseRating: 3 },
+            { baseSkill: "Unarmed combat", baseRating: 4 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    reporter: {
+        label: "Reporter",
+        source: { book: "SR2 Contacts Insert", page: 26 },
+        attributes: { body: 3, quickness: 5, strength: 2, charisma: 5, intelligence: 6, willpower: 5 },
+        skills: [
+            { baseSkill: "Car", baseRating: 2 },
+            { baseSkill: "Etiquette: Corporate", baseRating: 5 },
+            { baseSkill: "Etiquette: Political", baseRating: 5 },
+            { baseSkill: "Etiquette: Street", baseRating: 5 },
+            { baseSkill: "Firearms", baseRating: 3 },
+            { baseSkill: "Interrogation", baseRating: 6 },
+            { baseSkill: "Negotiation", baseRating: 5 },
+            { baseSkill: "Unarmed combat", baseRating: 3 },
+            { baseSkill: "Nose for News", baseRating: 5, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Datajack",
+            "Display Link",
+            "Headware Memory (100 Mp)"
+        ]
+    },
+    sasquatchEntertainer: {
+        label: "Sasquatch Entertainer",
+        source: { book: "SR2 Contacts Insert", page: 26 },
+        attributes: { body: 8, quickness: 3, strength: 7, charisma: 3, intelligence: 3, willpower: 2 },
+        skills: [
+            { baseSkill: "Unarmed combat", baseRating: 6 },
+            { baseSkill: "Sound Mimicry", baseRating: 8, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    simsenseStar: {
+        label: "Simsense Star",
+        source: { book: "SR2 Contacts Insert", page: 27 },
+        attributes: { body: 3, quickness: 3, strength: 3, charisma: 6, intelligence: 3, willpower: 4 },
+        skills: [
+            { baseSkill: "Acting", baseRating: 2 },
+            { baseSkill: "Athletics", baseRating: 4 },
+            { baseSkill: "Bike", baseRating: 3 },
+            { baseSkill: "Car", baseRating: 3 },
+            { baseSkill: "Etiquette: Corporate", baseRating: 4 },
+            { baseSkill: "Etiquette: Media", baseRating: 6 },
+            { baseSkill: "Negotiation", baseRating: 6 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Custom Simsense Rig",
+            "Senselink",
+            "Internal Transmitter"
+        ]
+    },
+    snitch: {
+        label: "Snitch",
+        source: { book: "SR2 Contacts Insert", page: 27 },
+        attributes: { body: 2, quickness: 6, strength: 2, charisma: 1, intelligence: 3, willpower: 2 },
+        skills: [
+            { baseSkill: "Etiquette: Street", baseRating: 4 },
+            { baseSkill: "Negotiation", baseRating: 4 },
+            { baseSkill: "Unarmed combat", baseRating: 2 },
+            { baseSkill: "Local Rumormill", baseRating: 6, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    storeOwner: {
+        label: "Store Owner",
+        source: { book: "SR2 Contacts Insert", page: 28 },
+        attributes: { body: 4, quickness: 2, strength: 3, charisma: 4, intelligence: 3, willpower: 5 },
+        skills: [
+            { baseSkill: "Firearms", baseRating: 3 },
+            { baseSkill: "Negotiation", baseRating: 5 },
+            { baseSkill: "Neighborhood Rumormill", baseRating: 5, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    streetKid: {
+        label: "Street Kid",
+        source: { book: "SR2 Contacts Insert", page: 28 },
+        attributes: { body: 2, quickness: 6, strength: 2, charisma: 4, intelligence: 4, willpower: 3 },
+        skills: [
+            { baseSkill: "Armed Combat", baseRating: 2 },
+            { baseSkill: "Athletics", baseRating: 4 },
+            { baseSkill: "Etiquette: Street", baseRating: 4 },
+            { baseSkill: "Stealth", baseRating: 3 },
+            { baseSkill: "Unarmed combat", baseRating: 2 },
+            { baseSkill: "Street Rumormill", baseRating: 3, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" }
+    },
+    taxiDriver: {
+        label: "Taxi Driver",
+        source: { book: "SR2 Contacts Insert", page: 29 },
+        attributes: { body: 3, quickness: 3, strength: 3, charisma: 4, intelligence: 4, willpower: 5 },
+        skills: [
+            { baseSkill: "Car", baseRating: 5 },
+            { baseSkill: "Etiquette: Street", baseRating: 2 },
+            { baseSkill: "Firearms", baseRating: 3 },
+            { baseSkill: "Unarmed combat", baseRating: 2 },
+            { baseSkill: "Street Rumormill", baseRating: 3, category: "special" }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Datajack",
+            "Display Link"
+        ]
+    },
+    technician: {
+        label: "Technician",
+        source: { book: "SR2 Contacts Insert", page: 29 },
+        attributes: { body: 2, quickness: 3, strength: 3, charisma: 2, intelligence: 6, willpower: 4 },
+        skills: [
+            { baseSkill: "Biotech", baseRating: 3 },
+            { baseSkill: "Computer", baseRating: 4 },
+            { baseSkill: "Computer B/R", baseRating: 6 },
+            { baseSkill: "Computer theory", baseRating: 5 },
+            { baseSkill: "Cybertechnology", baseRating: 3 },
+            { baseSkill: "Electronics", baseRating: 3 },
+            { baseSkill: "Electronics B/R", baseRating: 3 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Datajack"
+        ]
+    },
+    terrorist: {
+        label: "Terrorist",
+        source: { book: "SR2 Contacts Insert", page: 30 },
+        attributes: { body: 3, quickness: 4, strength: 3, charisma: 4, intelligence: 4, willpower: 3 },
+        skills: [
+            { baseSkill: "Armed Combat", baseRating: 3 },
+            { baseSkill: "Car", baseRating: 2 },
+            { baseSkill: "Demolitions B/R", baseRating: 3 },
+            { baseSkill: "Demolitions", baseRating: 3 },
+            { baseSkill: "Firearms", baseRating: 6 },
+            { baseSkill: "Psychology", baseRating: 4 },
+            { baseSkill: "Unarmed combat", baseRating: 4 }
+        ],
+        magic: { awakened: false, physicalAdept: false, tradition: "" },
+        cyberware: [
+            "Smartlink I",
+            "Wired Reflexes 1"
+        ]
+    },
+    wizKidMage: {
+        label: "Wiz Kid Mage",
+        source: { book: "SR2 Contacts Insert", page: 30 },
+        attributes: { body: 2, quickness: 5, strength: 2, charisma: 2, intelligence: 3, willpower: 2, magic: 3 },
+        skills: [
+            { baseSkill: "Bike", baseRating: 2 },
+            { baseSkill: "Conjuring", baseRating: 2 },
+            { baseSkill: "Firearms", baseRating: 2 },
+            { baseSkill: "Magical theory", baseRating: 1 },
+            { baseSkill: "Sorcery", baseRating: 3 },
+            { baseSkill: "Unarmed combat", baseRating: 2 }
+        ],
+        magic: { awakened: true, physicalAdept: false, tradition: "" },
+        spells: [
+            { name: "Fireball", force: 3 },
+            { name: "Power Bolt", force: 4 },
+            { name: "Heal", force: 3 },
+            { name: "Chaos", force: 2 },
+            { name: "Mask", force: 2 }
+        ]
     }
 };
 
@@ -1115,8 +1696,8 @@ Hooks.once("init", async function () {
     // Register Handlebars helpers
     registerHandlebarsHelpers();
 
-    // Initialize initiative tracker
-    initializeInitiativeTracker();
+    // Token quick actions popup
+    initializeQuickActions();
 
     // Expose data importer globally for debugging
     window.SR2DataImporter = SR2DataImporter;
@@ -1282,6 +1863,27 @@ function sr2EnhanceActorCreateDialog(app, html) {
         `<option value=""></option>`,
         ...Object.entries(SR2_CONTACT_ARCHETYPES).map(([key, data]) => `<option value="${key}">${data.label}</option>`)
     ].join("");
+
+    const contactLevelsEnabled = sr2AreContactLevelsEnabled();
+
+    const followerFromContactsOptionsHtml = (() => {
+        if (!contactLevelsEnabled) return followerArchetypeOptionsHtml;
+
+        const gangTribeKeys = ["gangMember", "tribesman"];
+        const gangTribeOptions = gangTribeKeys
+            .filter(k => SR2_FOLLOWER_ARCHETYPES[k])
+            .map(k => `<option value="${k}">${SR2_FOLLOWER_ARCHETYPES[k].label}</option>`);
+
+        const contactOptions = Object.entries(SR2_CONTACT_ARCHETYPES)
+            .map(([key, data]) => `<option value="${key}">${data.label}</option>`);
+
+        return [
+            `<option value=""></option>`,
+            ...(gangTribeOptions.length ? [`<option value="" disabled>— Gang/Tribe —</option>`, ...gangTribeOptions] : []),
+            `<option value="" disabled>— Contacts —</option>`,
+            ...contactOptions
+        ].join("");
+    })();
 
     const leaderActors = globalThis.game?.actors?.filter(a => a.type === "character") ?? [];
     const leaderOptionsHtml = [
@@ -1455,7 +2057,7 @@ function sr2EnhanceActorCreateDialog(app, html) {
         if (!metatypePrioritySelect.length || !metatypeSelect.length) return;
 
         const priority = metatypePrioritySelect.val();
-        const allowed = SR2_ALLOWED_METATYPES_BY_PRIORITY[priority] || null;
+        const allowed = sr2GetAllowedMetatypesForPriority(priority);
 
         const options = Array.from(metatypeSelect[0].options);
         for (const opt of options) {
@@ -1527,7 +2129,13 @@ function sr2EnhanceActorCreateDialog(app, html) {
             const archetypeKey = archetypeSection.find("select.sr2-archetype-select").val();
             const leaderId = archetypeSection.find("select.sr2-leader-select").val();
 
-            const archetypeLabel = archetypeKey ? (SR2_FOLLOWER_ARCHETYPES[archetypeKey]?.label || "Follower") : "Follower";
+            const archetypeLabel = archetypeKey
+                ? (
+                    (contactLevelsEnabled && SR2_CONTACT_ARCHETYPES[archetypeKey]?.label)
+                        ? SR2_CONTACT_ARCHETYPES[archetypeKey].label
+                        : (SR2_FOLLOWER_ARCHETYPES[archetypeKey]?.label || "Follower")
+                )
+                : "Follower";
             const leaderName = leaderId ? (leaderNameById[leaderId] || "") : "";
 
             let name = `${archetypeLabel} Follower`;
@@ -1582,7 +2190,7 @@ function sr2EnhanceActorCreateDialog(app, html) {
         let options = `<option value=""></option>`;
 
         if (type === "follower") {
-            options = followerArchetypeOptionsHtml;
+            options = followerFromContactsOptionsHtml;
         } else if (type === "contact") {
             options = contactArchetypeOptionsHtml;
         }
@@ -1894,7 +2502,7 @@ function sr2EnhanceActorCreateDialog(app, html) {
         prioritiesSection.toggle(showPriorities);
         prioritiesSection.find("select").prop("disabled", !showPriorities);
 
-        const archetypeLabel = type === "contact" ? "Contact" : "Archetype";
+        const archetypeLabel = (type === "contact" || (type === "follower" && contactLevelsEnabled)) ? "Contact" : "Archetype";
         archetypeSection.find(".sr2-archetype-title").text(archetypeLabel);
         archetypeSection.find("label.sr2-archetype-label").text(archetypeLabel);
 
@@ -2189,13 +2797,22 @@ Hooks.on("createActor", async function (actor, options, userId) {
     }
 
     const archetypeKey = actor.system?.details?.archetype;
-    const archetype = archetypeKey ? SR2_FOLLOWER_ARCHETYPES[archetypeKey] : null;
+    const contactLevelsEnabled = sr2AreContactLevelsEnabled();
+    const contactArchetype = contactLevelsEnabled ? (SR2_CONTACT_ARCHETYPES[archetypeKey] ?? null) : null;
+    const followerArchetype = archetypeKey ? (SR2_FOLLOWER_ARCHETYPES[archetypeKey] ?? null) : null;
+    const usesContactArchetype = Boolean(contactArchetype);
+    const archetype = contactArchetype || followerArchetype;
     if (!archetype) return;
+
+    // Contact Levels house rule: gang/tribe members are capped at 3 for skills and attributes.
+    const isGangTribeMember = contactLevelsEnabled && !usesContactArchetype && ["gangMember", "tribesman"].includes(archetypeKey);
+    const gangTribeCap = 3;
 
     const updates = {};
 
     for (const [attributeKey, value] of Object.entries(archetype.attributes || {})) {
-        updates[`system.attributes.${attributeKey}.value`] = value;
+        const raw = Number(value) || 0;
+        updates[`system.attributes.${attributeKey}.value`] = isGangTribeMember ? Math.min(gangTribeCap, raw) : raw;
     }
 
     if (archetype.metatype) {
@@ -2236,16 +2853,23 @@ Hooks.on("createActor", async function (actor, options, userId) {
     for (const skill of (archetype.skills || [])) {
         const key = normalizedSkillKey(skill.baseSkill, skill.concentration, skill.specialization);
         if (existingSkillKeys.has(key)) continue;
-        const allocatedRating = Number(skill.allocatedRating ?? skill.baseRating) || 0;
+        const rawAllocated = Number(skill.allocatedRating ?? skill.baseRating) || 0;
+        const rawBase = Number(skill.baseRating) || 0;
+        const allocatedRating = isGangTribeMember ? Math.min(gangTribeCap, rawAllocated) : rawAllocated;
+        const baseRating = isGangTribeMember ? Math.min(gangTribeCap, rawBase) : rawBase;
+        const concentrationRatingRaw = Number(skill.concentrationRating) || 0;
+        const specializationRatingRaw = Number(skill.specializationRating) || 0;
+        const concentrationRating = isGangTribeMember ? Math.min(gangTribeCap, concentrationRatingRaw) : concentrationRatingRaw;
+        const specializationRating = isGangTribeMember ? Math.min(gangTribeCap, specializationRatingRaw) : specializationRatingRaw;
         skillsToCreate.push({
             name: skill.baseSkill,
             type: "skill",
             system: {
                 baseSkill: skill.baseSkill,
                 allocatedRating,
-                baseRating: skill.baseRating ?? 0,
-                concentrationRating: skill.concentrationRating ?? 0,
-                specializationRating: skill.specializationRating ?? 0,
+                baseRating,
+                concentrationRating,
+                specializationRating,
                 concentration: skill.concentration ?? "",
                 specialization: skill.specialization ?? "",
                 category: skill.category ?? "active",
@@ -2291,7 +2915,8 @@ Hooks.on("createActor", async function (actor, options, userId) {
     await sr2RepairLegacySkillAllocatedRatings(actor);
     await actor.setFlag("shadowrun2e", "followerBootstrapApplied", true);
 
-    if (!actor.getFlag("shadowrun2e", "gearPurchaseOffered")) {
+    const shouldOfferGearPurchase = !usesContactArchetype;
+    if (shouldOfferGearPurchase && !actor.getFlag("shadowrun2e", "gearPurchaseOffered")) {
         try {
             new SR2GearPurchaseApp(actor, { archetypeKey }).render(true);
             await actor.setFlag("shadowrun2e", "gearPurchaseOffered", true);
@@ -2321,9 +2946,7 @@ Hooks.on("createActor", async function (actor, options, userId) {
 
     const racePriority = priorities.metatype;
     const currentMetatype = actor.system?.details?.metatype || "human";
-    const allowedMetatypes = sr2IsPriorityLetter(racePriority)
-        ? (SR2_ALLOWED_METATYPES_BY_PRIORITY[racePriority] ?? null)
-        : null;
+    const allowedMetatypes = sr2GetAllowedMetatypesForPriority(racePriority);
 
     if (Array.isArray(allowedMetatypes) && allowedMetatypes.length) {
         if (!allowedMetatypes.includes(currentMetatype)) {
@@ -2542,6 +3165,133 @@ function sr2IsCreationMode(actor) {
     return hasCreationPoints;
 }
 
+/* -------------------------------------------- */
+/*  Contact Levels Enforcement                  */
+/* -------------------------------------------- */
+
+Hooks.on("preCreateActor", function (actor, data, options, userId) {
+    if (typeof userId === "string" && globalThis.game?.user?.id && userId !== game.user.id) return;
+    if (!sr2AreContactLevelsEnabled()) return;
+
+    const type = data?.type ?? actor.type;
+    if (type !== "contact") return;
+
+    const leaderId = data?.system?.details?.leaderId;
+    if (!leaderId) return;
+
+    const leader = globalThis.game?.actors?.get(leaderId);
+    if (!leader || leader.type !== "character") return;
+    if (!sr2IsCreationMode(leader)) return;
+    if (leader.system?.creation?.resourcesFinalized) return;
+
+    const charisma = Number(leader.system?.attributes?.charisma?.value) || 0;
+    const linkedContacts = globalThis.game?.actors?.filter(a => a.type === "contact" && a.system?.details?.leaderId === leaderId) ?? [];
+    const contacts = linkedContacts.map(a => ({ id: a.id, sort: Number(a.sort) || 0, contactLevel: a.system?.details?.contactLevel }));
+    contacts.push({ id: "__sr2PendingContact", sort: Number.MAX_SAFE_INTEGER, contactLevel: data?.system?.details?.contactLevel });
+
+    const summary = sr2ComputeContactLevelSummary(contacts, charisma);
+    if (summary.over.extraContacts) {
+        ui.notifications.error("Too many contacts (max extra contacts is 3× Charisma, plus two free).");
+        return false;
+    }
+    if (summary.over.extraLevel2) {
+        ui.notifications.error("Too many Level 2+ contacts (max extra Level 2 upgrades is 2× Charisma).");
+        return false;
+    }
+    if (summary.over.extraLevel3) {
+        ui.notifications.error("Too many Level 3 contacts (max extra Level 3 upgrades is 1× Charisma).");
+        return false;
+    }
+
+    const budget = Number(leader.system?.creation?.startingNuyen) || 0;
+    if (budget > 0) {
+        const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(leader.system, leader.items, {
+            disableBuddies: sr2AreBuddiesDisabled(),
+            contactLevelsSummary: summary
+        });
+        if ((breakdown.remainingNuyen || 0) < 0) {
+            ui.notifications.error("Not enough creation Nuyen remaining for that contact.");
+            return false;
+        }
+    }
+});
+
+Hooks.on("preUpdateActor", function (actor, changes, options, userId) {
+    if (typeof userId === "string" && globalThis.game?.user?.id && userId !== game.user.id) return;
+
+    const getProperty = globalThis.foundry?.utils?.getProperty;
+    const setProperty = globalThis.foundry?.utils?.setProperty;
+    if (typeof getProperty !== "function" || typeof setProperty !== "function") return;
+
+    // House rule: Contact Levels implies no Buddies (and the Disable Buddies setting removes them too).
+    if (actor.type === "character" && sr2AreBuddiesDisabled()) {
+        const rawBuddy = getProperty(changes, "system.creation.extras.buddy");
+        if (rawBuddy !== undefined && (Number(rawBuddy) || 0) > 0) {
+            setProperty(changes, "system.creation.extras.buddy", 0);
+            ui.notifications.warn("Buddies are disabled for this world.");
+        }
+    }
+
+    if (!sr2AreContactLevelsEnabled()) return;
+    if (actor.type !== "contact") return;
+
+    const rawContactLevel = getProperty(changes, "system.details.contactLevel");
+    const nextLeaderId = getProperty(changes, "system.details.leaderId");
+    const affectsContactLimitsOrCost = rawContactLevel !== undefined || nextLeaderId !== undefined;
+    if (!affectsContactLimitsOrCost) return;
+
+    if (rawContactLevel !== undefined) {
+        const clamped = Math.max(1, Math.min(3, parseInt(rawContactLevel, 10) || 1));
+        if (clamped !== Number(rawContactLevel)) setProperty(changes, "system.details.contactLevel", clamped);
+    }
+
+    const leaderId = nextLeaderId !== undefined ? nextLeaderId : actor.system?.details?.leaderId;
+    if (!leaderId) return;
+
+    const leader = globalThis.game?.actors?.get(leaderId);
+    if (!leader || leader.type !== "character") return;
+    if (!sr2IsCreationMode(leader)) return;
+    if (leader.system?.creation?.resourcesFinalized) return;
+
+    const previousLeaderId = actor.system?.details?.leaderId || "";
+    const isLeaderTransfer = typeof nextLeaderId === "string" && nextLeaderId !== previousLeaderId;
+    const nextContactLevel = rawContactLevel !== undefined
+        ? (getProperty(changes, "system.details.contactLevel") ?? rawContactLevel)
+        : actor.system?.details?.contactLevel;
+
+    const summary = sr2GetContactLevelsSummaryForLeader(leader, {
+        id: actor.id,
+        sort: isLeaderTransfer ? Number.MAX_SAFE_INTEGER : (Number(actor.sort) || Number.MAX_SAFE_INTEGER),
+        contactLevel: nextContactLevel
+    });
+    if (!summary) return;
+
+    if (summary.over.extraContacts) {
+        ui.notifications.error("Too many contacts (max extra contacts is 3× Charisma, plus two free).");
+        return false;
+    }
+    if (summary.over.extraLevel2) {
+        ui.notifications.error("Too many Level 2+ contacts (max extra Level 2 upgrades is 2× Charisma).");
+        return false;
+    }
+    if (summary.over.extraLevel3) {
+        ui.notifications.error("Too many Level 3 contacts (max extra Level 3 upgrades is 1× Charisma).");
+        return false;
+    }
+
+    const budget = Number(leader.system?.creation?.startingNuyen) || 0;
+    if (budget > 0) {
+        const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(leader.system, leader.items, {
+            disableBuddies: sr2AreBuddiesDisabled(),
+            contactLevelsSummary: summary
+        });
+        if ((breakdown.remainingNuyen || 0) < 0) {
+            ui.notifications.error("Not enough creation Nuyen remaining for that contact change.");
+            return false;
+        }
+    }
+});
+
 Hooks.on("preCreateItem", function (item, data, options, userId) {
     if (typeof userId === "string" && globalThis.game?.user?.id && userId !== game.user.id) return;
     if (options?.sr2SkipBudget) return;
@@ -2566,7 +3316,13 @@ Hooks.on("preCreateItem", function (item, data, options, userId) {
         }
     };
 
-    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(actor.system, actor.items);
+    const breakdownOptions = {
+        disableBuddies: sr2AreBuddiesDisabled()
+    };
+    const contactLevelsSummary = sr2GetContactLevelsSummaryForLeader(actor);
+    if (contactLevelsSummary) breakdownOptions.contactLevelsSummary = contactLevelsSummary;
+
+    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(actor.system, actor.items, breakdownOptions);
     const newItemCost = sr2ComputeItemNuyenSpent([previewItem]);
     if ((breakdown.remainingNuyen || 0) - newItemCost < 0) {
         ui.notifications.error("Not enough creation Nuyen remaining for that item.");
@@ -2607,7 +3363,13 @@ Hooks.on("preUpdateItem", function (item, changes, options, userId) {
     const delta = nextCost - oldCost;
     if (delta <= 0) return;
 
-    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(actor.system, actor.items);
+    const breakdownOptions = {
+        disableBuddies: sr2AreBuddiesDisabled()
+    };
+    const contactLevelsSummary = sr2GetContactLevelsSummaryForLeader(actor);
+    if (contactLevelsSummary) breakdownOptions.contactLevelsSummary = contactLevelsSummary;
+
+    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(actor.system, actor.items, breakdownOptions);
     if ((breakdown.remainingNuyen || 0) - delta < 0) {
         ui.notifications.error("Not enough creation Nuyen remaining for that change.");
         return false;
@@ -2671,14 +3433,18 @@ function sr2GetCreationItemForcePointCost({ type, name, system }) {
     if (type === "spell") return Math.max(0, Number(system?.force) || 0);
     if (type !== "gear") return 0;
 
-    const explicitBondCost = Number(system?.bondCost) || 0;
-    if (explicitBondCost > 0) return explicitBondCost;
+    const quantity = Math.max(1, Number(system?.quantity) || 1);
 
-    return sr2InferFocusBondCostForGearItem({
-        category: system?.category,
-        name,
-        price: system?.price ?? system?.cost ?? 0
-    });
+    const explicitBondCost = Number(system?.bondCost) || 0;
+    const perItemCost = explicitBondCost > 0
+        ? explicitBondCost
+        : sr2InferFocusBondCostForGearItem({
+            category: system?.category,
+            name,
+            price: system?.price ?? system?.cost ?? 0
+        });
+
+    return perItemCost > 0 ? perItemCost * quantity : 0;
 }
 
 Hooks.on("preCreateItem", function (item, data, options, userId) {
@@ -2730,10 +3496,34 @@ Hooks.on("preUpdateItem", function (item, changes, options, userId) {
         oldCost = Math.max(0, Number(item.system?.force) || 0);
         nextCost = Math.max(0, Number(raw) || 0);
     } else if (item.type === "gear") {
-        const raw = getProperty(changes, "system.bondCost");
-        if (raw === undefined) return;
-        oldCost = Math.max(0, Number(item.system?.bondCost) || 0);
-        nextCost = Math.max(0, Number(raw) || 0);
+        const rawBondCost = getProperty(changes, "system.bondCost");
+        const rawQuantity = getProperty(changes, "system.quantity");
+        const rawCategory = getProperty(changes, "system.category");
+        const rawPrice = getProperty(changes, "system.price");
+        const rawCost = getProperty(changes, "system.cost");
+        const rawName = getProperty(changes, "name");
+
+        if (
+            rawBondCost === undefined &&
+            rawQuantity === undefined &&
+            rawCategory === undefined &&
+            rawPrice === undefined &&
+            rawCost === undefined &&
+            rawName === undefined
+        ) return;
+
+        oldCost = sr2GetCreationItemForcePointCost({ type: "gear", name: item.name, system: item.system });
+        nextCost = sr2GetCreationItemForcePointCost({
+            type: "gear",
+            name: rawName === undefined ? item.name : rawName,
+            system: {
+                bondCost: rawBondCost === undefined ? item.system?.bondCost : rawBondCost,
+                quantity: rawQuantity === undefined ? item.system?.quantity : rawQuantity,
+                category: rawCategory === undefined ? item.system?.category : rawCategory,
+                price: rawPrice === undefined ? item.system?.price : rawPrice,
+                cost: rawCost === undefined ? item.system?.cost : rawCost
+            }
+        });
     } else {
         return;
     }
@@ -2803,6 +3593,7 @@ Hooks.on("preUpdateItem", function (item, changes, options, userId) {
 /* -------------------------------------------- */
 
 function registerSystemSettings() {
+    // Core system toggle: roll mechanic.
     game.settings.register("shadowrun2e", "useTargetNumbers", {
         name: "Use Target Numbers",
         hint: "Use target numbers for dice rolls instead of open-ended rolling",
@@ -2810,6 +3601,58 @@ function registerSystemSettings() {
         config: true,
         type: Boolean,
         default: true
+    });
+
+    // UI convenience: token selection quick actions popup (client-side).
+    game.settings.register("shadowrun2e", "tokenQuickActions", {
+        name: "Token Quick Actions",
+        hint: "Show a small quick-actions popup when you select a token you control.",
+        scope: "client",
+        config: true,
+        type: Boolean,
+        default: true
+    });
+
+    // House rule: Metatype priority restrictions.
+    // - Default: Metahumans require Metatype priority A.
+    // - Enabled: Allow metahumans at priorities A–C.
+    game.settings.register("shadowrun2e", "moreMetahumans", {
+        name: "More Metahumans",
+        hint: "Allow selecting Elf/Dwarf/Ork/Troll at Metatype priorities A–C (default is A only).",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false,
+        restricted: true
+    });
+
+    // House rule: Contact Levels (SR2-style contacts with upgrade tiers).
+    // - Contacts are Level 1–3.
+    // - Two free Level 1 contacts.
+    // - Extra contacts: ¥5,000 each (max 3× Charisma, excluding the two free).
+    // - Upgrades: +¥3,000 to Level 2 (max extra 2× Charisma), +¥7,000 to Level 3 (max extra 1× Charisma).
+    // - No Buddies (this setting implies Disable Buddies).
+    // - Followers are selected from Contact templates; Gang/Tribe followers remain and are capped to max 3 attributes/skills.
+    // - Enforcement is creation-mode only (before Resources are finalized).
+    game.settings.register("shadowrun2e", "contactLevels", {
+        name: "Contact Levels",
+        hint: "Enable Contact Levels (L1–L3) with SR2-style costs, limits, and upgrades during creation.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false,
+        restricted: true
+    });
+
+    // House rule: remove Buddies from character creation entirely.
+    game.settings.register("shadowrun2e", "disableBuddies", {
+        name: "Disable Buddies",
+        hint: "Remove the Buddy creation extra (no purchase button, no cost, no budget impact).",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false,
+        restricted: true
     });
 
     game.settings.register("shadowrun2e", "dataImported", {
@@ -2852,6 +3695,7 @@ function preloadHandlebarsTemplates() {
         "systems/shadowrun2e/templates/actor/spirit-sheet.html",
         "systems/shadowrun2e/templates/item/item-sheet.html",
         "systems/shadowrun2e/templates/apps/initiative-tracker.html",
+        "systems/shadowrun2e/templates/apps/quick-actions.html",
         "systems/shadowrun2e/templates/apps/item-browser.html",
         "systems/shadowrun2e/templates/apps/gear-purchase.html",
         "systems/shadowrun2e/templates/apps/data-import.html",

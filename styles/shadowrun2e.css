@@ -1617,10 +1617,12 @@
   background: var(--cyber-bg-primary);
   color: var(--cyber-text-primary);
   border: 1px solid var(--cyber-border);
-  padding: 6px 8px;
+  padding: 0 8px;
   border-radius: 0;
   font-family: inherit;
   font-size: 12px;
+  height: 28px;
+  line-height: 28px;
   transition: all 0.3s ease;
 }
 
@@ -1694,11 +1696,13 @@
   background: var(--cyber-bg-primary);
   color: var(--cyber-text-primary);
   border: 1px solid var(--cyber-border);
-  padding: 8px;
+  padding: 0 8px;
   border-radius: 0;
   font-family: inherit;
   width: 100%;
   margin-top: 8px;
+  height: 28px;
+  line-height: 28px;
 }
 
 #target-number:focus,
@@ -2570,39 +2574,224 @@
 }
 
 .shadowrun2e .sheet-header {
-  flex: 0 0 100px;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
   justify-content: flex-start;
-  margin-bottom: 10px;
+  align-items: flex-start;
+  margin-bottom: 8px;
 }
 
 .shadowrun2e .sheet-header .profile-img {
-  flex: 0 0 100px;
-  height: 100px;
-  margin-right: 10px;
+  flex: 0 0 72px;
+  height: 72px;
+  width: 72px;
+  margin-right: 4px;
 }
 
 .shadowrun2e .sheet-header .header-fields {
   flex: 1;
 }
 
+.shadowrun2e .sheet-header .sr2-header-resources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.shadowrun2e .sheet-header .sr2-header-resources .resource {
+  margin-bottom: 0;
+  align-items: center;
+  gap: 3px;
+}
+
+.shadowrun2e .sheet-header .sr2-header-resources .resource select,
+.shadowrun2e .sheet-header .sr2-header-resources .resource input {
+  width: auto;
+}
+
+.shadowrun2e .sheet-header .sr2-header-resources .resource select.metatype-select {
+  width: 140px;
+}
+
+.shadowrun2e .sheet-header .sr2-header-resources .sr2-damage-input {
+  width: 34px;
+  height: 24px;
+  padding: 0 4px;
+}
+
+.shadowrun2e .sheet-header .sr2-header-resources .sr2-inline-formula {
+  font-size: 13px;
+}
+
+.shadowrun2e .sheet-header .sr2-header-resources .resource-label {
+  margin-bottom: 0;
+  text-align: center;
+  line-height: 1.1;
+}
+
 .shadowrun2e .sheet-header h1.charname {
-  height: 50px;
+  height: 34px;
   padding: 0px;
-  margin: 5px 0;
+  margin: 0 0 4px;
   border-bottom: 0;
 }
 
 .shadowrun2e .sheet-header h1.charname input {
-  width: 100%;
+  width: 50%;
+  min-width: 240px;
   height: 100%;
   margin: 0;
+  font-size: 22px;
+  line-height: 1.1;
 }
 
 .shadowrun2e .sheet-tabs {
   flex: 0;
+}
+
+/* ===== MAIN TAB (LAYOUT) ===== */
+.shadowrun2e .tab.main .sr2-main-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.shadowrun2e .tab.main .sr2-main-col {
+  background: var(--cyber-bg-secondary);
+  border: 1px solid var(--cyber-border);
+  padding: 10px;
+}
+
+.shadowrun2e .tab.main .sr2-main-col h3 {
+  margin: 0 0 8px;
+  color: var(--cyber-accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--cyber-border);
+  padding-bottom: 6px;
+  font-size: 12px;
+}
+
+.shadowrun2e .tab.main .sr2-attr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shadowrun2e .tab.main .sr2-attr-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 70px;
+  gap: 8px;
+  align-items: center;
+}
+
+.shadowrun2e .tab.main .sr2-attr-row label {
+  font-weight: 700;
+  justify-self: start;
+}
+
+.shadowrun2e .tab.main .sr2-attr-row input {
+  width: 70px;
+  justify-self: end;
+  text-align: right;
+  height: 24px;
+  padding: 2px 4px;
+}
+
+.shadowrun2e .tab.main .sr2-pools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shadowrun2e .tab.main .sr2-pool-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--cyber-border);
+  background: var(--cyber-bg-primary);
+}
+
+.shadowrun2e .tab.main .sr2-pool-row label {
+  font-weight: 700;
+  justify-self: start;
+}
+
+.shadowrun2e .tab.main .sr2-pool-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: end;
+}
+
+.shadowrun2e .tab.main .sr2-pool-controls .pool-adjust {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+}
+
+.shadowrun2e .tab.main .sr2-pool-controls span {
+  min-width: 78px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.shadowrun2e .tab.main .sr2-pool-controls input {
+  width: 46px;
+  height: 22px;
+  padding: 0 4px;
+  text-align: center;
+}
+
+.shadowrun2e .tab.main .sr2-main-details .sr2-resource-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px 0;
+}
+
+.shadowrun2e .tab.main .sr2-main-details .sr2-resource-header .resource-label {
+  margin: 0;
+}
+
+.shadowrun2e .tab.main .sr2-main-details .sr2-lifestyles {
+  margin-bottom: 10px;
+}
+
+.shadowrun2e .tab.main .sr2-main-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shadowrun2e .tab.main .sr2-main-field-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.shadowrun2e .tab.main .sr2-main-field-row label {
+  font-weight: 700;
+  justify-self: start;
+}
+
+.shadowrun2e .tab.main .sr2-main-field-row input {
+  width: 100%;
+  height: 24px;
+  padding: 2px 4px;
+}
+
+@media (max-width: 900px) {
+  .shadowrun2e .tab.main .sr2-main-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .shadowrun2e .sheet-body,
@@ -2722,17 +2911,17 @@
 
 /* Items */
 .shadowrun2e .items-header {
-  height: 60px;
-  margin: 2px 0;
-  padding: 0;
+  height: auto;
+  min-height: 36px;
+  margin: 8px 0 6px;
+  padding: 6px 0 4px;
   align-items: center;
   background: rgba(0, 0, 0, 0.05);
   font-weight: bold;
 }
 
 .shadowrun2e .items-header>* {
-  font-size: 14px;
-  text-align: center;
+  font-size: 13px;
 }
 
 .shadowrun2e .items-header .item-name {
@@ -2843,6 +3032,36 @@
 .shadowrun2e .resource input.nuyen-input {
   width: 140px;
   text-align: right;
+}
+
+.shadowrun2e .sr2-inline-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shadowrun2e .sr2-inline-formula {
+  font-weight: 700;
+  color: var(--cyber-accent-cyan);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.shadowrun2e .sr2-damage-input {
+  width: 34px;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.shadowrun2e .sr2-damage-input::-webkit-outer-spin-button,
+.shadowrun2e .sr2-damage-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.shadowrun2e .sr2-damage-adjust {
+  min-width: 22px;
+  justify-content: center;
 }
 
 /* Tabs */
@@ -4366,25 +4585,25 @@ header.window-header.flexrow.draggable.resizable {
   background: var(--cyber-bg-secondary);
   border: 1px solid #ddd;
   border-radius: 6px;
-  padding: 20px;
-  margin-top: 20px;
+  padding: 12px;
+  margin-top: 12px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .shadowrun2e .summary-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
 }
 
 .shadowrun2e .summary-stats .stat {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 15px;
+  padding: 8px 10px;
   background: #f8f9fa;
   border-radius: 4px;
-  border-left: 4px solid #007acc;
+  border-left: 3px solid #007acc;
 }
 
 .shadowrun2e .summary-stats .stat label {
@@ -4395,7 +4614,7 @@ header.window-header.flexrow.draggable.resizable {
 .shadowrun2e .summary-stats .stat span {
   font-weight: bold;
   color: #007acc;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .shadowrun2e .category-tag {
@@ -4490,17 +4709,50 @@ header.window-header.flexrow.draggable.resizable {
   background: var(--cyber-bg-secondary);
   border: 2px solid #007acc;
   border-radius: 8px;
-  padding: 20px;
-  margin: 20px 0;
+  padding: 12px;
+  margin: 12px 0;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
 .shadowrun2e .range-calculator h3 {
-  margin: 0 0 15px 0;
+  margin: 0 0 10px 0;
   color: #007acc;
   border-bottom: 2px solid #007acc;
-  padding-bottom: 8px;
-  font-size: 18px;
+  padding-bottom: 6px;
+  font-size: 14px;
+}
+
+.shadowrun2e .tab .items-table-header {
+  padding: 6px 10px;
+  gap: 8px;
+  align-items: center;
+  line-height: 1.1;
+}
+
+.shadowrun2e .tab .items-table-header > div {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shadowrun2e .tab .item-row {
+  padding: 6px 10px;
+  gap: 8px;
+}
+
+.shadowrun2e .tab.gear .items-list.sr2-weapons-list .items-table-header,
+.shadowrun2e .tab.gear .items-list.sr2-weapons-list .item-row {
+  grid-template-columns: 2fr 2fr 90px 70px 120px 80px 110px;
+}
+
+.shadowrun2e .tab.gear .items-list.sr2-armor-list .items-table-header,
+.shadowrun2e .tab.gear .items-list.sr2-armor-list .item-row {
+  grid-template-columns: 2fr 70px 80px 80px 70px 80px 110px;
+}
+
+.shadowrun2e .tab.gear .items-list.sr2-gear-list .items-table-header,
+.shadowrun2e .tab.gear .items-list.sr2-gear-list .item-row {
+  grid-template-columns: 2fr 2fr 70px 60px 90px 80px 110px;
 }
 
 .shadowrun2e .range-controls {
@@ -5217,8 +5469,8 @@ header.window-header.flexrow.draggable.resizable {
   background: linear-gradient(135deg, var(--cyber-bg-secondary), var(--cyber-bg-primary));
   border: 2px solid var(--cyber-accent-cyan);
   border-left: 4px solid var(--cyber-accent-cyan);
-  padding: 15px;
-  margin-bottom: 15px;
+  padding: 6px 8px 8px 6px;
+  margin-bottom: 8px;
   position: relative;
 }
 
@@ -5399,14 +5651,20 @@ header.window-header.flexrow.draggable.resizable {
 }
 
 .target-number-dialog select,
-.target-number-dialog option,
 .target-number-dialog input[type="number"] {
   background: var(--cyber-bg-secondary);
   border: 1px solid var(--cyber-border-bright);
   color: var(--cyber-text-primary);
-  padding: 5px;
+  padding: 0 8px;
   border-radius: 3px;
   width: 100%;
+  height: 28px;
+  line-height: 28px;
+}
+
+.target-number-dialog option {
+  background: var(--cyber-bg-secondary);
+  color: var(--cyber-text-primary);
 }
 
 .target-number-dialog select:focus,
@@ -6592,6 +6850,20 @@ header.window-header.flexrow.draggable.resizable {
   min-width: auto;
 }
 
+.shadowrun2e button.spell-lock-toggle.unassigned i {
+  color: var(--cyber-text-muted);
+}
+
+.shadowrun2e button.spell-lock-toggle.assigned.enabled i {
+  color: var(--cyber-accent-green);
+  text-shadow: var(--cyber-glow-green);
+}
+
+.shadowrun2e button.spell-lock-toggle.assigned.disabled i {
+  color: var(--cyber-accent-red);
+  text-shadow: var(--cyber-glow-red);
+}
+
 /* ===== CYBERPUNK INSTALLATION STATUS INDICATORS ===== */
 .shadowrun2e .item-row[data-installed="true"] {
   border-left: 3px solid var(--cyber-accent-green);
@@ -6769,12 +7041,17 @@ header.window-header.flexrow.draggable.resizable {
 /* Ensure delete buttons don't get cut off or hidden */
 .shadowrun2e .item-actions {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   gap: 4px;
-  min-height: 32px;
+  min-height: 28px;
   position: relative;
   z-index: 5;
+}
+
+.shadowrun2e .item-actions > .item-delete,
+.shadowrun2e .item-actions > button.item-delete {
+  margin-left: auto;
 }
 
 .shadowrun2e .item-actions button {
@@ -6891,15 +7168,23 @@ header.window-header.flexrow.draggable.resizable {
 
 .shadowrun2e .skills-table-header {
   display: grid;
-  grid-template-columns: 2fr 80px 80px 80px 1fr 200px;
-  gap: 10px;
-  padding: 8px;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
+  gap: 8px;
+  padding: 6px 10px;
   background: var(--cyber-bg-secondary);
   border: 1px solid var(--cyber-border);
   font-weight: bold;
   color: var(--cyber-accent-cyan);
   text-transform: uppercase;
-  font-size: 12px;
+  font-size: 11px;
+  align-items: center;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.shadowrun2e .skills-table-header > div {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .shadowrun2e .skill-item {
@@ -6910,9 +7195,9 @@ header.window-header.flexrow.draggable.resizable {
 
 .shadowrun2e .skill-main {
   display: grid;
-  grid-template-columns: 2fr 80px 80px 80px 1fr 200px;
-  gap: 10px;
-  padding: 8px;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
+  gap: 8px;
+  padding: 6px 10px;
   align-items: center;
 }
 
@@ -6928,11 +7213,13 @@ header.window-header.flexrow.draggable.resizable {
 
 .shadowrun2e .skill-name-details select {
   width: 100%;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   background: var(--cyber-bg-secondary);
   color: var(--cyber-text-primary);
   border: 1px solid var(--cyber-border);
-  padding: 4px;
+  padding: 2px 4px;
+  height: 24px;
+  font-size: 11px;
 }
 
 .shadowrun2e .skill-name-details select:focus {
@@ -6963,7 +7250,9 @@ header.window-header.flexrow.draggable.resizable {
   background: var(--cyber-bg-secondary);
   color: var(--cyber-text-primary);
   border: 1px solid var(--cyber-border);
-  padding: 4px;
+  padding: 2px 4px;
+  height: 24px;
+  font-size: 11px;
 }
 
 .shadowrun2e .skill-specialization input:focus {
@@ -6974,13 +7263,64 @@ header.window-header.flexrow.draggable.resizable {
 .shadowrun2e .skill-actions {
   display: flex;
   gap: 4px;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
 }
 
 .shadowrun2e .skill-actions button {
-  padding: 4px 8px;
-  font-size: 11px;
+  padding: 2px 6px;
+  font-size: 10px;
+  line-height: 1.1;
+  height: 22px;
   min-width: auto;
+}
+
+.shadowrun2e .skill-actions .item-delete {
+  margin-left: auto;
+}
+
+.shadowrun2e .skill-controls a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, var(--cyber-bg-secondary), var(--cyber-bg-tertiary));
+  color: var(--cyber-accent-cyan);
+  border: 1px solid var(--cyber-border);
+  padding: 4px 8px;
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.shadowrun2e .skill-controls a.sr2-small-action {
+  background: none;
+  border: none;
+  padding: 1px 6px;
+  gap: 4px;
+  width: auto;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.shadowrun2e .skill-controls a:hover {
+  border-color: var(--cyber-accent-cyan);
+  box-shadow: var(--cyber-glow-cyan);
+}
+
+.shadowrun2e .skill-controls a.sr2-small-action:hover {
+  background: none;
+  border: none;
+  box-shadow: none;
+  transform: none;
+  text-shadow: var(--cyber-glow-cyan);
 }
 
 .shadowrun2e .skill-roll {
@@ -8538,13 +8878,43 @@ Management Dialog */
 
 .shadowrun2e .skills-table-header .skill-allocated-rating,
 .shadowrun2e .skill-item .skill-allocated-rating {
-  width: 70px;
+  width: 100%;
+  text-align: center;
+}
+
+.shadowrun2e .skills-table-header .skill-base-rating,
+.shadowrun2e .skills-table-header .skill-conc-rating,
+.shadowrun2e .skills-table-header .skill-spec-rating,
+.shadowrun2e .skill-item .skill-base-rating,
+.shadowrun2e .skill-item .skill-conc-rating,
+.shadowrun2e .skill-item .skill-spec-rating {
   text-align: center;
 }
 
 .shadowrun2e .skill-allocated-rating input {
-  width: 100%;
+  width: 34px;
+  max-width: 34px;
   text-align: center;
+  height: 24px;
+  padding: 2px 4px;
+  font-size: 11px;
+  -moz-appearance: textfield;
+}
+
+.shadowrun2e .skill-allocated-rating input::-webkit-outer-spin-button,
+.shadowrun2e .skill-allocated-rating input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.shadowrun2e .sr2-skill-alloc-controls {
+  justify-content: center;
+  gap: 2px;
+}
+
+.shadowrun2e .sr2-skill-allocated-adjust {
+  min-width: 22px;
+  justify-content: center;
 }
 
 .shadowrun2e .language-section input {
@@ -8552,7 +8922,9 @@ Management Dialog */
   background: var(--cyber-bg-secondary);
   color: var(--cyber-text-primary);
   border: 1px solid var(--cyber-border);
-  padding: 4px;
+  padding: 2px 4px;
+  height: 24px;
+  font-size: 11px;
 }
 
 .shadowrun2e .language-section input:focus {
@@ -8572,17 +8944,34 @@ Management Dialog */
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 1;
+  justify-content: space-between;
+  min-width: 0;
 }
 
 .shadowrun2e .follower-leader-name {
   color: var(--cyber-text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shadowrun2e .open-leader {
   background: none;
   border: 1px solid var(--cyber-border);
   color: var(--cyber-accent-cyan);
-  padding: 2px 6px;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 11px;
 }
 
 .shadowrun2e .open-leader:hover {
@@ -8624,6 +9013,48 @@ Management Dialog */
   background: none;
   border: 1px solid var(--cyber-border);
   color: var(--cyber-accent-cyan);
+}
+
+.shadowrun2e .sr2-small-action {
+  background: none;
+  border: none;
+  color: var(--cyber-accent-cyan);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  width: auto;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.shadowrun2e .sr2-small-action:hover {
+  background: none;
+  border: none;
+  box-shadow: none;
+  transform: none;
+  text-shadow: var(--cyber-glow-cyan);
+}
+
+.shadowrun2e .sr2-small-action:active {
+  transform: none;
+  box-shadow: none;
+}
+
+.shadowrun2e .sr2-small-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  text-shadow: none;
+}
+
+.shadowrun2e .sr2-small-action:before {
+  content: none;
 }
 
 .shadowrun2e .sr2-lifestyle-add {
@@ -8700,6 +9131,33 @@ Management Dialog */
   margin-top: 12px;
 }
 
+.shadowrun2e .sr2-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.shadowrun2e .sr2-section-header h4 {
+  margin: 0;
+  flex: 1;
+}
+
+.shadowrun2e .sr2-section-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shadowrun2e h4.over-limit {
+  color: var(--cyber-accent-red);
+  text-shadow: var(--cyber-glow-red);
+  border-bottom-color: var(--cyber-accent-red);
+}
+
 .shadowrun2e .sr2-connections-section + .sr2-connections-section {
   margin-top: 12px;
 }
@@ -8724,7 +9182,16 @@ Management Dialog */
   background: none;
   border: 1px solid var(--cyber-border);
   color: var(--cyber-accent-cyan);
-  padding: 2px 6px;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 11px;
 }
 
 .shadowrun2e .open-connection:hover {
@@ -8814,4 +9281,88 @@ form.shadowrun2e.follower .sheet-tabs.tabs .item:hover,
   background-color: transparent !important;
   color: var(--cyber-accent-cyan) !important;
   transform: none !important;
+}
+
+/* ===== TOKEN QUICK ACTIONS POPUP ===== */
+.sr2-quick-actions.window-app {
+  border: 1px solid var(--cyber-border-bright);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65);
+}
+
+.sr2-quick-actions.window-app .window-header {
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.08), rgba(255, 0, 255, 0.06));
+  border-bottom: 1px solid var(--cyber-border);
+}
+
+.sr2-quick-actions.window-app .window-content {
+  padding: 8px;
+  background: rgba(10, 10, 10, 0.92);
+  overflow: auto;
+}
+
+.sr2-quick-actions .sr2-qa-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sr2-quick-actions .sr2-qa-divider {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cyber-accent-cyan);
+}
+
+.sr2-quick-actions .sr2-qa-line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 2px 4px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.sr2-quick-actions .sr2-qa-initiative {
+  align-items: center;
+}
+
+.sr2-quick-actions .sr2-qa-line-label {
+  font-weight: 700;
+  color: var(--cyber-text-primary);
+}
+
+.sr2-quick-actions .sr2-qa-line-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--cyber-text-secondary);
+}
+
+.sr2-quick-actions .sr2-qa-item-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sr2-quick-actions .sr2-qa-item-name span {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.sr2-quick-actions .sr2-qa-item-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.sr2-quick-actions .sr2-qa-icon-btn {
+  padding: 4px 6px;
+  min-width: auto;
+  font-size: 12px;
+  line-height: 1.2;
 }

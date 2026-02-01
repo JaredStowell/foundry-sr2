@@ -1,6 +1,8 @@
 /**
  * Extend the basic ItemSheet with Shadowrun 2E specific functionality
  */
+import { sr2ParseFocusName } from "../sr2-rules.js";
+
 export class SR2ItemSheet extends foundry.applications.sheets.ItemSheet {
 
   /** @override */
@@ -34,6 +36,44 @@ export class SR2ItemSheet extends foundry.applications.sheets.ItemSheet {
         context.availableSkills = actor.items.filter(i => i.type === 'skill');
       }
     }
+
+    const focusLabels = {
+      "specific spell focus": "Specific Spell Focus",
+      "spell type focus": "Spell Category Focus",
+      "spirit focus": "Spirit Focus",
+      "power focus": "Power Focus",
+      "weapon focus": "Weapon Focus",
+      "spell lock": "Spell Lock"
+    };
+
+    const focus = itemData.type === "gear" ? sr2ParseFocusName(itemData.name) : null;
+    context.focusInfo = focus
+      ? {
+        isFocus: true,
+        kind: focus.kind,
+        label: focusLabels[focus.kind] || focus.name,
+        rating: focus.rating || 0,
+        isSpecificSpellFocus: focus.kind === "specific spell focus",
+        isSpellTypeFocus: focus.kind === "spell type focus",
+        isSpiritFocus: focus.kind === "spirit focus"
+      }
+      : { isFocus: false };
+
+    context.availableSpells = [];
+    if (actor && context.focusInfo.isSpecificSpellFocus) {
+      context.availableSpells = actor.items
+        .filter(i => i.type === "spell")
+        .map(s => ({ id: s.id, name: s.name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    context.spellClassOptions = [
+      { value: "C", label: "Combat" },
+      { value: "D", label: "Detection" },
+      { value: "H", label: "Health" },
+      { value: "I", label: "Illusion" },
+      { value: "M", label: "Manipulation" }
+    ];
 
     context.system = itemData.system;
     context.flags = itemData.flags;

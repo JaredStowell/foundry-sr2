@@ -3910,8 +3910,7 @@
         "Availability": "12/4days",
         "Cost": "800",
         "Street Index": "2.1",
-        "Accessories": "CB2",
-        "": "None"
+        "Accessories": "CB2"
       },
       {
         "Name": "Militech Crusher SSG",
@@ -14259,56 +14258,50 @@
       {
         "Name": "Laser Link (TacComm)",
         "Concealability": "4",
-        "Weight": "-",
-        "Availability": "1",
-        "Cost": "14/21days",
-        "Street Index": "2700",
-        "": "2"
+        "Weight": "1",
+        "Availability": "14/21days",
+        "Cost": "2700",
+        "Street Index": "2"
       },
       {
-        "Name": "Master Unit (TacComm",
+        "Name": "Master Unit (TacComm)",
         "Concealability": "-",
-        "Weight": "14",
-        "Availability": "75",
-        "Cost": "24/21days",
-        "Street Index": "60000",
-        "": "3"
+        "Weight": "75",
+        "Availability": "24/21days",
+        "Cost": "60000",
+        "Street Index": "3"
       },
       {
         "Name": "Microwave Link (TacComm)",
         "Concealability": "3",
-        "Weight": "-",
-        "Availability": "1",
-        "Cost": "18/21days",
-        "Street Index": "4800",
-        "": "2"
+        "Weight": "1",
+        "Availability": "18/21days",
+        "Cost": "4800",
+        "Street Index": "2"
       },
       {
         "Name": "Personal Comm Unit (TacComm)",
         "Concealability": "-",
-        "Weight": "14",
-        "Availability": ".5",
-        "Cost": "12/14days",
-        "Street Index": "18500",
-        "": "2"
+        "Weight": ".5",
+        "Availability": "12/14days",
+        "Cost": "18500",
+        "Street Index": "2"
       },
       {
         "Name": "Portable Master Unit (TacComm)",
         "Concealability": "8",
-        "Weight": "14",
-        "Availability": "20",
-        "Cost": "18/14days",
-        "Street Index": "120000",
-        "": "2"
+        "Weight": "20",
+        "Availability": "18/14days",
+        "Cost": "120000",
+        "Street Index": "2"
       },
       {
         "Name": "Satellite Uplink (TacComm)",
         "Concealability": "-",
-        "Weight": "-",
-        "Availability": "2",
-        "Cost": "12/21days",
-        "Street Index": "7500",
-        "": "2"
+        "Weight": "2",
+        "Availability": "12/21days",
+        "Cost": "7500",
+        "Street Index": "2"
       },
       {
         "Name": "Dataline Tap Lv 1",
@@ -14962,10 +14955,9 @@
         "Name": "Radio Jammer",
         "Concealability": "-",
         "Weight": "-",
-        "Availability": "-",
-        "Cost": "5/36hrs",
-        "Street Index": "100",
-        "": "1"
+        "Availability": "5/36hrs",
+        "Cost": "100",
+        "Street Index": "1"
       },
       {
         "Name": "Voice Mask Lv 1",
@@ -15306,11 +15298,10 @@
       {
         "Name": "Global Positioning System",
         "Concealability": "8",
-        "Weight": "-",
-        "Availability": ".5",
-        "Cost": "6/48hrs",
-        "Street Index": "700",
-        "": "1"
+        "Weight": ".5",
+        "Availability": "6/48hrs",
+        "Cost": "700",
+        "Street Index": "1"
       },
       {
         "Name": "LaserTrack Aerosol",
@@ -20171,54 +20162,48 @@
         "Concealability": "4",
         "Weight": "5",
         "Availability": "4/72hrs",
-        "Cost": "5/72hrs",
-        "Street Index": "6000",
-        "": "3"
+        "Cost": "6000",
+        "Street Index": "3"
       },
       {
         "Name": "Secured Long-Haul Link",
         "Concealability": "2",
         "Weight": "4",
         "Availability": "4/72hrs",
-        "Cost": "5/72hrs",
-        "Street Index": "9000",
-        "": "3"
+        "Cost": "9000",
+        "Street Index": "3"
       },
       {
         "Name": "Secured Uplink",
         "Concealability": "-",
         "Weight": "3",
         "Availability": "4/72hrs",
-        "Cost": "5/72hrs",
-        "Street Index": "1000",
-        "": "3"
+        "Cost": "1000",
+        "Street Index": "3"
       },
       {
         "Name": "Unsecured Short-Haul Link",
         "Concealability": "6",
         "Weight": "5",
         "Availability": "4/72hrs",
-        "Cost": "4/72hrs",
-        "Street Index": "4000",
-        "": "2"
+        "Cost": "4000",
+        "Street Index": "2"
       },
       {
         "Name": "Unsecured Long-Haul Link",
         "Concealability": "4",
         "Weight": "4",
         "Availability": "4/72hrs",
-        "Cost": "4/72hrs",
-        "Street Index": "6000",
-        "": "2"
+        "Cost": "6000",
+        "Street Index": "2"
       },
       {
         "Name": "Unsecured Uplink",
         "Concealability": "2",
         "Weight": "3",
         "Availability": "4/72hrs",
-        "Cost": "4/72hrs",
-        "Street Index": "1000",
-        "": "2"
+        "Cost": "1000",
+        "Street Index": "2"
       },
       {
         "Name": "Fuchi Holo-Edit 7200",
