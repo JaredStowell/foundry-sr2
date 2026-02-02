@@ -64,7 +64,7 @@
     "extreme": 60
   },
   "(SMG)": {
-    "name": "Shotgun",
+    "name": "SMG",
     "abbrivation": "(SMG)",
     "short": 10,
     "medium": 40,
@@ -73,7 +73,7 @@
   },
   "(ShtG)": {
     "name": "Shotgun",
-    "abbrivation": "(SMG)",
+    "abbrivation": "(ShtG)",
     "short": 10,
     "medium": 20,
     "long": 50,
@@ -98,26 +98,26 @@
   "(AsRf)": {
     "name": "Assault Rifle",
     "abbrivation": "(AsRf)",
-    "short": 50,
-    "medium": 150,
-    "long": 350,
-    "extreme": 550
+    "short": 15,
+    "medium": 40,
+    "long": 100,
+    "extreme": 250
   },
   "(SptR)": {
-    "name": "Sniper Rifle",
+    "name": "Sporting Rifle",
     "abbrivation": "(SptR)",
-    "short": 100,
-    "medium": 250,
-    "long": 500,
-    "extreme": 750
+    "short": 30,
+    "medium": 60,
+    "long": 150,
+    "extreme": 300
   },
   "(Snip)": {
     "name": "Sniper Rifle",
     "abbrivation": "(Snip)",
-    "short": 150,
-    "medium": 300,
-    "long": 700,
-    "extreme": 1000
+    "short": 40,
+    "medium": 80,
+    "long": 200,
+    "extreme": 400
   },
   "(HSR)": {
     "name": "Heavy Sniper Rifle",
@@ -138,34 +138,34 @@
   "(LMG)": {
     "name": "Light Machine Gun",
     "abbrivation": "(LMG)",
-    "short": 75,
-    "medium": 200,
-    "long": 400,
-    "extreme": 800
+    "short": 20,
+    "medium": 40,
+    "long": 80,
+    "extreme": 150
   },
   "(MMG)": {
     "name": "Medium Machine Gun",
     "abbrivation": "(MMG)",
-    "short": 80,
-    "medium": 250,
-    "long": 750,
-    "extreme": 1200
+    "short": 40,
+    "medium": 150,
+    "long": 300,
+    "extreme": 500
   },
   "(HMG)": {
     "name": "Heavy Machine Gun",
     "abbrivation": "(HMG)",
-    "short": 80,
-    "medium": 250,
-    "long": 800,
-    "extreme": 1500
+    "short": 40,
+    "medium": 150,
+    "long": 400,
+    "extreme": 800
   },
   "(ACan)": {
     "name": "Assault Cannon",
     "abbrivation": "(ACan)",
-    "short": 100,
-    "medium": 300,
-    "long": 900,
-    "extreme": 2400
+    "short": 50,
+    "medium": 150,
+    "long": 450,
+    "extreme": 1300
   },
   "(MinG)": {
     "name": "Mini Gun",
@@ -298,6 +298,7 @@
   "(GrLn)": {
     "name": "Grenade Launcher",
     "abbrivation": "(GrLn)",
+    "min": 5,
     "short": 50,
     "medium": 100,
     "long": 150,
@@ -322,10 +323,11 @@
   "(MisLn)": {
     "name": "Missile Launcher",
     "abbrivation": "(MisLn)",
-    "short": 150,
-    "medium": 450,
-    "long": 1200,
-    "extreme": 3000
+    "min": 20,
+    "short": 70,
+    "medium": 150,
+    "long": 450,
+    "extreme": 1500
   },
   "(GATGM)": {
     "name": "Great Dragon ATGM",

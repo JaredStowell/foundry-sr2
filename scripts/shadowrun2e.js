@@ -15,6 +15,7 @@ import { SR2GearPurchaseApp } from "./gear-purchase.js";
 import { SR2DataImporter } from "./data-importer.js";
 import { SR2CharacterImporter } from "./character-importer.js";
 import { initializeQuickActions } from "./quick-actions.js";
+import { sr2RefreshActionPools } from "./pools.js";
 import "./hotbar.js";
 import {
     SR2_PRIORITY_TABLE,
@@ -68,6 +69,32 @@ function sr2AreContactLevelsEnabled() {
 function sr2AreBuddiesDisabled() {
     // Contact Levels house rule implies no Buddies.
     return sr2AreContactLevelsEnabled() || Boolean(sr2GetSystemSetting("disableBuddies", false));
+}
+
+function sr2ShouldAutoRefreshPools() {
+    return Boolean(sr2GetSystemSetting("autoRefreshPools", true));
+}
+
+function sr2InstallPoolAutoRefreshHooks() {
+    const key = "__sr2PoolAutoRefreshHooksInstalled";
+    if (globalThis[key]) return;
+    globalThis[key] = true;
+
+    Hooks.on("updateCombat", async (combat, changes) => {
+        if (!sr2ShouldAutoRefreshPools()) return;
+        if (!combat?.started) return;
+
+        const changed = changes && typeof changes === "object" ? changes : {};
+        const hasTurnChange =
+            Object.prototype.hasOwnProperty.call(changed, "turn") ||
+            Object.prototype.hasOwnProperty.call(changed, "round") ||
+            Object.prototype.hasOwnProperty.call(changed, "started");
+        if (!hasTurnChange) return;
+
+        const combatant = combat?.combatant;
+        const actor = combatant?.actor;
+        await sr2RefreshActionPools(actor);
+    });
 }
 
 function sr2GetContactLevelsSummaryForLeader(leaderActor, pendingContact = null) {
@@ -1702,6 +1729,9 @@ Hooks.once("init", async function () {
 
     // Register Handlebars helpers
     registerHandlebarsHelpers();
+
+    // SR2 rules: dice pools refresh at the start of the acting character's turn.
+    sr2InstallPoolAutoRefreshHooks();
 
     // Token quick actions popup
     initializeQuickActions();
@@ -3846,6 +3876,16 @@ function registerSystemSettings() {
     game.settings.register("shadowrun2e", "useTargetNumbers", {
         name: "Use Target Numbers",
         hint: "Use target numbers for dice rolls instead of open-ended rolling",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: true
+    });
+
+    // SR2 core rule support: pools refresh at the start of a character's action.
+    game.settings.register("shadowrun2e", "autoRefreshPools", {
+        name: "Auto-Refresh Dice Pools",
+        hint: "Automatically refresh Combat/Magic/etc. pools to full at the start of the acting combatant's turn (Foundry Combat and SR2 Initiative Tracker).",
         scope: "world",
         config: true,
         type: Boolean,

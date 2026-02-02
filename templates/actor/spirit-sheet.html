@@ -101,6 +101,13 @@
 
         <div class="derived-stats">
           <div class="derived-stat">
+            <label>Form:</label>
+            <select name="system.spiritForm" data-dtype="String">
+              <option value="manifest" {{#if (eq system.spiritForm "manifest")}}selected{{/if}}>Manifest</option>
+              <option value="astral" {{#if (eq system.spiritForm "astral")}}selected{{/if}}>Astral</option>
+            </select>
+          </div>
+          <div class="derived-stat">
             <label>Initiative:</label>
             <span class="initiative-value">{{initiative}}</span>
           </div>

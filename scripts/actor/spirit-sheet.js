@@ -36,8 +36,12 @@ export class SR2SpiritSheet extends ActorSheet {
      * Organize and classify data for Spirit sheets.
      */
     _prepareSpiritData(context) {
-        // Calculate derived values
-        context.initiative = context.system.attributes.reaction.value + context.system.attributes.quickness.value;
+        // Initiative display (SR2: Reaction + initiative dice)
+        const dice = Number.isFinite(Number(context.system?.initiative?.dice)) ? Number(context.system.initiative.dice) : 1;
+        const base = Number.isFinite(Number(context.system?.initiative?.base))
+            ? Number(context.system.initiative.base)
+            : (Number(context.system?.attributes?.reaction?.value) || 0);
+        context.initiative = `${dice}d6+${base}`;
 
         // Spirit type icon
         context.spiritTypeIcon = this._getSpiritTypeIcon(context.system.spiritType);

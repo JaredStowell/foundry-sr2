@@ -382,7 +382,11 @@ export class SR2QuickActionsPopup extends Application {
 
         const sheet = actor.sheet;
         if (sheet && typeof sheet._onInitiativeRoll === "function") {
-            await sheet._onInitiativeRoll({ preventDefault: () => {} });
+            await sheet._onInitiativeRoll({
+                preventDefault: () => {},
+                stopPropagation: () => {},
+                stopImmediatePropagation: () => {}
+            });
             return;
         }
 

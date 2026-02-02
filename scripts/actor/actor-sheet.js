@@ -112,6 +112,203 @@ function sr2GetSystemSetting(key, fallback) {
     }
 }
 
+const SR2_DAMAGE_LEVELS = ["L", "M", "S", "D"];
+const SR2_DAMAGE_BOXES_BY_LEVEL = { L: 1, M: 3, S: 6, D: 10 };
+
+function sr2GetAugmentationModifiers(actor) {
+    if (!actor) return {};
+    return actor._sr2AugmentationModifiers ?? actor._calculateAugmentationModifiers?.() ?? {};
+}
+
+function sr2GetModifiedAttribute(actor, attributeName) {
+    const base = Number(actor?.system?.attributes?.[attributeName]?.value) || 0;
+    const modifiers = sr2GetAugmentationModifiers(actor);
+
+    const map = {
+        body: "BOD",
+        quickness: "QCK",
+        strength: "STR",
+        charisma: "CHA",
+        intelligence: "INT",
+        willpower: "WIL"
+    };
+    const key = map[String(attributeName || "")] || "";
+    if (!key) return base;
+    return base + (Number(modifiers?.[key]) || 0);
+}
+
+function sr2SafeEvalArithmetic(expression) {
+    const expr = String(expression || "").replace(/\s+/g, "");
+    if (!expr) return null;
+    if (!/^[0-9+\-*/().]+$/.test(expr)) return null;
+    try {
+        const value = Function(`"use strict";return (${expr});`)();
+        if (!Number.isFinite(value)) return null;
+        return value;
+    } catch (err) {
+        return null;
+    }
+}
+
+function sr2ParseDamageCode(rawDamageCode, context = {}) {
+    const raw = String(rawDamageCode || "").trim();
+    if (!raw) return null;
+
+    const isStun = /\bSTUN\b/i.test(raw);
+    let cleaned = raw.replace(/\bSTUN\b/ig, "").trim();
+
+    const levelMatch = cleaned.match(/([LMSD])\s*$/i);
+    if (!levelMatch) return null;
+    const level = levelMatch[1].toUpperCase();
+
+    cleaned = cleaned.replace(/([LMSD])\s*$/i, "").trim();
+    cleaned = cleaned.replace(/^\((.*)\)$/, "$1").trim();
+
+    const strength = Number(context?.strength) || 0;
+    const strengthMin = Number(context?.strengthMin) || strength;
+
+    let powerExpr = cleaned.toUpperCase();
+    powerExpr = powerExpr.replace(/STR\s*MIN\.?/g, String(strengthMin));
+    powerExpr = powerExpr.replace(/\bSTR\b/g, String(strength));
+    powerExpr = powerExpr.replace(/(\d+)\s*[X×]\s*/g, "$1*");
+    powerExpr = powerExpr.replace(/[^0-9+\-*/().]/g, "");
+
+    const power = sr2SafeEvalArithmetic(powerExpr);
+    if (!Number.isFinite(power)) return null;
+
+    return {
+        power: Math.floor(power),
+        level,
+        damageType: isStun ? "stun" : "physical",
+        raw
+    };
+}
+
+function sr2StageDamageLevel(baseLevel, stageDelta) {
+    const level = String(baseLevel || "").toUpperCase();
+    const baseIndex = SR2_DAMAGE_LEVELS.indexOf(level);
+    if (baseIndex < 0) return null;
+
+    const delta = Number(stageDelta) || 0;
+    const finalIndex = baseIndex + delta;
+    if (finalIndex < 0) return null;
+    if (finalIndex >= SR2_DAMAGE_LEVELS.length) return "D";
+    return SR2_DAMAGE_LEVELS[finalIndex];
+}
+
+function sr2GetArmorRatings(actor) {
+    const equippedArmor = actor?.items?.filter(i => i.type === "armor" && i.system?.equipped) || [];
+    const ballistic = equippedArmor.reduce((sum, a) => sum + (Number(a.system?.ballistic) || 0), 0);
+    const impact = equippedArmor.reduce((sum, a) => sum + (Number(a.system?.impact) || 0), 0);
+    const dermalArmor = Number(actor?.system?.details?.traits?.dermalArmor) || 0;
+    return {
+        ballistic: ballistic + dermalArmor,
+        impact: impact + dermalArmor
+    };
+}
+
+async function sr2ApplyDamageToActor(actor, damageType, boxes) {
+    const type = String(damageType || "physical");
+    const amount = Number(boxes) || 0;
+    if (!actor || amount <= 0) return false;
+
+    const hasTwoTracks = actor?.system?.health?.physical && actor?.system?.health?.stun;
+    if (!hasTwoTracks) return false;
+
+    const primary = type === "stun" ? "stun" : "physical";
+    const other = primary === "stun" ? "physical" : "stun";
+
+    const currentPrimary = Number(actor.system.health?.[primary]?.value) || 0;
+    const currentOther = Number(actor.system.health?.[other]?.value) || 0;
+    const maxPrimary = Number(actor.system.health?.[primary]?.max) || 10;
+    const maxOther = Number(actor.system.health?.[other]?.max) || 10;
+
+    let nextPrimary = currentPrimary + amount;
+    let carry = 0;
+
+    if (primary === "stun" && nextPrimary > maxPrimary) {
+        carry = nextPrimary - maxPrimary;
+        nextPrimary = maxPrimary;
+    }
+
+    const updateData = { [`system.health.${primary}.value`]: Math.max(0, Math.min(maxPrimary, nextPrimary)) };
+    if (carry > 0) {
+        const nextOther = Math.max(0, Math.min(maxOther, currentOther + carry));
+        updateData[`system.health.${other}.value`] = nextOther;
+    }
+
+    await actor.update(updateData);
+    return true;
+}
+
+function sr2GetWeaponSkillData(actor, weapon, options = {}) {
+    const notify = Boolean(options?.notify);
+    const weaponType = String(weapon?.system?.weaponType || "");
+    const isRanged = weaponType === "ranged";
+
+    const fallbackSkillNames = isRanged
+        ? ["Firearms", "Projectile Weapons", "Throwing Weapons", "Gunnery"]
+        : ["Armed Combat", "Unarmed Combat"];
+
+    let skillRating = 0;
+    let skillName = "Defaulting";
+    let rollDescription = "";
+
+    const linkedSkillId = weapon?.system?.linkedSkill?.skillId;
+    if (linkedSkillId) {
+        const linkedSkill = actor?.items?.get?.(linkedSkillId);
+        if (linkedSkill) {
+            const rollType = String(weapon?.system?.linkedSkill?.rollType || "base");
+            switch (rollType) {
+                case "concentration": {
+                    skillRating = Number(linkedSkill.system?.concentrationRating) || 0;
+                    if (linkedSkill.system?.concentration) {
+                        skillName = `${linkedSkill.name || linkedSkill.system?.baseSkill} (${linkedSkill.system.concentration})`;
+                        rollDescription = "Concentration";
+                    } else {
+                        rollDescription = "No Concentration";
+                        if (notify) ui.notifications.warn(`${weapon.name} is linked to a skill with no concentration selected.`);
+                    }
+                    break;
+                }
+                case "specialization": {
+                    skillRating = Number(linkedSkill.system?.specializationRating) || 0;
+                    if (linkedSkill.system?.specialization) {
+                        skillName = `${linkedSkill.name || linkedSkill.system?.baseSkill} [${linkedSkill.system.specialization}]`;
+                        rollDescription = "Specialization";
+                    } else {
+                        rollDescription = "No Specialization";
+                        if (notify) ui.notifications.warn(`${weapon.name} is linked to a skill with no specialization entered.`);
+                    }
+                    break;
+                }
+                case "base":
+                default:
+                    skillRating = Number(linkedSkill.system?.baseRating) || 0;
+                    skillName = linkedSkill.name || linkedSkill.system?.baseSkill || "Unknown Skill";
+                    rollDescription = "Base Skill";
+                    break;
+            }
+        } else if (notify) {
+            ui.notifications.warn(`${weapon.name} is linked to a skill that no longer exists.`);
+        }
+    } else {
+        const skills = actor?.items?.filter?.(i => i.type === "skill" && fallbackSkillNames.includes(i.system?.baseSkill)) || [];
+        if (skills.length > 0) {
+            const bestSkill = skills.reduce((best, current) => {
+                const currentRating = Number(current.system?.baseRating) || 0;
+                const bestRating = Number(best.system?.baseRating) || 0;
+                return currentRating > bestRating ? current : best;
+            });
+            skillRating = Number(bestSkill.system?.baseRating) || 0;
+            skillName = bestSkill.name || bestSkill.system?.baseSkill || "Unknown Skill";
+            rollDescription = "Auto-detected";
+        }
+    }
+
+    return { skillRating, skillName, rollDescription };
+}
+
 /**
  * Extend the basic ActorSheet with Shadowrun 2E specific functionality
  */
@@ -1909,21 +2106,21 @@ export class SR2ActorSheet extends ActorSheet {
   /**
    * Get available pools for dice rolling
    */
-  _getAvailablePools(context = {}) {
+  _getAvailablePools(context = {}, rollActor = this.actor) {
     const pools = [];
-    const poolData = this.actor.system.pools;
-    const magicAttribute = this.actor.system.attributes.magic?.value || 0;
+    const poolData = rollActor.system.pools;
+    const magicAttribute = rollActor.system.attributes.magic?.value || 0;
     const baseSkillName = String(context?.baseSkillName || "");
     const rollType = String(context?.rollType || "").toLowerCase();
     const excludeMagicPool = baseSkillName === "Conjuring";
 
     // Check for cyberdeck and control rig
-    const hasCyberdeck = this.actor.items.some(item => 
+    const hasCyberdeck = rollActor.items.some(item => 
       item.type === 'cyberware' && 
       item.name.toLowerCase().includes('cyberdeck')
     );
     
-    const hasControlRig = this.actor.items.some(item => 
+    const hasControlRig = rollActor.items.some(item => 
       item.type === 'cyberware' && 
       (item.name.toLowerCase().includes('control rig') || 
        item.name.toLowerCase().includes('vehicle control rig'))
@@ -1971,11 +2168,19 @@ export class SR2ActorSheet extends ActorSheet {
    */
   async _showTargetNumberDialog(dicePool, title, rollType, defaultTN = 4, weaponData = null, context = {}) {
     const enrichedContext = { ...(context || {}), rollType };
+    const rollActor = enrichedContext.rollActor || this.actor;
     const additionalPools = Array.isArray(enrichedContext?.additionalPools) ? enrichedContext.additionalPools : [];
-    const availablePools = [
-      ...this._getAvailablePools(enrichedContext),
+    let availablePools = [
+      ...this._getAvailablePools(enrichedContext, rollActor),
       ...additionalPools
     ];
+
+    const allowedPoolKeys = Array.isArray(enrichedContext?.allowedPoolKeys) ? enrichedContext.allowedPoolKeys : null;
+    if (allowedPoolKeys) {
+      availablePools = availablePools.filter(pool => allowedPoolKeys.includes(pool.key));
+    }
+
+    const poolCaps = (enrichedContext?.poolCaps && typeof enrichedContext.poolCaps === "object") ? enrichedContext.poolCaps : {};
     const isRangedAttack = rollType === 'attack' && weaponData && weaponData.system.weaponType === 'ranged';
 
     const rangedModifiersSection = isRangedAttack ? `
@@ -2124,22 +2329,31 @@ export class SR2ActorSheet extends ActorSheet {
 
         ${rangedModifiersSection}
 
-        ${availablePools.length > 0 ? `
-        <div class="pool-dice-section">
-          <label><strong>Pool Dice (Optional):</strong></label>
-          ${availablePools.map(pool => `
-            <div class="pool-option">
-              <label>
-                <input type="checkbox" name="pool-${pool.key}" value="${pool.key}" class="pool-checkbox">
-                ${pool.name} (${pool.current}/${pool.max})
-              </label>
-              <input type="number" name="pool-${pool.key}-dice" 
-                     min="0" max="${pool.current}" value="0" disabled class="pool-dice-input">
-            </div>
-          `).join('')}
-        </div>
-        ` : ''}
-      </div>
+	        ${availablePools.length > 0 ? `
+	        <div class="pool-dice-section">
+	          <label><strong>Pool Dice (Optional):</strong></label>
+	          ${availablePools.map(pool => `
+              ${(() => {
+                const cap = Number(poolCaps?.[pool.key]);
+                const maxDice = Number.isFinite(cap) ? Math.max(0, Math.min(pool.current, cap)) : pool.current;
+                const hasDice = maxDice > 0;
+                const disabledAttr = hasDice ? "" : "disabled";
+                const tooltipAttr = hasDice ? "" : 'title="No dice available (pool is empty)"';
+                return `
+	            <div class="pool-option">
+	              <label>
+	                <input type="checkbox" name="pool-${pool.key}" value="${pool.key}" class="pool-checkbox" ${disabledAttr} ${tooltipAttr}>
+	                ${pool.name} (${pool.current}/${pool.max})
+	              </label>
+	              <input type="number" name="pool-${pool.key}-dice" 
+	                     min="0" max="${maxDice}" value="0" disabled class="pool-dice-input">
+	            </div>
+                `;
+              })()}
+	          `).join('')}
+	        </div>
+	        ` : ''}
+	      </div>
     `;
 
     return new Promise(resolve => {
@@ -2175,6 +2389,20 @@ export class SR2ActorSheet extends ActorSheet {
             }
           });
 
+          // Clamp pool dice inputs to their max values (prevents typing above available dice)
+          html.find('.pool-dice-input').on('input change', function () {
+            const rawMax = parseInt($(this).attr('max'), 10);
+            const max = Number.isFinite(rawMax) ? rawMax : 0;
+
+            let rawValue = parseInt($(this).val(), 10);
+            if (!Number.isFinite(rawValue)) rawValue = 0;
+
+            const clamped = Math.max(0, Math.min(rawValue, max));
+            if (String($(this).val()) !== String(clamped)) {
+              $(this).val(clamped);
+            }
+          });
+
           // Handle ranged modifier calculations
           if (isRangedAttack) {
             const updateTotalModifier = () => {
@@ -2190,12 +2418,12 @@ export class SR2ActorSheet extends ActorSheet {
           }
         },
         buttons: {
-          roll: {
-            icon: '<i class="fas fa-dice-d6"></i>',
-            label: "Roll",
-            callback: async (html) => {
-              const baseTargetNumber = parseInt(html.find('#target-number').val());
-              let finalDicePool = dicePool;
+	          roll: {
+	            icon: '<i class="fas fa-dice-d6"></i>',
+	            label: "Roll",
+	            callback: async (html) => {
+	              const baseTargetNumber = parseInt(html.find('#target-number').val());
+	              let finalDicePool = dicePool;
 
               // Calculate ranged combat modifiers if applicable
               let tnModifier = 0;
@@ -2234,19 +2462,21 @@ export class SR2ActorSheet extends ActorSheet {
               const poolsUsed = [];
               let totalPoolDice = 0;
 
-              availablePools.forEach(pool => {
-                const checkbox = html.find(`input[name="pool-${pool.key}"]`);
-                const diceInput = html.find(`input[name="pool-${pool.key}-dice"]`);
-
-                if (checkbox.is(':checked')) {
-                  const diceUsed = parseInt(diceInput.val()) || 0;
-                  // Validate that we don't use more dice than available
-                  const actualDiceUsed = Math.min(diceUsed, pool.current);
-                  if (actualDiceUsed > 0) {
-                    totalPoolDice += actualDiceUsed;
-                    poolsUsed.push({ pool: pool, dice: actualDiceUsed });
-                  }
-                }
+	              availablePools.forEach(pool => {
+	                const checkbox = html.find(`input[name="pool-${pool.key}"]`);
+	                const diceInput = html.find(`input[name="pool-${pool.key}-dice"]`);
+	
+	                if (checkbox.is(':checked')) {
+	                  const diceUsed = parseInt(diceInput.val()) || 0;
+	                  // Validate that we don't use more dice than available
+	                  const cap = Number(poolCaps?.[pool.key]);
+	                  const maxFromCap = Number.isFinite(cap) ? cap : Infinity;
+	                  const actualDiceUsed = Math.min(diceUsed, pool.current, maxFromCap);
+	                  if (actualDiceUsed > 0) {
+	                    totalPoolDice += actualDiceUsed;
+	                    poolsUsed.push({ pool: pool, dice: actualDiceUsed });
+	                  }
+	                }
               });
 
               // Add pool dice to final dice pool
@@ -2257,41 +2487,58 @@ export class SR2ActorSheet extends ActorSheet {
                 finalDicePool = 1;
               }
 
-              // Update actor's pool values
-              if (poolsUsed.length > 0) {
-                const updateData = {};
-                poolsUsed.forEach(({ pool, dice }) => {
-                  if (!pool.isActorPool) return;
-                  const newCurrent = Math.max(0, pool.current - dice);
-                  updateData[`system.pools.${pool.key}.current`] = newCurrent;
-                });
-                if (Object.keys(updateData).length > 0) {
-                  await this.actor.update(updateData);
-                }
-              }
+	              // Update actor's pool values
+	              if (poolsUsed.length > 0) {
+	                const updateData = {};
+	                poolsUsed.forEach(({ pool, dice }) => {
+	                  if (!pool.isActorPool) return;
+	                  const newCurrent = Math.max(0, pool.current - dice);
+	                  updateData[`system.pools.${pool.key}.current`] = newCurrent;
+	                });
+	                if (Object.keys(updateData).length > 0) {
+	                  await rollActor.update(updateData);
+	                }
+	              }
 
               // Create enhanced title with pool info and modifiers
               let finalTitle = `${title} (TN ${finalTargetNumber})`;
               if (tnModifier !== 0) {
                 finalTitle += ` [Base TN ${baseTargetNumber} ${tnModifier >= 0 ? '+' : ''}${tnModifier}]`;
               }
-              if (poolsUsed.length > 0) {
-                const poolInfo = poolsUsed.map(({ pool, dice }) => `${dice} ${pool.name}`).join(', ');
-                finalTitle += ` [+${totalPoolDice} from ${poolInfo}]`;
-              }
+	              if (poolsUsed.length > 0) {
+	                const poolInfo = poolsUsed.map(({ pool, dice }) => `${dice} ${pool.name}`).join(', ');
+	                finalTitle += ` [+${totalPoolDice} from ${poolInfo}]`;
+	              }
+	
+	              // Roll the dice
+	              const unclampedDicePool = (Number(dicePool) || 0) + totalPoolDice;
+	              let sources = [];
+	              if (unclampedDicePool <= 0) {
+	                sources = ["base"];
+	              } else {
+	                for (let i = 0; i < Math.max(0, Number(dicePool) || 0); i++) {
+	                  sources.push("base");
+	                }
+	                for (const { pool, dice } of poolsUsed) {
+	                  for (let i = 0; i < dice; i++) {
+	                    sources.push(pool.key);
+	                  }
+	                }
+	              }
+	              while (sources.length < finalDicePool) sources.push("base");
+	              if (sources.length > finalDicePool) sources = sources.slice(0, finalDicePool);
 
-              // Roll the dice
-              const rollResult = await this.actor.rollDice(finalDicePool, finalTargetNumber, finalTitle);
-
-              // Show modifier breakdown in chat if there were ranged modifiers
-              if (isRangedAttack && modifierDetails.length > 0) {
-                const modifierChatData = {
-                  user: game.user.id,
-                  speaker: ChatMessage.getSpeaker({ actor: this.actor }),
-                  content: `
-                    <div class="ranged-modifiers-breakdown">
-                      <h4>Ranged Combat Modifiers Applied:</h4>
-                      <ul>
+	              const rollResult = await rollActor.rollDice(finalDicePool, finalTargetNumber, finalTitle, { sources });
+	
+	              // Show modifier breakdown in chat if there were ranged modifiers
+	              if (isRangedAttack && modifierDetails.length > 0) {
+	                const modifierChatData = {
+	                  user: game.user.id,
+	                  speaker: ChatMessage.getSpeaker({ actor: rollActor }),
+	                  content: `
+	                    <div class="ranged-modifiers-breakdown">
+	                      <h4>Ranged Combat Modifiers Applied:</h4>
+	                      <ul>
                         ${modifierDetails.map(detail => `<li>${detail}</li>`).join('')}
                       </ul>
                       <p><strong>Total TN Modifier: ${tnModifier >= 0 ? '+' : ''}${tnModifier}</strong></p>
@@ -2623,125 +2870,328 @@ export class SR2ActorSheet extends ActorSheet {
    */
   async _onWeaponAttack(event) {
     event.preventDefault();
+
     const weaponId = event.currentTarget.dataset.itemId;
     const weapon = this.actor.items.get(weaponId);
-
     if (!weapon) return;
 
-    // Get relevant attributes
-    const strength = this.actor.system.attributes.strength.value || 1;
-    const quickness = this.actor.system.attributes.quickness.value || 1;
+    const isRanged = weapon.system.weaponType === "ranged";
+    const { skillRating, skillName, rollDescription } = sr2GetWeaponSkillData(this.actor, weapon, { notify: true });
+    const dicePool = Math.max(0, Number(skillRating) || 0);
 
-    // Determine if it's a melee or ranged weapon
-    const isRanged = weapon.system.weaponType === 'ranged';
-    const attribute = isRanged ? quickness : strength;
+    const targets = Array.from(game.user?.targets ?? []);
+    const targetToken = targets.length === 1 ? targets[0] : null;
+    const targetActor = targetToken?.actor || null;
 
-    let skillRating = 0;
-    let skillName = 'Defaulting';
-    let rollDescription = '';
+    const resolveErrorChat = async (message) => {
+      await ChatMessage.create({
+        user: game.user.id,
+        speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+        content: `<div class="sr2-combat-resolution"><p>${message}</p></div>`
+      });
+    };
 
-    // Check if weapon has a linked skill
-    if (weapon.system.linkedSkill?.skillId) {
-      const linkedSkill = this.actor.items.get(weapon.system.linkedSkill.skillId);
+    const consumeAmmo = async () => {
+      if (!isRanged) return;
+      if (!weapon.system.ammo || weapon.system.ammo.current <= 0) return;
 
-      if (linkedSkill) {
-        const rollType = weapon.system.linkedSkill.rollType || 'base';
+      const newAmmo = weapon.system.ammo.current - 1;
+      await weapon.update({ "system.ammo.current": newAmmo });
+      if (newAmmo === 0) ui.notifications.warn(`${weapon.name} is out of ammunition!`);
+    };
 
-        // Get skill rating based on roll type
-        switch (rollType) {
-          case 'base':
-            skillRating = Number(linkedSkill.system.baseRating) || 0;
-            skillName = linkedSkill.name || linkedSkill.system.baseSkill || 'Unknown Skill';
-            rollDescription = 'Base Skill';
-            break;
-          case 'concentration':
-            skillRating = Number(linkedSkill.system.concentrationRating) || 0;
-            if (linkedSkill.system.concentration) {
-              skillName = `${linkedSkill.name || linkedSkill.system.baseSkill} (${linkedSkill.system.concentration})`;
-              rollDescription = 'Concentration';
-            } else {
-              ui.notifications.warn(`${weapon.name} is linked to a skill with no concentration selected.`);
-              skillRating = 0;
-              skillName = 'Defaulting';
-              rollDescription = 'No Concentration';
-            }
-            break;
-          case 'specialization':
-            skillRating = Number(linkedSkill.system.specializationRating) || 0;
-            if (linkedSkill.system.specialization) {
-              skillName = `${linkedSkill.name || linkedSkill.system.baseSkill} [${linkedSkill.system.specialization}]`;
-              rollDescription = 'Specialization';
-            } else {
-              ui.notifications.warn(`${weapon.name} is linked to a skill with no specialization entered.`);
-              skillRating = 0;
-              skillName = 'Defaulting';
-              rollDescription = 'No Specialization';
-            }
-            break;
-        }
-      } else {
-        ui.notifications.warn(`${weapon.name} is linked to a skill that no longer exists.`);
+    if (!targetToken || !targetActor) {
+      const attackType = isRanged ? "Ranged Attack" : "Melee Attack";
+      const subtitle = dicePool > 0 ? `${skillName} (${rollDescription})` : "Defaulting";
+      const attackResult = await this._showTargetNumberDialog(dicePool, `${attackType} with ${weapon.name} - ${subtitle}`, "attack", 4, weapon, {
+        allowedPoolKeys: ["combat", "karma"],
+        poolCaps: { combat: dicePool }
+      });
+      if (!attackResult?.rolled) return;
+
+      await ChatMessage.create({
+        user: game.user.id,
+        speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+        content: `
+          <div class="sr2-combat-resolution">
+            <h3>${attackType}: ${weapon.name}</h3>
+            <p><strong>Damage Code:</strong> ${weapon.system.damage || "1L"}</p>
+            <p><em>Target exactly one token to auto-resolve damage/resistance.</em></p>
+          </div>
+        `
+      });
+
+      await consumeAmmo();
+      return;
+    }
+
+    if (isRanged) {
+      let baseTargetNumber = 4;
+      let rangeLabel = "";
+      let distance = null;
+      let distanceUnits = "";
+
+      const attackerToken = canvas?.tokens?.controlled?.find(t => t.actor?.id === this.actor.id) || (this.actor.getActiveTokens?.(true)?.[0] ?? null);
+      if (canvas?.grid?.size && canvas?.scene?.grid?.distance && attackerToken?.center && targetToken?.center) {
+        const dx = targetToken.center.x - attackerToken.center.x;
+        const dy = targetToken.center.y - attackerToken.center.y;
+        const pixels = Math.hypot(dx, dy);
+        distance = (pixels / canvas.grid.size) * canvas.scene.grid.distance;
+        distanceUnits = String(canvas.scene.grid.units || "");
       }
-    } else {
-      // Fall back to automatic skill detection for backwards compatibility
-      const combatSkills = this.actor.items.filter(i =>
-        i.type === 'skill' &&
-        (i.system.baseSkill === 'Armed Combat' ||
-          i.system.baseSkill === 'Firearms' ||
-          i.system.baseSkill === 'Projectile Weapons')
+
+      try {
+        const rangeType = String(weapon.system.rangeType || "");
+        const rangesData = await this._loadRangesData();
+        const rangeData = rangesData?.[rangeType];
+        if (rangeData && Number.isFinite(distance)) {
+          const minRange = Number(rangeData.min) || 0;
+          const shortMax = Number(rangeData.short) || 0;
+          const mediumMax = Number(rangeData.medium) || 0;
+          const longMax = Number(rangeData.long) || 0;
+          const extremeMax = Number(rangeData.extreme) || 0;
+
+          if (minRange > 0 && distance < minRange) {
+            baseTargetNumber = 9;
+            rangeLabel = `Below Minimum (${minRange}+)`;
+          } else if (distance <= shortMax) {
+            baseTargetNumber = 4;
+            rangeLabel = "Short";
+          } else if (distance <= mediumMax) {
+            baseTargetNumber = 5;
+            rangeLabel = "Medium";
+          } else if (distance <= longMax) {
+            baseTargetNumber = 6;
+            rangeLabel = "Long";
+          } else if (distance <= extremeMax) {
+            baseTargetNumber = 9;
+            rangeLabel = "Extreme";
+          } else {
+            baseTargetNumber = 9;
+            rangeLabel = "Out of Range";
+          }
+        }
+      } catch (err) {
+        // If range data fails, fall back to TN 4.
+      }
+
+      const subtitle = dicePool > 0 ? `${skillName} (${rollDescription})` : "Defaulting";
+      const rangeSuffix = rangeLabel && Number.isFinite(distance)
+        ? ` [${rangeLabel} ${distance.toFixed(1)}${distanceUnits ? ` ${distanceUnits}` : ""}]`
+        : (rangeLabel ? ` [${rangeLabel}]` : "");
+      const rangeText = rangeLabel && Number.isFinite(distance)
+        ? `${rangeLabel} ${distance.toFixed(1)}${distanceUnits ? ` ${distanceUnits}` : ""}`
+        : rangeLabel;
+
+      const attackResult = await this._showTargetNumberDialog(dicePool, `Ranged Attack with ${weapon.name} - ${subtitle}${rangeSuffix}`, "attack", baseTargetNumber, weapon, {
+        allowedPoolKeys: ["combat", "karma"],
+        poolCaps: { combat: dicePool }
+      });
+      if (!attackResult?.rolled) return;
+
+      const attackerSuccesses = Number(attackResult.rollResult?.successes) || 0;
+      if (attackerSuccesses <= 0) {
+        await resolveErrorChat(`<strong>${this.actor.name}</strong> misses with <strong>${weapon.name}</strong>.`);
+        await consumeAmmo();
+        return;
+      }
+
+      const attackerStrength = sr2GetModifiedAttribute(this.actor, "strength");
+      const parsed = sr2ParseDamageCode(weapon.system.damage || "", { strength: attackerStrength });
+      if (!parsed) {
+        await resolveErrorChat(`Cannot auto-resolve: unparseable damage code <strong>${weapon.system.damage || ""}</strong>.`);
+        await consumeAmmo();
+        return;
+      }
+
+      const armorRatings = sr2GetArmorRatings(targetActor);
+      const rangeType = String(weapon.system.rangeType || "");
+      const usesImpactArmor = ["(GRLN)", "(MISLN)"].includes(rangeType.toUpperCase()) || /grenade|missile|rocket/i.test(String(weapon.name || ""));
+      const armorValue = usesImpactArmor ? armorRatings.impact : armorRatings.ballistic;
+
+      const resistTargetNumber = Math.max(2, parsed.power - armorValue);
+      const bodyDice = sr2GetModifiedAttribute(targetActor, "body");
+
+      const resistResult = await this._showTargetNumberDialog(
+        bodyDice,
+        `${targetActor.name} Damage Resistance vs ${weapon.name}`,
+        "damage-resistance",
+        resistTargetNumber,
+        null,
+        {
+          rollActor: targetActor,
+          allowedPoolKeys: ["combat", "karma"]
+        }
       );
+      if (!resistResult?.rolled) return;
 
-      if (combatSkills.length > 0) {
-        // Use the highest applicable combat skill
-        const bestSkill = combatSkills.reduce((best, current) => {
-          const currentRating = Number(current.system.baseRating) || 0;
-          const bestRating = Number(best.system.baseRating) || 0;
-          return currentRating > bestRating ? current : best;
-        });
+      const defenderSuccesses = Number(resistResult.rollResult?.successes) || 0;
+      const defenderCombatPoolSuccesses = Number(resistResult.rollResult?.successesBySource?.combat) || 0;
 
-        skillRating = Number(bestSkill.system.baseRating) || 0;
-        skillName = bestSkill.name || bestSkill.system.baseSkill;
-        rollDescription = 'Auto-detected';
+      const cleanMiss = defenderCombatPoolSuccesses > attackerSuccesses;
+      let finalLevel = null;
+      let boxes = 0;
+
+      if (!cleanMiss) {
+        const net = attackerSuccesses - defenderSuccesses;
+        const stages = Math.floor(Math.abs(net) / 2);
+        const stageDelta = net > 0 ? stages : (net < 0 ? -stages : 0);
+        finalLevel = sr2StageDamageLevel(parsed.level, stageDelta);
+        if (finalLevel) boxes = SR2_DAMAGE_BOXES_BY_LEVEL[finalLevel] ?? 0;
+      }
+
+      let applied = false;
+      if (finalLevel && boxes > 0) {
+        try {
+          applied = await sr2ApplyDamageToActor(targetActor, parsed.damageType, boxes);
+        } catch (error) {
+          console.error("SR2E | Failed to apply ranged damage", error);
+        }
+      }
+
+      const resultLabel = cleanMiss
+        ? `Clean miss (defender Combat Pool successes ${defenderCombatPoolSuccesses} > attacker ${attackerSuccesses}).`
+        : (finalLevel ? `${finalLevel} ${parsed.damageType === "stun" ? "Stun" : "Physical"} (${boxes} boxes)` : "No damage");
+
+      await ChatMessage.create({
+        user: game.user.id,
+        speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+        content: `
+          <div class="sr2-combat-resolution">
+            <h3>Ranged Combat: ${this.actor.name} → ${targetActor.name}</h3>
+            <p><strong>Weapon:</strong> ${weapon.name} (${weapon.system.damage || "1L"})</p>
+            ${rangeText ? `<p><strong>Range:</strong> ${rangeText}</p>` : ""}
+            <p><strong>Attack successes:</strong> ${attackerSuccesses}</p>
+            <p><strong>Resistance TN:</strong> ${resistTargetNumber} (= ${parsed.power} - ${armorValue})</p>
+            <p><strong>Resistance successes:</strong> ${defenderSuccesses} (Combat Pool-only: ${defenderCombatPoolSuccesses})</p>
+            <p><strong>Result:</strong> ${resultLabel}${finalLevel && boxes > 0 ? (applied ? "" : " (not applied)") : ""}</p>
+          </div>
+        `
+      });
+
+      await consumeAmmo();
+      return;
+    }
+
+    const equippedMeleeWeapons = targetActor.items.filter(i =>
+      i.type === "weapon" && i.system?.weaponType === "melee" && i.system?.equipped
+    );
+    const defenderWeapon = equippedMeleeWeapons.length > 0 ? equippedMeleeWeapons[0] : null;
+    const defenderWeaponName = defenderWeapon?.name || "Unarmed";
+
+    let defenderSkillRating = 0;
+    let defenderSkillName = "Unarmed Combat";
+    let defenderRollDescription = "Unarmed";
+
+    if (defenderWeapon) {
+      const defenderSkillData = sr2GetWeaponSkillData(targetActor, defenderWeapon, { notify: false });
+      defenderSkillRating = Math.max(0, Number(defenderSkillData.skillRating) || 0);
+      defenderSkillName = defenderSkillData.skillName || defenderSkillName;
+      defenderRollDescription = defenderSkillData.rollDescription || "Base Skill";
+    } else {
+      const unarmedSkill = targetActor.items.find(i => i.type === "skill" && i.system?.baseSkill === "Unarmed Combat");
+      if (unarmedSkill) {
+        defenderSkillRating = Math.max(0, Number(unarmedSkill.system?.baseRating) || 0);
+        defenderSkillName = unarmedSkill.name || "Unarmed Combat";
+        defenderRollDescription = "Base Skill";
       }
     }
 
-    // Calculate dice pool - in SR2E, only use skill rating (not attribute + skill)
-    const dicePool = skillRating;
+    const attackerReach = (Number(this.actor.system?.details?.traits?.reach) || 0) + (Number(weapon.system?.reach) || 0);
+    const defenderReach = (Number(targetActor.system?.details?.traits?.reach) || 0) + (Number(defenderWeapon?.system?.reach) || 0);
+    const reachDelta = attackerReach - defenderReach;
 
-    // Create attack title
-    const attackType = isRanged ? 'Ranged Attack' : 'Melee Attack';
-    const title = `${attackType} with ${weapon.name}`;
-    const subtitle = skillRating > 0 ? `${skillName} (${rollDescription})` : 'Defaulting to Attribute Only';
+    const attackerMeleeTN = Math.max(2, 4 - reachDelta);
+    const defenderMeleeTN = Math.max(2, 4 + reachDelta);
 
-    // Show TN selection dialog and roll for attack
-    await this._showTargetNumberDialog(dicePool, `${title} - ${subtitle}`, 'attack', 4, weapon);
+    const attackerSubtitle = dicePool > 0 ? `${skillName} (${rollDescription})` : "Defaulting";
+    const reachNote = reachDelta !== 0 ? ` [Reach Δ ${reachDelta >= 0 ? "+" : ""}${reachDelta}]` : "";
 
-    // Display weapon damage in chat
-    const damageCode = weapon.system.damage || "1L";
-    const chatData = {
+    const attackerTest = await this._showTargetNumberDialog(dicePool, `Melee Attack (${weapon.name}) - ${attackerSubtitle}${reachNote}`, "attack", attackerMeleeTN, weapon, {
+      allowedPoolKeys: ["combat", "karma"],
+      poolCaps: { combat: dicePool }
+    });
+    if (!attackerTest?.rolled) return;
+
+    const defenderTest = await this._showTargetNumberDialog(defenderSkillRating, `Melee Defense (${defenderWeaponName}) - ${defenderSkillName} (${defenderRollDescription})${reachNote}`, "attack", defenderMeleeTN, defenderWeapon, {
+      rollActor: targetActor,
+      allowedPoolKeys: ["combat", "karma"],
+      poolCaps: { combat: defenderSkillRating }
+    });
+    if (!defenderTest?.rolled) return;
+
+    const attackerSuccesses = Number(attackerTest.rollResult?.successes) || 0;
+    const defenderSuccesses = Number(defenderTest.rollResult?.successes) || 0;
+
+    const attackerHits = attackerSuccesses >= defenderSuccesses;
+    const hitterActor = attackerHits ? this.actor : targetActor;
+    const hitActor = attackerHits ? targetActor : this.actor;
+    const hitterWeapon = attackerHits ? weapon : defenderWeapon;
+    const hitterWeaponName = attackerHits ? weapon.name : defenderWeaponName;
+    const hitterSuccesses = attackerHits ? attackerSuccesses : defenderSuccesses;
+    const otherSuccesses = attackerHits ? defenderSuccesses : attackerSuccesses;
+    const stageUp = Math.floor(Math.max(0, hitterSuccesses - otherSuccesses) / 2);
+
+    const hitterStrength = sr2GetModifiedAttribute(hitterActor, "strength");
+    const rawDamageCode = hitterWeapon ? (hitterWeapon.system.damage || "") : "(STR)M Stun";
+    const parsed = sr2ParseDamageCode(rawDamageCode, { strength: hitterStrength });
+    if (!parsed) {
+      await resolveErrorChat(`Cannot auto-resolve: unparseable melee damage code <strong>${rawDamageCode}</strong>.`);
+      return;
+    }
+
+    const stagedLevel = sr2StageDamageLevel(parsed.level, stageUp) || parsed.level;
+    const armorRatings = sr2GetArmorRatings(hitActor);
+    const resistTargetNumber = Math.max(2, parsed.power - armorRatings.impact);
+    const bodyDice = sr2GetModifiedAttribute(hitActor, "body");
+
+    const resistResult = await this._showTargetNumberDialog(
+      bodyDice,
+      `${hitActor.name} Damage Resistance vs ${hitterWeaponName}`,
+      "damage-resistance",
+      resistTargetNumber,
+      null,
+      {
+        rollActor: hitActor,
+        allowedPoolKeys: ["combat", "karma"]
+      }
+    );
+    if (!resistResult?.rolled) return;
+
+    const resistSuccesses = Number(resistResult.rollResult?.successes) || 0;
+    const stageDown = Math.floor(resistSuccesses / 2);
+    const finalLevel = sr2StageDamageLevel(stagedLevel, -stageDown);
+    const boxes = finalLevel ? (SR2_DAMAGE_BOXES_BY_LEVEL[finalLevel] ?? 0) : 0;
+
+    let applied = false;
+    if (finalLevel && boxes > 0) {
+      try {
+        applied = await sr2ApplyDamageToActor(hitActor, parsed.damageType, boxes);
+      } catch (error) {
+        console.error("SR2E | Failed to apply melee damage", error);
+      }
+    }
+
+    const resultLabel = finalLevel
+      ? `${finalLevel} ${parsed.damageType === "stun" ? "Stun" : "Physical"} (${boxes} boxes)`
+      : "No damage";
+
+    await ChatMessage.create({
       user: game.user.id,
       speaker: ChatMessage.getSpeaker({ actor: this.actor }),
       content: `
-        <div class="weapon-attack">
-          <h3>${weapon.name} Attack</h3>
-          <p><strong>Skill Used:</strong> ${skillName} ${rollDescription ? `(${rollDescription})` : ''}</p>
-          <p><strong>Dice Pool:</strong> ${skillRating} (Skill Only)</p>
-          <p><strong>Damage Code:</strong> ${damageCode}</p>
+        <div class="sr2-combat-resolution">
+          <h3>Melee Combat: ${this.actor.name} ↔ ${targetActor.name}</h3>
+          <p><strong>Attacker successes:</strong> ${attackerSuccesses}</p>
+          <p><strong>Defender successes:</strong> ${defenderSuccesses}</p>
+          <p><strong>Hit:</strong> ${hitterActor.name} (${hitterWeaponName})</p>
+          <p><strong>Damage staged up:</strong> +${stageUp} level(s) → ${stagedLevel}</p>
+          <p><strong>Resistance TN:</strong> ${resistTargetNumber} (= ${parsed.power} - ${armorRatings.impact})</p>
+          <p><strong>Resistance successes:</strong> ${resistSuccesses}</p>
+          <p><strong>Result:</strong> ${resultLabel}${finalLevel && boxes > 0 ? (applied ? "" : " (not applied)") : ""}</p>
         </div>
       `
-    };
-
-    ChatMessage.create(chatData);
-
-    // Handle ammo consumption for ranged weapons
-    if (isRanged && weapon.system.ammo && weapon.system.ammo.current > 0) {
-      const newAmmo = weapon.system.ammo.current - 1;
-      await weapon.update({ 'system.ammo.current': newAmmo });
-
-      if (newAmmo === 0) {
-        ui.notifications.warn(`${weapon.name} is out of ammunition!`);
-      }
-    }
+    });
   }
 
   /**
@@ -2874,7 +3324,7 @@ export class SR2ActorSheet extends ActorSheet {
       categoryClass = 'long';
     } else if (distance <= ranges.extreme) {
       category = 'Extreme';
-      modifier = '(TN 8)';
+      modifier = '(TN 9)';
       categoryClass = 'extreme';
     } else {
       category = 'Out of Range';

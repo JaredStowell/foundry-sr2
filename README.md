@@ -1,55 +1,11 @@
-# Shadowrun 2nd Edition for Foundry VTT
+# Shadowrun 2E for Foundry VTT
 
-A comprehensive game system for playing Shadowrun 2nd Edition in Foundry Virtual Tabletop.
+A game system for playing Shadowrun, Second Edition (SR2) in Foundry Virtual Tabletop.
 
-## Features
+## Compatibility
 
-### Character Management
-
-- Complete attribute system (Body, Quickness, Strength, Charisma, Intelligence, Willpower, Essence, Magic, Reaction)
-- Automatic calculation of derived attributes and dice pools
-- Condition monitors for Physical and Stun damage
-- Magic system with awakened character support
-
-### Skills System
-
-- Three-tier skill structure: Base Skills → Concentrations → Specializations
-- **Separate ratings** for Base, Concentration, and Specialization levels
-- Dynamic skill selection from comprehensive skill database
-- **Roll-specific dice pools**: Choose to roll with Base, Concentration, or Specialization rating
-- Clear indication of which rating type is being used in rolls
-- Automatic enabling/disabling of rating fields based on selections
-
-### Dice Pools
-
-- **Combat Pool**: (Quickness + Intelligence + Willpower) ÷ 2
-- **Hacking Pool**: Reaction + highest Computer skill
-- **Control Pool**: Reaction + Vehicle Control Rig bonuses
-- **Spell Pool**: Highest Sorcery skill rating
-- **Astral Combat Pool**: Willpower + Charisma (awakened only)
-- **Task Pool**: Intelligence base
-- **Karma Pool**: Manual management
-
-### Equipment & Augmentation
-
-- **Cyberware**: Browse from comprehensive catalog with essence costs
-- **Bioware**: Bio Index tracking and installation management
-- **Spells**: Complete spell catalog with force and drain mechanics
-- **Adept Powers**: Power point management with level-based costs
-
-### Combat & Initiative
-
-- Multi-phase initiative system authentic to SR2e
-- Automatic initiative dice and reaction bonuses from cyberware
-- Initiative tracker with phase management
-- Multiple actions per round based on initiative scores
-
-### Dice Rolling
-
-- Exploding 6s system
-- Success counting (TN 4 default)
-- Critical failure detection
-- Detailed roll results with chat integration
+- **Foundry VTT**: Version 11+ (verified on v13)
+- **System ID**: `shadowrun2e`
 
 ## Installation
 
@@ -58,47 +14,47 @@ A comprehensive game system for playing Shadowrun 2nd Edition in Foundry Virtual
 1. Open Foundry VTT
 2. Go to "Game Systems" tab
 3. Click "Install System"
-4. Paste this manifest URL: `https://github.com/criticalfault/foundry-sr2/releases/latest/download/system.json`
+4. Paste this manifest URL: `https://raw.githubusercontent.com/JaredStowell/foundry-sr2/main/system.json`
 5. Click "Install"
 
 ### Method 2: Manual Installation
 
-1. Download the latest release from [GitHub](https://github.com/criticalfault/foundry-sr2/releases)
-2. Extract the zip file to your Foundry `Data/systems/` directory
+1. Download the system `.zip` from the repository (tags/releases), or use the `download` URL in `system.json`
+2. Extract the zip file to your Foundry `Data/systems/` directory as `shadowrun2e`
 3. Restart Foundry VTT
 
-## Usage
+## Highlights
 
-### Creating Characters
+### Actors & Sheets
 
-1. Create a new Actor and select "Character" type
-2. Fill in attributes on the Attributes tab
-3. Add skills using the Skills tab - select base skills and concentrations
-4. Browse and add cyberware, bioware, spells, or adept powers as needed
-5. Set awakened status in the Magic tab if playing a magical character
+- Character sheet for **Character**, **Contact**, and **Follower** actors (creation helpers, contacts, follower leader linking)
+- Cyberdeck sheet with program load/active toggles and memory/storage tracking
+- Vehicle sheet (vehicles and drones)
+- Spirit sheet
 
-### Combat
+### Rules Support
 
-1. Select tokens and open the Initiative Tracker (Ctrl+I or token controls)
-2. Add combatants and roll initiative
-3. Start combat and use Next Turn/Next Phase to progress
-4. Characters act multiple times based on initiative scores
+- SR2 d6 success tests with Target Numbers (Rule of One, Rule of Six)
+- Skills with Concentrations/Specializations; roll Base/Concentration/Specialization ratings
+- Dice pools (Combat, Magic, Hacking, Control, Astral) with spend/refresh tracking
+- Spell casting with Force and Drain resistance
+- Cyberware/bioware installation with Essence and Bio Index tracking
 
-### Dice Rolling
+### Tools & Data
 
-- Click rollable elements throughout the character sheet
-- Skills roll only their rating (not attribute + skill as in later editions)
-- Spells include automatic drain resistance rolls
+- Item Browser for adding cyberware, bioware, spells, adept powers, totems, weapons, armor, and gear
+- Initiative Tracker (token controls button or `Ctrl+I`) with multi-phase SR2 turn order
+- System Settings → **Import System Data** to rebuild compendiums from `data/*.json`
+- Included compendiums: skills, gear, cyberware, bioware, spells, adept powers, programs, VR programs, totems, cyberdecks, vehicles, drones
 
-## Compatibility
+## Documentation
 
-- **Foundry VTT**: Version 11+ (Verified on v12)
-- **System Version**: 1.0.0
+- Rules reference: `RULES.md`
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/criticalfault/foundry-sr2/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/criticalfault/foundry-sr2/discussions)
+- **Issues**: [GitHub Issues](https://github.com/JaredStowell/foundry-sr2/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/JaredStowell/foundry-sr2/discussions)
 
 ## License
 
@@ -108,7 +64,6 @@ This system is licensed under the terms specified in the LICENSE file.
 
 - Based on Shadowrun 2nd Edition by FASA Corporation
 - Built for the Foundry VTT community
-- Includes comprehensive data from official sourcebooks
 
 ---
 

@@ -9,7 +9,10 @@
     "Actor": {
       "character": "Character - Player",
       "contact": "Character - Contact",
-      "follower": "Character - Follower"
+      "follower": "Character - Follower",
+      "spirit": "Character - Spirit",
+      "vehicle": "Vehicle",
+      "cyberdeck": "Cyberdeck"
     },
     "Item": {
       "skill": "Skill",

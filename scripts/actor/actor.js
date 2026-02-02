@@ -26,6 +26,7 @@ export class SR2Actor extends Actor {
 
     // Make separate methods for each Actor type to keep things organized
     this._prepareCharacterData(actorData);
+    this._prepareSpiritData(actorData);
   }
 
   /**
@@ -73,6 +74,27 @@ export class SR2Actor extends Actor {
     this._calculateDerivedAttributes(systemData, modifiers);
     this._calculateConditionMonitors(systemData);
     this._calculateInitiative(systemData, modifiers);
+  }
+
+  _prepareSpiritData(actorData) {
+    if (actorData.type !== 'spirit') return;
+
+    const systemData = actorData.system;
+    if (!systemData) return;
+
+    const attrs = systemData.attributes || {};
+    const reaction = Number(attrs.reaction?.value) || 0;
+
+    const spiritForm = String(systemData.spiritForm || "manifest");
+    const formBonus = spiritForm === "astral" ? 20 : 10;
+
+    if (!systemData.initiative) systemData.initiative = {};
+
+    systemData.initiative.dice = 1;
+    systemData.initiative.base = reaction + formBonus;
+
+    const current = Number(systemData.initiative.current);
+    systemData.initiative.current = Number.isFinite(current) ? current : 0;
   }
 
   _calculateEssence(systemData) {
@@ -410,16 +432,21 @@ export class SR2Actor extends Actor {
   /**
    * Roll dice for Shadowrun 2E with exploding 6s
    */
-  async rollDice(dicePool, targetNumber = 4, title = "Dice Roll") {
+  async rollDice(dicePool, targetNumber = 4, title = "Dice Roll", options = {}) {
     // Ensure dicePool is a number and at least 1
     dicePool = Math.max(1, Number(dicePool) || 1);
     targetNumber = Math.max(2, Number(targetNumber) || 4);
 
+    const sources = Array.isArray(options?.sources) ? options.sources : null;
+    const suppressChat = Boolean(options?.suppressChat);
     
     const diceResults = [];
     let totalSuccesses = 0;
     let totalOnes = 0;
     const shouldExplode = targetNumber > 6;
+
+    const successesBySource = {};
+    const onesBySource = {};
 
     // Roll each die in the pool
     for (let i = 0; i < dicePool; i++) {
@@ -438,18 +465,22 @@ export class SR2Actor extends Actor {
       // Count successes and ones for this die
       const isOne = dieResults[0] === 1;
       const isSuccess = !isOne && dieTotal >= targetNumber;
+      const source = String(sources?.[i] ?? "base");
       if (isSuccess) {
         totalSuccesses++;
+        successesBySource[source] = (successesBySource[source] || 0) + 1;
       }
       if (isOne) { // Only the first roll counts for ones
         totalOnes++;
+        onesBySource[source] = (onesBySource[source] || 0) + 1;
       }
 
       diceResults.push({
         results: dieResults,
         total: dieTotal,
         success: isSuccess,
-        isOne: isOne
+        isOne: isOne,
+        source
       });
     }
 
@@ -470,8 +501,20 @@ export class SR2Actor extends Actor {
       })
     };
 
-    ChatMessage.create(chatData);
-    return { successes: totalSuccesses, ones: totalOnes, isCriticalFailure: isCriticalFailure };
+    if (!suppressChat) {
+      ChatMessage.create(chatData);
+    }
+
+    return {
+      successes: totalSuccesses,
+      ones: totalOnes,
+      isCriticalFailure: isCriticalFailure,
+      dicePool,
+      targetNumber,
+      diceResults,
+      successesBySource,
+      onesBySource
+    };
   }
 
   /**
@@ -483,6 +526,36 @@ export class SR2Actor extends Actor {
     // Copy the actor's system data
     if (this.system) {
       data.actor = foundry.utils.deepClone(this.system);
+
+      // Ensure initiative roll terms exist for core Combat initiative formulas (Roll All / Roll NPCs).
+      const systemData = data.actor;
+      if (!systemData.initiative) systemData.initiative = {};
+
+      // Spirits: base Reaction (per type) + 10/20 (manifest/astral), then roll 1d6.
+      if (this.type === "spirit") {
+        const reaction = Number(systemData.attributes?.reaction?.value) || 0;
+        const spiritForm = String(systemData.spiritForm || "manifest");
+        const formBonus = spiritForm === "astral" ? 20 : 10;
+
+        systemData.initiative.dice = 1;
+        systemData.initiative.base = reaction + formBonus;
+      } else {
+        let initiativeDice = Number(systemData.initiative?.dice);
+        if (!Number.isFinite(initiativeDice) || initiativeDice < 1) initiativeDice = 1;
+
+        let initiativeBase = Number(systemData.initiative?.base);
+        if (!Number.isFinite(initiativeBase)) {
+          const reaction = Number(systemData.attributes?.reaction?.value);
+          initiativeBase = Number.isFinite(reaction) ? reaction : 0;
+        }
+
+        systemData.initiative.dice = initiativeDice;
+        systemData.initiative.base = initiativeBase;
+      }
+
+      let initiativeCurrent = Number(systemData.initiative?.current);
+      if (!Number.isFinite(initiativeCurrent) || initiativeCurrent < 0) initiativeCurrent = 0;
+      systemData.initiative.current = initiativeCurrent;
     }
 
     // Add level for easier access, or fall back to 0

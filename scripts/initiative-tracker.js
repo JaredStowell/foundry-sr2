@@ -2,6 +2,8 @@
  * Shadowrun 2E Initiative Tracker
  * Handles initiative rolling, phase tracking, and turn order
  */
+import { sr2RefreshActionPools } from "./pools.js";
+
 export class SR2InitiativeTracker extends Application {
 
     constructor(options = {}) {
@@ -486,6 +488,7 @@ export class SR2InitiativeTracker extends Application {
         // Start Foundry combat
         await this._startCombatInFoundry();
 
+        await this._refreshPoolsForCurrentTurn();
         this._announceCurrentTurn();
         this.render();
     }
@@ -510,6 +513,7 @@ export class SR2InitiativeTracker extends Application {
         // Sync with Foundry combat
         await this._syncFoundryTurn();
 
+        await this._refreshPoolsForCurrentTurn();
         this._announceCurrentTurn();
         this.render();
     }
@@ -551,8 +555,28 @@ export class SR2InitiativeTracker extends Application {
         // Sync with Foundry combat
         await this._syncFoundryTurn();
 
+        await this._refreshPoolsForCurrentTurn();
         this._announceCurrentTurn();
         this.render();
+    }
+
+    async _refreshPoolsForCurrentTurn() {
+        try {
+            const enabled = Boolean(game?.settings?.get("shadowrun2e", "autoRefreshPools"));
+            if (!enabled) return;
+        } catch (err) {
+            // If the setting can't be read (early init/missing), default to enabled.
+        }
+
+        const activeCombatants = this._getActiveCombatantsForPhase();
+        const currentCombatant = activeCombatants[this.currentTurn];
+        if (!currentCombatant) return;
+
+        const token = canvas?.tokens?.get?.(currentCombatant.tokenId);
+        const actor = token?.actor ?? game?.actors?.get?.(currentCombatant.actorId);
+        if (!actor) return;
+
+        await sr2RefreshActionPools(actor);
     }
 
     /**
