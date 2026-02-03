@@ -4908,31 +4908,31 @@ export class SR2ActorSheet extends ActorSheet {
         if (actorUpdates[path] !== undefined) actorUpdates[path] = clamped;
       }
 
-      if (creationMode && totalAttributePoints > 0) {
-        const spent = attrKeys.reduce((sum, key) => {
-          const baseline = bounds[key]?.min ?? 0;
-          const value = Number(newAttributeValues[key]);
-          return sum + Math.max(0, value - baseline);
-        }, 0);
-
-        if (spent > totalAttributePoints) {
-          const changedName = event?.currentTarget?.name || "";
-          const match = changedName.match(/^system\.attributes\.([^.]+)\.value$/);
-          const changedKey = match?.[1];
-          if (changedKey && attrKeys.includes(changedKey)) {
-            const baseline = bounds[changedKey]?.min ?? 0;
-            const currentSpent = Math.max(0, Number(newAttributeValues[changedKey]) - baseline);
-            const otherSpent = spent - currentSpent;
-            const allowedSpent = Math.max(0, totalAttributePoints - otherSpent);
-            const allowedFinalRaw = baseline + allowedSpent;
-            const allowedFinal = sr2Clamp(allowedFinalRaw, bounds[changedKey].min, bounds[changedKey].max);
-            actorUpdates[`system.attributes.${changedKey}.value`] = allowedFinal;
-            ui.notifications.warn("Attribute Points exceeded; clamped the last change.");
-          } else {
-            ui.notifications.warn("Attribute Points exceeded.");
-          }
-        }
-      }
+		      if (creationMode && totalAttributePoints > 0) {
+		        const spent = attrKeys.reduce((sum, key) => {
+		          const value = Number(newAttributeValues[key]);
+		          const baseline = Number(bounds[key]?.min) || 0;
+		          return sum + Math.max(0, value - baseline);
+		        }, 0);
+		
+		        if (spent > totalAttributePoints) {
+		          const changedName = event?.currentTarget?.name || "";
+		          const match = changedName.match(/^system\.attributes\.([^.]+)\.value$/);
+		          const changedKey = match?.[1];
+		          if (changedKey && attrKeys.includes(changedKey)) {
+		            const baseline = Number(bounds[changedKey]?.min) || 0;
+		            const currentSpent = Math.max(0, Number(newAttributeValues[changedKey]) - baseline);
+		            const otherSpent = spent - currentSpent;
+		            const allowedSpent = Math.max(0, totalAttributePoints - otherSpent);
+		            const allowedFinalRaw = baseline + allowedSpent;
+		            const allowedFinal = sr2Clamp(allowedFinalRaw, bounds[changedKey].min, bounds[changedKey].max);
+		            actorUpdates[`system.attributes.${changedKey}.value`] = allowedFinal;
+		            ui.notifications.warn("Attribute Points exceeded; clamped the last change.");
+		          } else {
+		            ui.notifications.warn("Attribute Points exceeded.");
+	          }
+	        }
+	      }
 
       await this.object.update(actorUpdates);
     }

@@ -206,8 +206,10 @@ During character creation, purchase a starting lifestyle (upkeep/standard of liv
 
 #### Racial modifications
 Racial Attribute modifiers determine the character’s baseline (starting) attributes.
-- Baseline attributes do **not** cost Attribute Points.
-- Baseline attributes may be **0** if a negative modifier drops them below 1 (e.g., Dwarf Quickness).
+- All characters begin with **0** in each Physical/Mental attribute before racial modifiers are applied.
+- Baseline attributes (including racial modifiers) **do not** cost Attribute Points.
+- Spend Attribute Points to increase attributes above your racial baselines.
+- Baseline attributes may be below 1 if a negative modifier applies (e.g., Dwarf Quickness).
 - Final Attribute ratings cannot exceed racial maximums.
 
 | Race | Modifications |
@@ -279,7 +281,7 @@ Attribute Points by priority:
 
 Rules:
 - Special attributes (Essence, Magic, Reaction) are handled separately.
-- Start at the racial baseline, then spend Attribute Points to raise ratings above it.
+- Attribute Points are the total you can spend to increase the six Physical/Mental attributes above racial baselines.
 - No final Attribute above racial maximum; Attributes can be 0 if allowed by baseline.
 
 #### Languages (special skill)
@@ -1251,8 +1253,8 @@ Keep this section lightweight and searchable: core rules + a clean skill list.
 - A skill test rolls a number of d6 equal to the Skill rating (see `## Game Concepts`).
 
 ### Untrained Use (no skill rating)
-- Characters with no rating may still attempt some tasks by defaulting to an Attribute or a related skill (GM discretion).
-- If defaulting, the dice pool is typically the relevant Attribute (and the GM may apply TN modifiers).
+- Characters with no rating may still attempt some tasks by defaulting via the **Skill Web** (GM discretion).
+- Defaulting uses either a related **skill** or a relevant **Attribute** as the dice pool, with TN penalties based on distance on the web.
 
 ### Skill Web (defaulting)
 Shadowrun skills are connected by a “Skill Web” that defines how defaulting works when you lack the exact skill.
@@ -1263,7 +1265,9 @@ Shadowrun skills are connected by a “Skill Web” that defines how defaulting 
 - Defaulting via an **Attribute**:
   - Trace from the Attribute to the desired skill.
   - Each node/circle passed adds **+2 TN**.
-- You can only trace in the direction allowed by the web (some paths are blocked; some skills don’t connect cleanly).
+- You don’t have to trace the shortest path, but you may need a longer path if arrows block a route.
+- You can only trace in the direction allowed by the web; if you hit an arrow going the “wrong” way, that route is blocked.
+- Some skills don’t connect to other skills (or to some Attributes). If there’s no valid path, you can’t default via the Skill Web.
 
 ### Perception
 Perception is typically tested using **Intelligence**.

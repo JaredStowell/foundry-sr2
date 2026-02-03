@@ -233,12 +233,12 @@ export function sr2GetRacialTraits(metatype) {
 
 export function sr2GetRacialAttributeBounds(metatype) {
     const mods = sr2GetRacialModifiers(metatype);
-    const baseMin = 1;
+    const baseMin = 0;
     const baseMax = 6;
 
     const bounds = {};
     for (const [key, mod] of Object.entries(mods)) {
-        const min = Math.max(0, baseMin + mod);
+        const min = baseMin + mod;
         const max = Math.max(min, baseMax + mod);
         bounds[key] = { min, max };
     }
@@ -246,14 +246,15 @@ export function sr2GetRacialAttributeBounds(metatype) {
 }
 
 export function sr2ComputeAttributePointsSpent(attributes, metatype) {
-    const mods = sr2GetRacialModifiers(metatype);
+    const bounds = sr2GetRacialAttributeBounds(metatype);
     const keys = ["body", "quickness", "strength", "charisma", "intelligence", "willpower"];
     let spent = 0;
     for (const key of keys) {
         const value = Number(attributes?.[key]?.value) || 0;
-        const mod = Number(mods[key]) || 0;
-        const baseline = Math.max(0, 1 + mod);
-        spent += Math.max(0, value - baseline);
+        const b = bounds?.[key];
+        const clamped = b ? sr2Clamp(value, b.min, b.max) : value;
+        const baseline = Number(b?.min) || 0;
+        spent += Math.max(0, clamped - baseline);
     }
     return spent;
 }

@@ -2735,7 +2735,7 @@ Hooks.on("preCreateActor", function (actor, data, options, userId) {
     const looksUnallocated = attrKeys.every(key => {
         const raw = getProperty(data, `system.attributes.${key}.value`);
         const value = Number(raw);
-        return !Number.isFinite(value) || value === 1;
+        return !Number.isFinite(value) || value === 0 || value === 1;
     });
 
     if (!looksUnallocated) return;
@@ -3051,6 +3051,57 @@ Hooks.on("createActor", async function (actor, options, userId) {
 
     await sr2SyncFreeLanguageSkills(actor);
     await actor.setFlag("shadowrun2e", "prioritiesApplied", true);
+});
+
+Hooks.on("createActor", async function (actor, options, userId) {
+    if (typeof userId === "string" && userId !== game.user.id) return;
+    if (!["character", "contact", "follower"].includes(actor.type)) return;
+    if (actor.getFlag("shadowrun2e", "metatypeBaselineApplied")) return;
+
+    // If this actor is being created from a follower archetype, let the archetype bootstrap set values.
+    if (actor.type === "follower" && actor.system?.details?.archetype) return;
+
+    const metatype = actor.system?.details?.metatype || "human";
+    const bounds = sr2GetRacialAttributeBounds(metatype);
+    const traits = sr2GetRacialTraits(metatype);
+
+    const attrKeys = ["body", "quickness", "strength", "charisma", "intelligence", "willpower"];
+
+    // Auto-apply baselines if the actor still looks unallocated (template defaults).
+    const looksUnallocated = attrKeys.every(key => {
+        const value = Number(actor.system?.attributes?.[key]?.value);
+        return !Number.isFinite(value) || value === 0 || value === 1;
+    });
+
+    const updates = {};
+
+    // Keep derived traits and caps consistent with the chosen metatype.
+    if (!actor.system?.details?.traits || typeof actor.system.details.traits !== "object") {
+        updates["system.details.traits"] = traits;
+    }
+
+    for (const key of attrKeys) {
+        const b = bounds[key];
+        if (!b) continue;
+
+        const currentMin = actor.system?.attributes?.[key]?.min;
+        const currentMax = actor.system?.attributes?.[key]?.max;
+        if (currentMin !== b.min) updates[`system.attributes.${key}.min`] = b.min;
+        if (currentMax !== b.max) updates[`system.attributes.${key}.max`] = b.max;
+
+        const currentValue = Number(actor.system?.attributes?.[key]?.value);
+        const shouldApplyBaseline =
+            looksUnallocated ||
+            !Number.isFinite(currentValue) ||
+            currentValue < b.min;
+        if (shouldApplyBaseline) updates[`system.attributes.${key}.value`] = b.min;
+    }
+
+    if (Object.keys(updates).length) {
+        await actor.update(updates, { render: false });
+    }
+
+    await actor.setFlag("shadowrun2e", "metatypeBaselineApplied", true);
 });
 
 Hooks.on("createActor", async function (actor, options, userId) {
