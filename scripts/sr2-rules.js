@@ -372,7 +372,7 @@ export function sr2ParseFocusName(name) {
         return { kind: "spell lock", rating: 0, name: itemName };
     }
 
-    const match = itemName.match(/^(Specific Spell Focus|Spell Type Focus|Spell Category Focus|Spirit Focus|Power Focus|Weapon Focus)\\s+(\\d+)$/i);
+    const match = itemName.match(/^(Specific Spell Focus|Spell Type Focus|Spell Category Focus|Spirit Focus|Power Focus|Weapon Focus)\s+(\d+)$/i);
     if (!match) return null;
 
     let kind = String(match[1] || "").toLowerCase();
@@ -487,7 +487,7 @@ export function sr2ComputeSpellLockAugmentationModifiers(items) {
         if (item.type !== "spell") continue;
 
         const spellLock = item.system.spellLock;
-        if (!spellLock?.assigned || !spellLock?.enabled) continue;
+        if (!spellLock?.enabled) continue;
 
         const inferred = sr2InferSpellLockAugmentationModifiersFromSpellName(item.name);
         for (const [key, value] of Object.entries(inferred)) {
