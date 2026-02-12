@@ -1922,7 +1922,21 @@ function sr2EnhanceActorCreateDialog(app, html) {
         ].join("");
     })();
 
-    const leaderActors = globalThis.game?.actors?.filter(a => a.type === "character") ?? [];
+    const currentUser = globalThis.game?.user;
+    const ownershipLevels = globalThis.CONST?.DOCUMENT_OWNERSHIP_LEVELS;
+    const visibleLevel = ownershipLevels?.LIMITED ?? ownershipLevels?.OBSERVER ?? 1;
+
+    const leaderActors = (globalThis.game?.actors?.filter(a => a.type === "character") ?? [])
+        .filter(a => {
+            if (!currentUser) return true;
+            if (currentUser.isGM) return true;
+            if (typeof a?.testUserPermission === "function") {
+                return a.testUserPermission(currentUser, visibleLevel);
+            }
+            const ownership = a?.ownership;
+            const level = ownership?.[currentUser.id] ?? ownership?.default;
+            return (Number(level) || 0) >= visibleLevel;
+        });
     const leaderOptionsHtml = [
         `<option value=""></option>`,
         ...leaderActors.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`)
@@ -2175,8 +2189,8 @@ function sr2EnhanceActorCreateDialog(app, html) {
                 : "Follower";
             const leaderName = leaderId ? (leaderNameById[leaderId] || "") : "";
 
-            let name = `${archetypeLabel} Follower`;
-            if (leaderName) name = `${name} - ${leaderName}`;
+	            let name = archetypeLabel === "Follower" ? "Follower" : `${archetypeLabel} Follower`;
+	            if (leaderName) name = `${name} - ${leaderName}`;
 
             nameInput.val(name);
             nameInput.prop("readonly", true);
@@ -3030,20 +3044,14 @@ Hooks.on("createActor", async function (actor, options, userId) {
         updates["system.creation.skillPoints"] = SR2_PRIORITY_TABLE.skills[skillsPriority] ?? 0;
     }
 
-    const resourcesPriority = priorities.resources;
-    if (sr2IsPriorityLetter(resourcesPriority)) {
-        const resources = SR2_PRIORITY_TABLE.resources[resourcesPriority];
-        // Only magicians (awakened/adepts) receive Force Points in SR2.
-        const isMagician = computedAwakened ?? actor.system?.magic?.awakened ?? false;
-        updates["system.creation.forcePoints"] = isMagician ? (resources?.forcePoints ?? 0) : 0;
-        updates["system.creation.startingNuyen"] = resources?.nuyen ?? 0;
-
-        // Only set nuyen automatically if the actor has the default 0 value.
-        const currentNuyen = actor.system?.resources?.nuyen ?? 0;
-        if (currentNuyen === 0 && typeof resources?.nuyen === "number") {
-            updates["system.resources.nuyen"] = resources.nuyen;
-        }
-    }
+	    const resourcesPriority = priorities.resources;
+	    if (sr2IsPriorityLetter(resourcesPriority)) {
+	        const resources = SR2_PRIORITY_TABLE.resources[resourcesPriority];
+	        // Only magicians (awakened/adepts) receive Force Points in SR2.
+	        const isMagician = computedAwakened ?? actor.system?.magic?.awakened ?? false;
+	        updates["system.creation.forcePoints"] = isMagician ? (resources?.forcePoints ?? 0) : 0;
+	        updates["system.creation.startingNuyen"] = resources?.nuyen ?? 0;
+	    }
 
     if (Object.keys(updates).length) {
         await actor.update(updates, { render: false });
