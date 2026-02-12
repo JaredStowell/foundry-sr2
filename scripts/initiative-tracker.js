@@ -484,6 +484,7 @@ export class SR2InitiativeTracker extends Application {
         this.isActive = true;
         this.currentPhase = 1;
         this.currentTurn = 0;
+        this._recalculateCurrentInitiativeForPhase();
 
         // Start Foundry combat
         await this._startCombatInFoundry();
@@ -551,6 +552,8 @@ export class SR2InitiativeTracker extends Application {
                 });
             }
         }
+
+        this._recalculateCurrentInitiativeForPhase();
 
         // Sync with Foundry combat
         await this._syncFoundryTurn();
@@ -621,6 +624,11 @@ export class SR2InitiativeTracker extends Application {
         if (combatant) {
             combatant.initiative = newValue;
             combatant.hasRolled = true;
+            if (this.isActive) {
+                const phaseOffset = Math.max(0, (this.currentPhase - 1) * 10);
+                combatant.currentInitiative = Math.max(0, newValue - phaseOffset);
+                combatant.actionPhases = this._calculateActionPhases(newValue);
+            }
             this.render();
         }
     }
@@ -633,6 +641,7 @@ export class SR2InitiativeTracker extends Application {
         const total = diceRoll.total + combatant.reaction;
 
         combatant.initiative = total;
+        combatant.currentInitiative = total;
         combatant.actionPhases = this._calculateActionPhases(total);
         combatant.hasRolled = true;
 
@@ -738,6 +747,11 @@ export class SR2InitiativeTracker extends Application {
     getCurrentInitiative(combatant) {
         if (!combatant.hasRolled) return 0;
         
+        const currentInitiative = combatant?.currentInitiative;
+        if (Number.isFinite(Number(currentInitiative))) {
+            return Math.max(0, Math.floor(Number(currentInitiative)));
+        }
+
         // If combatant has action phases array (new system), use it
         if (combatant.actionPhases && Array.isArray(combatant.actionPhases)) {
             // Find the phase value for the current phase number
@@ -751,6 +765,29 @@ export class SR2InitiativeTracker extends Application {
         
         // Fallback to old calculation for backwards compatibility
         return Math.max(0, combatant.initiative - ((this.currentPhase - 1) * 10));
+    }
+
+    /**
+     * Recalculate each combatant's current initiative for the active phase.
+     * This keeps the visible initiative value moving down by 10 each phase.
+     */
+    _recalculateCurrentInitiativeForPhase() {
+        if (!Array.isArray(this.combatants)) return;
+
+        const phaseOffset = Math.max(0, (this.currentPhase - 1) * 10);
+        for (const combatant of this.combatants) {
+            if (!combatant || !combatant.hasRolled) {
+                if (combatant) combatant.currentInitiative = 0;
+                continue;
+            }
+
+            const baseInitiative = Number(combatant.initiative);
+            if (Number.isFinite(baseInitiative)) {
+                combatant.currentInitiative = Math.max(0, Math.floor(baseInitiative) - phaseOffset);
+            } else {
+                combatant.currentInitiative = 0;
+            }
+        }
     }
 
     /**
