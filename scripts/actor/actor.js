@@ -300,14 +300,14 @@ export class SR2Actor extends Actor {
     const powerFoci = this.items.filter(i =>
       i.type === 'gear' &&
       i.system?.equipped &&
-      /^Power Focus\\s+\\d+$/i.test(String(i.name || ""))
+      /^Power Focus\s+\d+$/i.test(String(i.name || ""))
     );
 
     if (powerFoci.length === 0) return 0;
 
     let highestRating = 0;
     for (const focus of powerFoci) {
-      const match = String(focus.name || "").match(/^Power Focus\\s+(\\d+)$/i);
+      const match = String(focus.name || "").match(/^Power Focus\s+(\d+)$/i);
       const rating = match ? parseInt(match[1], 10) : 0;
       if (Number.isFinite(rating) && rating > highestRating) highestRating = rating;
     }
@@ -391,7 +391,7 @@ export class SR2Actor extends Actor {
       }
     }
 
-    // Spell Lock sustained spell bonuses (e.g., Increase Reflexes)
+	    // Sustained spell bonuses (e.g., Increase Reflexes)
     const spellLockModifiers = sr2ComputeSpellLockAugmentationModifiers(this.items);
     for (const [key, value] of Object.entries(spellLockModifiers)) {
       if (Object.prototype.hasOwnProperty.call(modifiers, key)) {
