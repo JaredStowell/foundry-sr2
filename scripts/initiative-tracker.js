@@ -530,6 +530,7 @@ export class SR2InitiativeTracker extends Application {
 
         this.currentPhase++;
         this.currentTurn = 0;
+        this._recalculateCurrentInitiativeForPhase();
 
         // Check if any combatants are still active in this phase
         const activeCombatants = this._getActiveCombatantsForPhase();
@@ -540,6 +541,7 @@ export class SR2InitiativeTracker extends Application {
             if (this.currentPhase > maxPhases) {
                 // Start new round
                 this.currentPhase = 1;
+                this._recalculateCurrentInitiativeForPhase();
                 ChatMessage.create({
                     content: "<h3>New Combat Round</h3><p>All combatants have completed their actions. Starting new round.</p>",
                     speaker: { alias: "Initiative Tracker" }
@@ -552,8 +554,6 @@ export class SR2InitiativeTracker extends Application {
                 });
             }
         }
-
-        this._recalculateCurrentInitiativeForPhase();
 
         // Sync with Foundry combat
         await this._syncFoundryTurn();

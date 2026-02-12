@@ -265,16 +265,9 @@ export class SR2CyberdeckSheet extends ActorSheet {
 
     // Import the item browser dynamically
     const { SR2ItemBrowser } = await import("/systems/shadowrun2e/scripts/item-browser.js");
-    
-    // Determine which compendium to browse
-    let compendiumName;
-    if (programType === 'vrprogram') {
-      compendiumName = 'shadowrun2e.vrprograms';
-    } else {
-      compendiumName = 'shadowrun2e.programs';
-    }
-    
-    const browser = new SR2ItemBrowser(this.actor, 'program', {});
+
+    const browserType = programType === 'vrprogram' ? 'vrprogram' : 'program';
+    const browser = new SR2ItemBrowser(this.actor, browserType, {});
     browser.render(true);
   }
 

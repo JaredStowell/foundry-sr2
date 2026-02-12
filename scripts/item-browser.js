@@ -44,6 +44,8 @@ export class SR2ItemBrowser extends Application {
       spell: "Spell Browser",
       adeptpower: "Adept Power Browser",
       totem: "Totem Browser",
+      program: "Program Browser",
+      vrprogram: "VR Program Browser",
       weapon: "Weapon Browser",
       armor: "Armor Browser",
       gear: "Equipment Browser"
@@ -149,6 +151,18 @@ export class SR2ItemBrowser extends Application {
           data = await response.json();
           this.items = this._processTotemData(data);
           break;
+
+        case 'program':
+          response = await fetch('systems/shadowrun2e/data/programs.json');
+          data = await response.json();
+          this.items = this._processProgramData(data, { isVr: false });
+          break;
+
+        case 'vrprogram':
+          response = await fetch('systems/shadowrun2e/data/VirtualRealityPrograms.json');
+          data = await response.json();
+          this.items = this._processProgramData(data, { isVr: true });
+          break;
           
         case 'weapon':
           response = await fetch('systems/shadowrun2e/data/gear.json');
@@ -236,6 +250,30 @@ export class SR2ItemBrowser extends Application {
       }
     }
     
+    return items;
+  }
+
+  /**
+   * Process program data from JSON
+   */
+  _processProgramData(data, { isVr } = {}) {
+    const items = [];
+    const isVrProgram = Boolean(isVr);
+    const descriptionPrefix = isVrProgram ? "Virtual Reality Program" : "Standard Program";
+
+    for (const program of data) {
+      const multiplier = Number(program.Multiplyer) || 1;
+      items.push({
+        name: program.Name,
+        category: isVrProgram ? "VR Program" : "Program",
+        multiplier,
+        memorySize: multiplier,
+        mods: "",
+        type: "program",
+        description: `${descriptionPrefix}\nSize Multiplier: ${multiplier}`
+      });
+    }
+
     return items;
   }
 
@@ -617,6 +655,27 @@ export class SR2ItemBrowser extends Application {
           weight: parseFloat(itemData.weight) || 0,
           availability: itemData.availability || "",
           streetIndex: parseFloat(itemData.streetIndex) || 1.0
+        };
+
+      case 'program':
+      case 'vrprogram':
+        return {
+          ...baseData,
+          description: itemData.description || baseData.description,
+          rating: 1,
+          type: "utility",
+          multiplier: Number(itemData.multiplier) || 1,
+          memorySize: Number.isFinite(Number(itemData.memorySize))
+            ? Number(itemData.memorySize)
+            : (Number(itemData.multiplier) || 1),
+          loadTime: 1,
+          isActive: false,
+          isLoaded: false,
+          availability: itemData.availability || "",
+          streetIndex: parseFloat(itemData.streetIndex) || 1.0,
+          quantity: 1,
+          weight: parseFloat(itemData.weight) || 0,
+          price: 0
         };
     }
     
