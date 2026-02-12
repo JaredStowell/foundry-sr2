@@ -3,7 +3,7 @@
  */
 import { sr2ParseFocusName } from "../sr2-rules.js";
 
-export class SR2ItemSheet extends foundry.applications.sheets.ItemSheet {
+export class SR2ItemSheet extends ItemSheet {
 
   /** @override */
   static get defaultOptions() {
@@ -21,21 +21,22 @@ export class SR2ItemSheet extends foundry.applications.sheets.ItemSheet {
     return "systems/shadowrun2e/templates/item/item-sheet.html";
   }
 
-  /** @override */
-  async getData() {
-    const context = super.getData();
-    const itemData = this.item.toObject(false);
-    
-    context.rollData = {};
-    let actor = this.object?.parent ?? null;
-    if (actor) {
-      context.rollData = actor.getRollData();
-      
-      // For weapons, get available skills for linking
-      if (itemData.type === 'weapon') {
-        context.availableSkills = actor.items.filter(i => i.type === 'skill');
-      }
-    }
+	  /** @override */
+	  async getData() {
+	    const context = await super.getData();
+	    const item = this.item ?? this.object;
+	    const itemData = item?.toObject ? item.toObject(false) : {};
+	    
+	    context.rollData = {};
+	    let actor = item?.parent ?? this.object?.parent ?? null;
+	    if (actor) {
+	      context.rollData = actor.getRollData();
+	      
+	      // For weapons, get available skills for linking
+	      if (itemData.type === 'weapon') {
+	        context.availableSkills = actor.items.filter(i => i.type === 'skill');
+	      }
+	    }
 
     const focusLabels = {
       "specific spell focus": "Specific Spell Focus",
