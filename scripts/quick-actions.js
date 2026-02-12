@@ -200,26 +200,19 @@ export class SR2QuickActionsPopup extends Application {
             }))
             ?.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""))) ?? [];
 
-        const spells = actor?.items
-            ?.filter(i => i.type === "spell")
-            ?.map(spell => {
-                const spellLock = spell.system?.spellLock ?? {};
-                const isAssigned = Boolean(spellLock.assigned);
-                const isEnabled = Boolean(spellLock.enabled);
-
-                const lockClass = isAssigned
-                    ? (isEnabled ? "assigned enabled" : "assigned disabled")
-                    : "unassigned";
-
-                const lockTitle = isAssigned
-                    ? (isEnabled ? "Disable Spell Lock" : "Enable Spell Lock")
-                    : "Assign Spell Lock";
-
-                const lockIcon = isAssigned ? "fa-lock" : "fa-lock-open";
-
-                return {
-                    id: spell.id,
-                    name: spell.name,
+	        const spells = actor?.items
+	            ?.filter(i => i.type === "spell")
+	            ?.map(spell => {
+	                const spellLock = spell.system?.spellLock ?? {};
+	                const isEnabled = Boolean(spellLock.enabled);
+	
+	                const lockClass = isEnabled ? "enabled" : "disabled";
+	                const lockTitle = isEnabled ? "Mark as Not Sustained" : "Mark as Sustained";
+	                const lockIcon = isEnabled ? "fa-lock" : "fa-lock-open";
+	
+	                return {
+	                    id: spell.id,
+	                    name: spell.name,
                     img: spell.img,
                     lockClass,
                     lockTitle,
