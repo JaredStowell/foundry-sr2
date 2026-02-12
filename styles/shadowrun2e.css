@@ -7000,6 +7000,14 @@ header.window-header.flexrow.draggable.resizable {
   font-weight: bold;
 }
 
+.shadowrun2e .item-row .item-name span {
+  cursor: pointer;
+}
+
+.shadowrun2e .item-row .item-name span:hover {
+  text-decoration: underline;
+}
+
 .shadowrun2e .item-rating input,
 .shadowrun2e .item-essence span,
 .shadowrun2e .item-bioindex span {
@@ -7037,18 +7045,13 @@ header.window-header.flexrow.draggable.resizable {
   min-width: auto;
 }
 
-.shadowrun2e button.spell-lock-toggle.unassigned i {
-  color: var(--cyber-text-muted);
-}
-
-.shadowrun2e button.spell-lock-toggle.assigned.enabled i {
+.shadowrun2e button.spell-lock-toggle.enabled i {
   color: var(--cyber-accent-green);
   text-shadow: var(--cyber-glow-green);
 }
 
-.shadowrun2e button.spell-lock-toggle.assigned.disabled i {
-  color: var(--cyber-accent-red);
-  text-shadow: var(--cyber-glow-red);
+.shadowrun2e button.spell-lock-toggle.disabled i {
+  color: var(--cyber-text-muted);
 }
 
 /* ===== CYBERPUNK INSTALLATION STATUS INDICATORS ===== */

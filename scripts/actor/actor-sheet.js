@@ -5,7 +5,6 @@ import {
     sr2ComputeForcePointsSpent,
     sr2ComputeSkillPointsSpent,
     sr2ComputeSkillRatingsFromAllocated,
-    sr2ComputeSpellLockCapacity,
     sr2Clamp,
     sr2FormatSignedModifier,
     sr2GetRacialAttributeBounds,
@@ -697,19 +696,21 @@ export class SR2ActorSheet extends ActorSheet {
       available: currentEssence
     };
 
-    // Calculate total power points used for adept powers
-    context.powerPointsUsed = adeptpowers.reduce((total, power) => {
-      return total + (power.system.totalCost || 0);
-    }, 0);
-
-    // Calculate gear summary statistics
-    context.totalWeight = context.items.reduce((total, item) => {
-      return total + ((item.system.weight || 0) * (item.system.quantity || 1));
-    }, 0);
-
-    context.totalValue = context.items.reduce((total, item) => {
-      return total + ((item.system.price || 0) * (item.system.quantity || 1));
-    }, 0);
+	    // Calculate total power points used for adept powers
+	    context.powerPointsUsed = adeptpowers.reduce((total, power) => {
+	      return total + (power.system.totalCost || 0);
+	    }, 0);
+	
+	    // Calculate gear summary statistics
+	    const totalWeight = context.items.reduce((total, item) => {
+	      return total + ((item.system.weight || 0) * (item.system.quantity || 1));
+	    }, 0);
+	    context.totalWeight = round2(totalWeight);
+	    context.totalWeightDisplay = context.totalWeight.toFixed(2);
+	
+	    context.totalValue = context.items.reduce((total, item) => {
+	      return total + ((item.system.price || 0) * (item.system.quantity || 1));
+	    }, 0);
 
     context.totalItems = context.items.reduce((total, item) => {
       return total + (item.system.quantity || 1);
@@ -800,51 +801,116 @@ export class SR2ActorSheet extends ActorSheet {
   }
 
   /** @override */
-  activateListeners(html) {
-    super.activateListeners(html);
+	  activateListeners(html) {
+	    super.activateListeners(html);
+	
+	    // Initialize health data if needed
+	    this._initializeHealthData();
 
-    // Initialize health data if needed
-    this._initializeHealthData();
+	    // Set up actor update listener for external changes (once per sheet instance)
+	    if (!this._hasActorUpdateHook && globalThis.Hooks) {
+	      Hooks.on('updateActor', this._boundOnActorUpdate);
+	      this._hasActorUpdateHook = true;
+	    }
 
-    // Set up actor update listener for external changes (once per sheet instance)
-    if (!this._hasActorUpdateHook && globalThis.Hooks) {
-      Hooks.on('updateActor', this._boundOnActorUpdate);
-      this._hasActorUpdateHook = true;
-    }
+	    // Ensure skill selects show correct values after render
+	    this._refreshSkillSelects(html);
+	
+	    // Rollable abilities
+	    html.find('.rollable').click(this._onRoll.bind(this));
 
-    // Ensure skill selects show correct values after render
-    this._refreshSkillSelects(html);
+	    // Open owned item sheets by clicking the item name
+	    const openItemSheetFromRow = (rowElement) => {
+	      if (!rowElement) return;
 
-    // Rollable abilities
-    html.find('.rollable').click(this._onRoll.bind(this));
+	      const itemId = rowElement.getAttribute("data-item-id") || rowElement.dataset?.itemId;
+	      if (!itemId) {
+	        ui.notifications?.warn?.("No item id found for that row.");
+	        return;
+	      }
 
-    // Drag events for macros
-    if (this.actor.isOwner) {
-      let handler = ev => this._onDragStart(ev);
-      
-      // Enable drag for all item types
-      const itemSelectors = [
-        'li.item',           // Generic items
-        '.item-row',         // Weapons, armor, gear, cyberware, bioware, spells, adept powers
-        '.skill-item',       // Skills
-        '.program-row'       // Programs (for cyberdeck sheets)
-      ];
-      
-      itemSelectors.forEach(selector => {
-        html.find(selector).each((i, element) => {
-          // Skip headers and elements without item IDs
-          if (element.classList.contains("inventory-header") || 
-              element.classList.contains("header") ||
-              !element.dataset.itemId) return;
-              
-          element.setAttribute("draggable", true);
-          element.addEventListener("dragstart", handler, false);
-          
-          // Add visual feedback for draggable items
-          element.style.cursor = "grab";
-        });
-      });
-    }
+	      const item = this.actor.items.get(itemId);
+	      if (!item) {
+	        ui.notifications?.warn?.(`Couldn't find item ${itemId} on this actor.`);
+	        return;
+	      }
+
+	      const sheet = item.sheet;
+	      if (!sheet) {
+	        ui.notifications?.warn?.(`No sheet is available for ${item.name}.`);
+	        return;
+	      }
+
+	      try {
+	        // Legacy Application render signature
+	        sheet.render(true);
+	      } catch (err) {
+	        try {
+	          // ApplicationV2 render signature
+	          sheet.render({ force: true });
+	        } catch (err2) {
+	          console.error("SR2E | Failed to open item sheet", { itemId, itemName: item.name, err, err2 });
+	          ui.notifications?.error?.("Failed to open item sheet. Check the console (F12) for details.");
+	        }
+	      }
+	    };
+
+	    const openItemSheet = (event) => {
+	      const ev = event;
+	      ev.preventDefault();
+	      ev.stopPropagation();
+
+	      const row = ev.currentTarget?.closest?.(".item-row");
+	      openItemSheetFromRow(row);
+	    };
+
+		    html.find('.item-row .item-name span').click(openItemSheet);
+
+	    // Also allow double-click anywhere on the row (excluding interactive controls)
+	    html.find('.item-row').dblclick(ev => {
+	      ev.preventDefault();
+	      ev.stopPropagation();
+
+	      const tag = String(ev.target?.tagName || "").toLowerCase();
+	      if (["input", "select", "textarea", "button", "a", "label"].includes(tag)) return;
+	      if (ev.target?.closest?.(".item-actions")) return;
+
+	      openItemSheetFromRow(ev.currentTarget);
+	    });
+	
+	    // Drag events for macros
+	    if (this.actor.isOwner) {
+	      let handler = ev => this._onDragStart(ev);
+	      
+	      // Enable drag for all item types
+	      const itemSelectors = [
+	        'li.item',                        // Generic items
+	        '.item-row .item-name img',        // Item rows (drag from icon to avoid blocking clicks)
+	        '.skill-item .skill-image img',    // Skills (drag from icon)
+	        '.program-row .program-name img'   // Programs (drag from icon)
+	      ];
+	      
+	      itemSelectors.forEach(selector => {
+	        html.find(selector).each((i, element) => {
+	          // Skip headers and elements without item IDs
+	          if (element.classList.contains("inventory-header") || 
+	              element.classList.contains("header")) return;
+
+	          const hasItemId = Boolean(
+	            element.dataset?.itemId ||
+	            element.getAttribute?.("data-item-id") ||
+	            element.closest?.("[data-item-id]")?.dataset?.itemId
+	          );
+	          if (!hasItemId) return;
+	              
+	          element.setAttribute("draggable", true);
+	          element.addEventListener("dragstart", handler, false);
+	          
+	          // Add visual feedback for draggable items
+	          element.style.cursor = "grab";
+	        });
+	      });
+	    }
 
     // Everything below here is only needed if the sheet is editable
     if (!this.isEditable) return;
@@ -923,6 +989,8 @@ export class SR2ActorSheet extends ActorSheet {
 	    html.find('.open-leader').click(this._onOpenLeader.bind(this));
 	    html.find('.open-connection').click(this._onOpenConnection.bind(this));
 	    html.find('.sr2-add-contact').click(this._onAddContact.bind(this));
+	    html.find('.sr2-add-follower, .sr2-add-gang-member').click(this._onAddFollower.bind(this));
+	    html.find('.sr2-add-spirit').click(this._onAddSpirit.bind(this));
 	    html.find('.sr2-adjust-contacts').click(this._onAdjustContacts.bind(this));
 	    html.find('.sr2-toggle-extra').click(this._onToggleExtra.bind(this));
 
@@ -1561,9 +1629,9 @@ export class SR2ActorSheet extends ActorSheet {
 	    });
 	  }
 
-	  async _onToggleExtra(event) {
-	    event.preventDefault();
-	    event.stopPropagation();
+		  async _onToggleExtra(event) {
+		    event.preventDefault();
+		    event.stopPropagation();
 
 	    if (!this._isCreationMode()) return;
 
@@ -1580,56 +1648,132 @@ export class SR2ActorSheet extends ActorSheet {
 	    const current = Math.max(0, parseInt(this.actor.system?.creation?.extras?.[extra], 10) || 0);
 	    const next = current > 0 ? 0 : 1;
 
-	    await this.actor.update({
-	      [`system.creation.extras.${extra}`]: next
-	    });
-	  }
+		    await this.actor.update({
+		      [`system.creation.extras.${extra}`]: next
+		    });
+		  }
 
-  async _onAddContact(event) {
-    event.preventDefault();
-    event.stopPropagation();
+		  async _sr2OpenActorCreateDialogWithDefaults({ type, leaderId = null, archetype = null }) {
+		    const applyDefaults = (app, html) => {
+		      try {
+		        // Normalize to a root element
+		        const root = html?.[0] ?? html;
+		        if (!root) return false;
 
-    const leaderId = this.actor.id;
+		        const form = root.matches?.("form") ? root : root.querySelector?.("form");
+		        if (!form) return false;
 
-    Hooks.once("renderDialog", (app, html) => {
-      try {
-        const jq = globalThis.jQuery;
-        const $html = (jq && html instanceof jq) ? html : $(html);
+		        const typeSelect = form.querySelector('select[name="type"]');
+		        if (!typeSelect) return false;
 
-        const form = $html.is("form") ? $html : $html.find("form");
-        if (!form.length) return;
+		        // Only target the "Create Actor" dialog for this system.
+		        // Some Foundry versions use different create-dialog classes/hooks, so keep this check permissive.
+		        const optionValues = Array.from(typeSelect.options || []).map(o => o.value);
+		        const isSR2ActorCreateDialog =
+		          optionValues.includes("character") &&
+		          (optionValues.includes("contact") || optionValues.includes("follower") || optionValues.includes("spirit"));
+		        if (!isSR2ActorCreateDialog) return false;
+		        if (!optionValues.includes(type)) return false;
 
-        const typeSelect = form.find('select[name="type"]');
-        if (!typeSelect.length) return;
+		        // Prefer setting after other render-hook enhancers have injected fields/handlers.
+		        setTimeout(() => {
+		          try {
+		            if (typeSelect.value !== type) {
+		              typeSelect.value = type;
+		              typeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+		            }
 
-        const optionValues = typeSelect.find("option").map((_, el) => el.value).get();
-        const isSR2ActorCreateDialog =
-          optionValues.includes("character") &&
-          optionValues.includes("cyberdeck") &&
-          optionValues.includes("vehicle") &&
-          optionValues.includes("spirit");
-        if (!isSR2ActorCreateDialog) return;
+		            if (leaderId) {
+		              const leaderSelect = form.querySelector('select[name="system.details.leaderId"]');
+		              if (leaderSelect) {
+		                leaderSelect.value = leaderId;
+		                leaderSelect.dispatchEvent(new Event("change", { bubbles: true }));
+		              }
+		            }
 
-        setTimeout(() => {
-          try {
-            typeSelect.val("contact").trigger("change");
-            const leaderSelect = form.find('select[name="system.details.leaderId"]');
-            if (leaderSelect.length) leaderSelect.val(leaderId).trigger("change");
-          } catch (err) {
-            console.warn("SR2E | Failed to prefill Add Contact dialog:", err);
-          }
-        }, 0);
-      } catch (err) {
-        console.warn("SR2E | Failed to open Add Contact dialog:", err);
-      }
-    });
+		            if (archetype !== null) {
+		              const archetypeSelect = form.querySelector('select[name="system.details.archetype"]');
+		              if (archetypeSelect) {
+		                archetypeSelect.value = archetype;
+		                archetypeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+		              }
+		            }
+		          } catch (err) {
+		            console.warn("SR2E | Failed to prefill Create Actor dialog:", err);
+		          }
+		        }, 0);
 
-    return Actor.createDialog();
-  }
+		        return true;
+		      } catch (err) {
+		        console.warn("SR2E | Failed to open Create Actor dialog:", err);
+		        return false;
+		      }
+		    };
 
-	  async _onFinalizeResources(event) {
-	    event.preventDefault();
-	    event.stopPropagation();
+		    let applied = false;
+		    const handler = (app, html) => {
+		      if (applied) return;
+		      applied = applyDefaults(app, html);
+		      if (!applied) return;
+		      cleanup();
+		    };
+
+		    const cleanup = () => {
+		      try { Hooks.off("renderActorCreateDialog", handler); } catch (_) {}
+		      try { Hooks.off("renderDialog", handler); } catch (_) {}
+		      try { Hooks.off("renderDocumentCreateDialog", handler); } catch (_) {}
+		      try { Hooks.off("renderDocumentCreationDialog", handler); } catch (_) {}
+		    };
+
+		    // Foundry versions differ: create-actor can fire multiple render hooks depending on version.
+		    Hooks.on("renderActorCreateDialog", handler);
+		    Hooks.on("renderDialog", handler);
+		    Hooks.on("renderDocumentCreateDialog", handler);
+		    Hooks.on("renderDocumentCreationDialog", handler);
+
+		    // Safety: don't leave hooks installed if something unexpected happens.
+		    setTimeout(() => {
+		      if (!applied) cleanup();
+		    }, 10000);
+
+		    return Actor.createDialog({ type });
+		  }
+
+		  async _onAddContact(event) {
+		    event.preventDefault();
+		    event.stopPropagation();
+
+		    return this._sr2OpenActorCreateDialogWithDefaults({
+		      type: "contact",
+		      leaderId: this.actor.id
+		    });
+		  }
+
+		  async _onAddFollower(event) {
+		    event.preventDefault();
+		    event.stopPropagation();
+
+		    const archetype = event.currentTarget?.dataset?.archetype ?? "";
+
+		    return this._sr2OpenActorCreateDialogWithDefaults({
+		      type: "follower",
+		      leaderId: this.actor.id,
+		      archetype
+		    });
+		  }
+
+		  async _onAddSpirit(event) {
+		    event.preventDefault();
+		    event.stopPropagation();
+
+		    return this._sr2OpenActorCreateDialogWithDefaults({
+		      type: "spirit"
+		    });
+		  }
+
+		  async _onFinalizeResources(event) {
+		    event.preventDefault();
+		    event.stopPropagation();
 
     const budget = Number(this.actor.system?.creation?.startingNuyen) || 0;
     if (budget <= 0) return;
@@ -1692,17 +1836,18 @@ export class SR2ActorSheet extends ActorSheet {
 	    event.preventDefault();
 	    event.stopPropagation();
 
-    if (!this.actor.system?.creation?.resourcesFinalized) return;
+	    if (!this.actor.system?.creation?.resourcesFinalized) return;
 
-    const restoredBudget = Number(this.actor.system?.creation?.startingNuyen) || 0;
-    await this.actor.update({
-      "system.creation.resourcesFinalized": false,
-      "system.creation.unspentNuyen": 0,
-      "system.creation.startingCashFromUnspent": 0,
-      "system.creation.startingCashRoll": 0,
-      "system.creation.startingCashFinal": 0,
-      ...(restoredBudget > 0 ? { "system.resources.nuyen": restoredBudget } : {})
-    });
+	    await this.actor.update({
+	      "system.creation.resourcesFinalized": false,
+	      "system.creation.unspentNuyen": 0,
+	      "system.creation.startingCashFromUnspent": 0,
+	      "system.creation.startingCashRoll": 0,
+	      "system.creation.startingCashFinal": 0,
+	      // During creation mode, nuyen is derived from the budget after finalization.
+	      // While the budget is open, keep actual nuyen at 0 to avoid double-counting.
+	      "system.resources.nuyen": 0
+	    });
 
 	    ui.notifications.info("Resource budget reopened.");
 	  }
@@ -1717,8 +1862,16 @@ export class SR2ActorSheet extends ActorSheet {
 		      return;
 		    }
 
+		    const budgetNuyen = Number(this.actor.system?.creation?.startingNuyen) || 0;
+		    const needsResourceFinalization =
+		      budgetNuyen > 0 &&
+		      this.actor.system?.creation?.resourcesFinalized !== true;
+
 		    const message = `<p><strong>Finalize Character Generation?</strong></p>
 		      <p>This will permanently disable Character Generation for <strong>${this.actor.name}</strong>.</p>
+		      ${needsResourceFinalization
+		        ? `<p><strong>Resources will also be finalized</strong> (starting cash = unspent budget ÷ 10 + 3d6 × 1,000¥).</p>`
+		        : ``}
 		      <p>You will not be able to re-enter Character Generation or revert this.</p>`;
 
 		    let confirmed = false;
@@ -1731,7 +1884,19 @@ export class SR2ActorSheet extends ActorSheet {
 		      confirmed = confirm("Finalize Character Generation? This will permanently disable Character Generation and cannot be undone.");
 		    }
 
-	    if (!confirmed) return;
+		    if (!confirmed) return;
+
+		    if (needsResourceFinalization) {
+		      await this._onFinalizeResources({
+		        preventDefault: () => { },
+		        stopPropagation: () => { }
+		      });
+
+		      if (this.actor.system?.creation?.resourcesFinalized !== true) {
+		        // _onFinalizeResources displays its own error notifications when it can't finalize.
+		        return;
+		      }
+		    }
 
 		    await this.actor.update({
 		      "flags.shadowrun2e.creationMode": false,
@@ -2591,68 +2756,35 @@ export class SR2ActorSheet extends ActorSheet {
     }
   }
 
-  /**
-   * Handle spell lock assignment and toggling
-   */
-  async _onSpellLockToggle(event) {
-    event.preventDefault();
+	  /**
+	   * Toggle sustained spell effects (no Spell Lock item required)
+	   */
+	  async _onSpellLockToggle(event) {
+	    event.preventDefault();
 
     const spellId = event.currentTarget.dataset.itemId;
     const spell = this.actor.items.get(spellId);
     if (!spell || spell.type !== "spell") return;
 
-    const spellLock = spell.system?.spellLock ?? {};
-    const isAssigned = Boolean(spellLock.assigned);
-    const isEnabled = Boolean(spellLock.enabled);
+	    const spellLock = spell.system?.spellLock ?? {};
+	    const isEnabled = Boolean(spellLock.enabled);
 
-    if (!isAssigned) {
-      const capacity = sr2ComputeSpellLockCapacity(this.actor.items);
-      if (capacity.remaining <= 0) {
-        if (capacity.total <= 0) {
-          ui.notifications.error("No Spell Locks found. Add Spell Lock gear to assign one to a spell.");
-        } else {
-          ui.notifications.error(`All Spell Locks are already assigned (${capacity.assigned}/${capacity.total}).`);
-        }
-        return;
-      }
+	    try {
+	      await spell.update({ "system.spellLock.enabled": !isEnabled });
+	      await this._syncSpellLockEffects();
+	      if (this.rendered) this.render(false);
+	    } catch (error) {
+	      console.error("SR2E | Failed to toggle sustained spell", error);
+	      ui.notifications.error("Failed to toggle sustained spell (see console).");
+	    }
+	  }
 
-      const confirmed = game.settings.get("core", "noCanvas") ||
-        confirm(`Are you sure you want to use a spell lock on ${spell.name}?`);
-
-      if (!confirmed) return;
-
-      try {
-        await spell.update({
-          "system.spellLock.assigned": true,
-          "system.spellLock.enabled": true
-        });
-        await this._syncSpellLockEffects();
-        if (this.rendered) this.render(false);
-      } catch (error) {
-        console.error("SR2E | Failed to assign Spell Lock", error);
-        ui.notifications.error("Failed to assign Spell Lock (see console).");
-      }
-
-      return;
-    }
-
-    try {
-      await spell.update({ "system.spellLock.enabled": !isEnabled });
-      await this._syncSpellLockEffects();
-      if (this.rendered) this.render(false);
-    } catch (error) {
-      console.error("SR2E | Failed to toggle Spell Lock", error);
-      ui.notifications.error("Failed to toggle Spell Lock (see console).");
-    }
-  }
-
-  async _syncSpellLockEffects() {
-    try {
-      const enabledLockedSpells = this.actor.items.filter(i =>
-        i.type === "spell" &&
-        i.system?.spellLock?.assigned &&
-        i.system?.spellLock?.enabled
-      );
+	  async _syncSpellLockEffects() {
+	    try {
+	      const enabledLockedSpells = this.actor.items.filter(i =>
+	        i.type === "spell" &&
+	        i.system?.spellLock?.enabled
+	      );
 
       const hasInvisibility = enabledLockedSpells.some(spell =>
         String(spell.name || "").toLowerCase().includes("invisibility")
@@ -2667,14 +2799,14 @@ export class SR2ActorSheet extends ActorSheet {
         return;
       }
 
-      if (!existingInvisibility) {
-        await this.actor.createEmbeddedDocuments("ActiveEffect", [{
-          name: "Spell Lock: Invisibility",
-          icon: "icons/svg/invisible.svg",
-          changes: [],
-          disabled: false,
-          flags: { shadowrun2e: { spellLockInvisibilityEffect: true } }
-        }]);
+	      if (!existingInvisibility) {
+	        await this.actor.createEmbeddedDocuments("ActiveEffect", [{
+	          name: "Sustained Spell: Invisibility",
+	          icon: "icons/svg/invisible.svg",
+	          changes: [],
+	          disabled: false,
+	          flags: { shadowrun2e: { spellLockInvisibilityEffect: true } }
+	        }]);
         return;
       }
 
@@ -3826,6 +3958,14 @@ export class SR2ActorSheet extends ActorSheet {
 
       const total = Number(roll.total) || 0;
       await this.actor.update({ "system.initiative.current": total });
+
+      // Add or update this actor in the SR2 initiative tracker so quick initiative
+      // rolls are represented in active encounters.
+      try {
+        await this._addToInitiativeTracker(total);
+      } catch (trackerError) {
+        console.warn("SR2E | Initiative roll completed but tracker update failed:", trackerError);
+      }
     } catch (error) {
       console.error("SR2E | Error rolling initiative:", error);
       ui.notifications.error("Failed to roll initiative (see console).");
