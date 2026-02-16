@@ -15,6 +15,7 @@ import {
     sr2NormalizeContactLevel,
     sr2SkillInferAllocatedRating
 } from "../sr2-rules.js";
+import { sr2GetInitiativeTracker } from "../initiative-tracker.js";
 import { sr2LogDebug } from "../utils/logger.js";
 
 let skillsDataCache = null;
@@ -4459,22 +4460,12 @@ export class SR2ActorSheet extends ActorSheet {
         throw new Error("Canvas or tokens not available. Make sure you're on a scene with tokens.");
       }
 
-      // Get or create the global initiative tracker instance
-      let initiativeTracker = game.shadowrun2e?.initiativeTracker;
-
-      if (!initiativeTracker) {
-        try {
-          // Create new tracker instance if it doesn't exist
-          initiativeTracker = new SR2InitiativeTracker();
-
-          // Store reference globally for access from other parts of the system
-          if (!game.shadowrun2e) {
-            game.shadowrun2e = {};
-          }
-          game.shadowrun2e.initiativeTracker = initiativeTracker;
-        } catch (trackerError) {
-          throw new Error(`Failed to create initiative tracker: ${trackerError.message}`);
-        }
+      // Get or create the global initiative tracker instance through the tracker module.
+      let initiativeTracker = null;
+      try {
+        initiativeTracker = sr2GetInitiativeTracker();
+      } catch (trackerError) {
+        throw new Error(`Failed to create initiative tracker: ${trackerError.message}`);
       }
 
       // Get the token for this actor (prefer controlled token, fallback to any token)
@@ -4539,10 +4530,13 @@ export class SR2ActorSheet extends ActorSheet {
         !isNaN(this.actor.system.attributes.reaction.value))
         ? this.actor.system.attributes.reaction.value : 1;
 
+      let combatantRecord = existingCombatant || null;
+
       if (existingCombatant) {
         // Update existing combatant's initiative and phases
         try {
           existingCombatant.initiative = initiativeResult;
+          existingCombatant.currentInitiative = initiativeResult;
           existingCombatant.actionPhases = actionPhases;
           existingCombatant.hasRolled = true;
           existingCombatant.initiativeDice = initiativeDice;
@@ -4562,6 +4556,7 @@ export class SR2ActorSheet extends ActorSheet {
             name: this.actor.name || "Unknown Character",
             img: this.actor.img || "icons/svg/mystery-man.svg",
             initiative: initiativeResult,
+            currentInitiative: initiativeResult,
             actionPhases: actionPhases,
             initiativeDice: initiativeDice,
             reaction: reaction,
@@ -4569,9 +4564,27 @@ export class SR2ActorSheet extends ActorSheet {
           };
 
           initiativeTracker.combatants.push(combatant);
+          combatantRecord = combatant;
           console.log(`SR2E | Added ${this.actor.name} to initiative tracker with initiative ${initiativeResult}, phases: [${actionPhases.join(', ')}]`);
         } catch (addError) {
           throw new Error(`Failed to add new combatant: ${addError.message}`);
+        }
+      }
+
+      // Keep Foundry Combat synchronized for quick initiative rolls.
+      if (token && combatantRecord) {
+        try {
+          if (typeof initiativeTracker._ensureCombatEncounter === "function") {
+            await initiativeTracker._ensureCombatEncounter();
+          }
+          if (typeof initiativeTracker._addToFoundryCombat === "function") {
+            await initiativeTracker._addToFoundryCombat(token, combatantRecord);
+          }
+          if (typeof initiativeTracker._updateFoundryCombatInitiative === "function") {
+            await initiativeTracker._updateFoundryCombatInitiative(combatantRecord, initiativeResult);
+          }
+        } catch (syncError) {
+          console.warn("SR2E | Failed to sync initiative result to Foundry combat:", syncError);
         }
       }
 

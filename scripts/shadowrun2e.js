@@ -14,6 +14,7 @@ import { SR2ItemBrowser } from "./item-browser.js";
 import { SR2GearPurchaseApp } from "./gear-purchase.js";
 import { SR2DataImporter } from "./data-importer.js";
 import { SR2CharacterImporter } from "./character-importer.js";
+import { initializeInitiativeTracker } from "./initiative-tracker.js";
 import { initializeQuickActions } from "./quick-actions.js";
 import { registerPoolAutoRefreshHooks } from "./hooks/pool-auto-refresh.js";
 import { registerActorRuleHooks } from "./hooks/actor-rules.js";
@@ -1696,6 +1697,9 @@ Hooks.once("init", async function () {
 
     // Register Handlebars helpers
     registerHandlebarsHelpers();
+
+    // Initiative tracker controls, helpers, and hotkeys.
+    initializeInitiativeTracker();
 
     // SR2 rules: dice pools refresh at the start of the acting character's turn.
     sr2InstallPoolAutoRefreshHooks();
