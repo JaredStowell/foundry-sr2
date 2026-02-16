@@ -461,10 +461,12 @@ export class SR2ItemBrowser extends Application {
    * Add item to character (can be overridden for custom behavior)
    */
   async addItem(itemData, { notify = true } = {}) {
+    const documentType = this.itemType === "vrprogram" ? "program" : this.itemType;
+
     // Create the item data for Foundry
     const newItemData = {
       name: itemData.name,
-      type: this.itemType,
+      type: documentType,
       system: this._createSystemData(itemData)
     };
 
