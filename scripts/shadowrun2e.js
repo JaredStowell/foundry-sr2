@@ -1634,7 +1634,8 @@ Hooks.once("init", async function () {
         cyberdeck: "systems/shadowrun2e/icons/cyberdeck.png",
         vehicle: "systems/shadowrun2e/icons/vehicle.png",
         spirit: "systems/shadowrun2e/icons/spirit.png",
-        critter: "systems/shadowrun2e/icons/spirit.png"
+        critter: "systems/shadowrun2e/icons/spirit.png",
+        ic: "systems/shadowrun2e/icons/cyberdeck.png"
     };
 
     // Register sheet application classes
@@ -1664,7 +1665,7 @@ Hooks.once("init", async function () {
 
     console.log("SR2E | Registering SR2SpiritSheet...", SR2SpiritSheet);
     Actors.registerSheet("shadowrun2e", SR2SpiritSheet, {
-        types: ["spirit", "critter"],
+        types: ["spirit", "critter", "ic"],
         makeDefault: true,
         label: "Shadowrun 2E Spirit Sheet"
     });
@@ -1734,6 +1735,16 @@ Hooks.once("init", async function () {
         CONFIG.Actor.sheetClasses.critter = {};
     }
     CONFIG.Actor.sheetClasses.critter["shadowrun2e.SR2SpiritSheet"] = {
+        id: "shadowrun2e.SR2SpiritSheet",
+        cls: SR2SpiritSheet,
+        default: true
+    };
+
+    // Force set as default for IC actors
+    if (!CONFIG.Actor.sheetClasses.ic) {
+        CONFIG.Actor.sheetClasses.ic = {};
+    }
+    CONFIG.Actor.sheetClasses.ic["shadowrun2e.SR2SpiritSheet"] = {
         id: "shadowrun2e.SR2SpiritSheet",
         cls: SR2SpiritSheet,
         default: true
@@ -2244,7 +2255,8 @@ function sr2EnhanceActorCreateDialog(app, html) {
         const autoDefaults = {
             vehicle: "Vehicle",
             cyberdeck: "Cyberdeck",
-            spirit: "Spirit"
+            spirit: "Spirit",
+            ic: "IC"
         };
 
         const autoDefault = autoDefaults[type];

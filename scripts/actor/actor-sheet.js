@@ -994,6 +994,7 @@ export class SR2ActorSheet extends ActorSheet {
 	    html.find('.sr2-add-follower, .sr2-add-gang-member').click(this._onAddFollower.bind(this));
 	    html.find('.sr2-add-spirit').click(this._onAddSpirit.bind(this));
 	    html.find('.sr2-add-critter').click(this._onAddCritter.bind(this));
+	    html.find('.sr2-add-ic').click(this._onAddIC.bind(this));
 	    html.find('.sr2-adjust-contacts').click(this._onAdjustContacts.bind(this));
 	    html.find('.sr2-toggle-extra').click(this._onToggleExtra.bind(this));
 
@@ -1780,6 +1781,15 @@ export class SR2ActorSheet extends ActorSheet {
 
 		    return this._sr2OpenActorCreateDialogWithDefaults({
 		      type: "critter"
+		    });
+		  }
+
+		  async _onAddIC(event) {
+		    event.preventDefault();
+		    event.stopPropagation();
+
+		    return this._sr2OpenActorCreateDialogWithDefaults({
+		      type: "ic"
 		    });
 		  }
 
