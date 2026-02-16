@@ -1486,17 +1486,64 @@ function sr2ExtractContactStoryFromGuide(archetype, guideLines) {
     return collapsed.join("\n").trim();
 }
 
+function sr2BuildContactBiographyFallback(archetype) {
+    if (!archetype) return "";
+
+    const label = String(archetype.label || "Contact").trim();
+    const sourceBook = String(archetype.source?.book || "").trim();
+    const sourcePage = String(archetype.source?.page || "").trim();
+    const sourceParts = [];
+    if (sourceBook) sourceParts.push(sourceBook);
+    if (sourcePage) sourceParts.push(`p. ${sourcePage}`);
+
+    const lines = [];
+    lines.push(label.toUpperCase());
+
+    if (sourceParts.length) {
+        lines.push(`Source: ${sourceParts.join(", ")}`);
+    }
+
+    const skills = Array.isArray(archetype.skills)
+        ? archetype.skills.map(skill => String(skill?.baseSkill || "").trim()).filter(Boolean)
+        : [];
+    if (skills.length) {
+        const limitedSkills = skills.slice(0, 10);
+        const suffix = skills.length > limitedSkills.length ? ", ..." : "";
+        lines.push(`Typical Skills: ${limitedSkills.join(", ")}${suffix}`);
+    }
+
+    const cyberware = Array.isArray(archetype.cyberware)
+        ? archetype.cyberware.map(item => String(item || "").trim()).filter(Boolean)
+        : [];
+    if (cyberware.length) {
+        lines.push(`Typical Cyberware: ${cyberware.join(", ")}`);
+    }
+
+    const awakened = Boolean(archetype.magic?.awakened || archetype.magic?.physicalAdept);
+    if (awakened) {
+        const tradition = String(archetype.magic?.tradition || "").trim();
+        lines.push(`Magical: Yes${tradition ? ` (${tradition})` : ""}`);
+    }
+
+    lines.push("");
+    lines.push("Notes:");
+
+    return lines.join("\n").trim();
+}
+
 async function sr2BuildContactBiography({ archetype } = {}) {
     if (!archetype) return "";
+
+    const fallbackBiography = sr2BuildContactBiographyFallback(archetype);
 
     try {
         const guideLines = await sr2LoadGuideRawLines();
         const story = sr2ExtractContactStoryFromGuide(archetype, guideLines);
-        if (!story) return "";
+        if (!story) return fallbackBiography;
         return `${story}\n\nNotes:`;
     } catch (err) {
         console.warn("SR2E | Failed to build contact biography from guide:", err);
-        return "";
+        return fallbackBiography;
     }
 }
 
