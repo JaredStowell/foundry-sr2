@@ -1,6 +1,18 @@
 /**
  * Extend the basic Item with Shadowrun 2E specific functionality
  */
+function sr2EscapeHtml(value) {
+  const raw = String(value ?? "");
+  if (globalThis.foundry?.utils?.escapeHTML) return globalThis.foundry.utils.escapeHTML(raw);
+  return raw.replace(/[&<>"']/g, c => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#039;"
+  }[c]));
+}
+
 export class SR2Item extends Item {
 
   /** @override */
@@ -76,15 +88,18 @@ export class SR2Item extends Item {
   async _rollWeapon() {
     const speaker = ChatMessage.getSpeaker({ actor: this.actor });
     const rollMode = game.settings.get('core', 'rollMode');
+    const itemName = sr2EscapeHtml(this.name);
+    const damage = sr2EscapeHtml(this.system.damage || "Unknown");
+    const reach = sr2EscapeHtml(this.system.reach || "Unknown");
     
     let content = `<div class="weapon-roll">
-      <h3>${this.name}</h3>
-      <p><strong>Damage:</strong> ${this.system.damage || 'Unknown'}</p>
-      <p><strong>Reach:</strong> ${this.system.reach || 'Unknown'}</p>
+      <h3>${itemName}</h3>
+      <p><strong>Damage:</strong> ${damage}</p>
+      <p><strong>Reach:</strong> ${reach}</p>
     `;
     
     if (this.system.description) {
-      content += `<p><em>${this.system.description}</em></p>`;
+      content += `<p><em>${sr2EscapeHtml(this.system.description)}</em></p>`;
     }
     
     content += `<p><em>Use the weapon attack button for full combat rolls.</em></p></div>`;
@@ -103,16 +118,20 @@ export class SR2Item extends Item {
   async _rollSpell() {
     const speaker = ChatMessage.getSpeaker({ actor: this.actor });
     const rollMode = game.settings.get('core', 'rollMode');
+    const itemName = sr2EscapeHtml(this.name);
+    const category = sr2EscapeHtml(this.system.category || "Unknown");
+    const target = sr2EscapeHtml(this.system.target || "Unknown");
+    const drain = sr2EscapeHtml(this.system.drain || "Unknown");
     
     let content = `<div class="spell-roll">
-      <h3>${this.name}</h3>
-      <p><strong>Category:</strong> ${this.system.category || 'Unknown'}</p>
-      <p><strong>Target:</strong> ${this.system.target || 'Unknown'}</p>
-      <p><strong>Drain:</strong> ${this.system.drain || 'Unknown'}</p>
+      <h3>${itemName}</h3>
+      <p><strong>Category:</strong> ${category}</p>
+      <p><strong>Target:</strong> ${target}</p>
+      <p><strong>Drain:</strong> ${drain}</p>
     `;
     
     if (this.system.description) {
-      content += `<p><em>${this.system.description}</em></p>`;
+      content += `<p><em>${sr2EscapeHtml(this.system.description)}</em></p>`;
     }
     
     content += `<p><em>Use the spell cast button for full spellcasting rolls.</em></p></div>`;
@@ -131,19 +150,22 @@ export class SR2Item extends Item {
   async _rollSkill() {
     const speaker = ChatMessage.getSpeaker({ actor: this.actor });
     const rollMode = game.settings.get('core', 'rollMode');
+    const itemName = sr2EscapeHtml(this.name);
+    const baseSkill = sr2EscapeHtml(this.system.baseSkill || "None");
+    const baseRating = Number(this.system.baseRating) || 0;
     
     let content = `<div class="skill-roll">
-      <h3>${this.name}</h3>
-      <p><strong>Base Skill:</strong> ${this.system.baseSkill || 'None'}</p>
-      <p><strong>Base Rating:</strong> ${this.system.baseRating || 0}</p>
+      <h3>${itemName}</h3>
+      <p><strong>Base Skill:</strong> ${baseSkill}</p>
+      <p><strong>Base Rating:</strong> ${baseRating}</p>
     `;
     
     if (this.system.concentration) {
-      content += `<p><strong>Concentration:</strong> ${this.system.concentration} (${this.system.concentrationRating || 0})</p>`;
+      content += `<p><strong>Concentration:</strong> ${sr2EscapeHtml(this.system.concentration)} (${Number(this.system.concentrationRating) || 0})</p>`;
     }
     
     if (this.system.specialization) {
-      content += `<p><strong>Specialization:</strong> ${this.system.specialization} (${this.system.specializationRating || 0})</p>`;
+      content += `<p><strong>Specialization:</strong> ${sr2EscapeHtml(this.system.specialization)} (${Number(this.system.specializationRating) || 0})</p>`;
     }
     
     content += `<p><em>Use the skill roll button for dice rolls.</em></p></div>`;
@@ -160,23 +182,24 @@ export class SR2Item extends Item {
    * Get item description for display
    */
   _getItemDescription() {
+    const itemName = sr2EscapeHtml(this.name);
     let content = `<div class="item-info">
-      <h3>${this.name}</h3>
+      <h3>${itemName}</h3>
     `;
     
     if (this.system.description) {
-      content += `<p>${this.system.description}</p>`;
+      content += `<p>${sr2EscapeHtml(this.system.description)}</p>`;
     } else {
       content += `<p><em>No description available.</em></p>`;
     }
     
     // Add type-specific info
     if (this.system.price) {
-      content += `<p><strong>Price:</strong> ${this.system.price}¥</p>`;
+      content += `<p><strong>Price:</strong> ${Number(this.system.price) || 0}¥</p>`;
     }
     
     if (this.system.weight) {
-      content += `<p><strong>Weight:</strong> ${this.system.weight} kg</p>`;
+      content += `<p><strong>Weight:</strong> ${Number(this.system.weight) || 0} kg</p>`;
     }
     
     content += `</div>`;

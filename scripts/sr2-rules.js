@@ -267,8 +267,14 @@ export function sr2SkillInferAllocatedRating(skillSystem) {
     const base = Number(skillSystem.baseRating) || 0;
     const conc = Number(skillSystem.concentrationRating) || 0;
     const spec = Number(skillSystem.specializationRating) || 0;
+    const legacy = Number(skillSystem.rating) || 0;
     const hasConcentration = Boolean(skillSystem.concentration);
     const hasSpecialization = Boolean(skillSystem.specialization);
+
+    // Legacy fallback: older skill items used a single `rating` field.
+    if (base <= 0 && conc <= 0 && spec <= 0 && legacy > 0) {
+        return Math.max(0, legacy);
+    }
 
     if (hasSpecialization) {
         if (spec > 0) return Math.max(0, spec - 2);

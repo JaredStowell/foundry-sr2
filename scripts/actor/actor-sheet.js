@@ -15,6 +15,7 @@ import {
     sr2NormalizeContactLevel,
     sr2SkillInferAllocatedRating
 } from "../sr2-rules.js";
+import { sr2LogDebug } from "../utils/logger.js";
 
 let skillsDataCache = null;
 let skillsDataCachePromise = null;
@@ -1121,7 +1122,7 @@ export class SR2ActorSheet extends ActorSheet {
     const maxValue = poolType === "karma"
       ? (Number(pool.total) || 0)
       : (Number(pool.max) || 0);
-    const newValue = Math.clamped(currentValue + adjustment, 0, maxValue);
+    const newValue = sr2Clamp(currentValue + adjustment, 0, maxValue);
 
     this.actor.update({ [`system.pools.${poolType}.current`]: newValue });
   }
@@ -1961,7 +1962,7 @@ export class SR2ActorSheet extends ActorSheet {
    * Handle form submission to ensure all data is properly saved
    */
   async _onFormSubmit(event) {
-    console.log("SR2E | Form submitted");
+    sr2LogDebug("Form submitted");
     // Let the default form submission handle the data
     // Our _updateObject method will process it
   }
@@ -1974,7 +1975,7 @@ export class SR2ActorSheet extends ActorSheet {
     const skillId = event.currentTarget.dataset.skillId;
     const rollType = event.currentTarget.dataset.rollType || 'base';
 
-    console.log("SR2E | Skill roll requested - ID:", skillId, "Type:", rollType);
+    sr2LogDebug("Skill roll requested", { skillId, rollType });
 
     // Get the skill item and force a fresh read
     let skill = this.actor.items.get(skillId);
@@ -2020,8 +2021,7 @@ export class SR2ActorSheet extends ActorSheet {
     let title = skill.name || skill.system.baseSkill || 'Unknown Skill';
     let rollDescription = '';
 
-    console.log("SR2E | Rolling skill:", skill.name, "Type:", rollType);
-    console.log("SR2E | Using skill data:", JSON.stringify(skill.system, null, 2));
+    sr2LogDebug("Rolling skill", { skillName: skill.name, rollType });
 
     // Determine which rating to use based on roll type
     switch (rollType) {
@@ -2032,14 +2032,14 @@ export class SR2ActorSheet extends ActorSheet {
         if (skill.system.baseSkill === "Language" && skill.name) {
           title = skill.name;
         }
-        console.log(`SR2E | Base skill roll: baseRating=${skill.system.baseRating}, parsed=${skillRating}`);
+        sr2LogDebug("Base skill roll", { baseRating: skill.system.baseRating, parsed: skillRating });
         break;
       case 'concentration':
         skillRating = parseInt(skill.system.concentrationRating) || 0;
         if (skill.system.concentration) {
           title = `${skill.system.baseSkill || skill.name} (${skill.system.concentration})`;
           rollDescription = 'Concentration';
-          console.log(`SR2E | Concentration roll: concentrationRating=${skill.system.concentrationRating}, parsed=${skillRating}`);
+          sr2LogDebug("Concentration roll", { concentrationRating: skill.system.concentrationRating, parsed: skillRating });
         } else {
           ui.notifications.warn("No concentration selected for this skill.");
           return;
@@ -2050,7 +2050,7 @@ export class SR2ActorSheet extends ActorSheet {
         if (skill.system.specialization) {
           title = `${skill.system.baseSkill || skill.name} [${skill.system.specialization}]`;
           rollDescription = 'Specialization';
-          console.log(`SR2E | Specialization roll: specializationRating=${skill.system.specializationRating}, parsed=${skillRating}`);
+          sr2LogDebug("Specialization roll", { specializationRating: skill.system.specializationRating, parsed: skillRating });
         } else {
           ui.notifications.warn("No specialization entered for this skill.");
           return;
@@ -2058,7 +2058,7 @@ export class SR2ActorSheet extends ActorSheet {
         break;
     }
 
-    console.log("SR2E | Skill rating for roll:", skillRating, "Roll type:", rollType);
+    sr2LogDebug("Skill rating selected", { skillRating, rollType });
 
     // Calculate dice pool - skills roll only their rating in SR2E
     let dicePool = skillRating;
@@ -2066,13 +2066,13 @@ export class SR2ActorSheet extends ActorSheet {
     // Ensure minimum dice pool of 1 (defaulting skill)
     if (dicePool < 1) {
       dicePool = 1;
-      console.log("SR2E | Using defaulting dice pool of 1");
+      sr2LogDebug("Using defaulting dice pool", { dicePool: 1 });
     }
 
     // Add roll type to title
     const finalTitle = `${title} (${rollDescription})`;
 
-    console.log("SR2E | Final dice pool:", dicePool, "Title:", finalTitle);
+    sr2LogDebug("Final skill dice pool", { dicePool, title: finalTitle });
 
     if (baseSkillName === "Conjuring") {
       await this._onConjuringRoll(dicePool, finalTitle);
@@ -3697,9 +3697,12 @@ export class SR2ActorSheet extends ActorSheet {
 
       // Remove brackets and damage level indicators
       formula = formula.replace(/[\[\]LMSD]/g, '');
+      formula = formula.replace(/[^0-9+\-*/().]/g, "");
 
-      // Evaluate the mathematical expression
-      drainValue = Math.max(2, Math.floor(eval(formula)));
+      // Evaluate arithmetic safely (no arbitrary code execution).
+      const computed = sr2SafeEvalArithmetic(formula);
+      if (!Number.isFinite(computed)) throw new Error("Invalid drain formula");
+      drainValue = Math.max(2, Math.floor(computed));
     } catch (error) {
       console.warn(`Could not parse drain code: ${drainCode}`, error);
     }
@@ -3818,7 +3821,7 @@ export class SR2ActorSheet extends ActorSheet {
         throw new Error(`Invalid damage value calculated: ${newDamage}`);
       }
 
-      newDamage = Math.clamped(newDamage, 0, 10);
+      newDamage = sr2Clamp(newDamage, 0, 10);
 
       // Validate that the new damage value is different from current
       if (newDamage === currentDamage) {

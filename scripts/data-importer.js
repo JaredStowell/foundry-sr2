@@ -3,6 +3,7 @@
  * Loads items from JSON files into Foundry compendiums
  */
 import { sr2InferFocusBondCostForGearItem } from "./sr2-rules.js";
+import { sr2LogDebug } from "./utils/logger.js";
 
 export class SR2DataImporter {
 
@@ -10,7 +11,7 @@ export class SR2DataImporter {
    * Import all data from JSON files into compendiums
    */
   static async importAllData() {
-    console.log("SR2E | Starting data import...");
+    sr2LogDebug("Starting data import");
 
     try {
       await this.importCyberware();
@@ -26,11 +27,40 @@ export class SR2DataImporter {
       await this.importGear();
       await this.importTotems();
 
-      console.log("SR2E | Data import completed successfully");
+      sr2LogDebug("Data import completed successfully");
       ui.notifications.info("Shadowrun 2E data imported successfully!");
     } catch (error) {
       console.error("SR2E | Data import failed:", error);
       ui.notifications.error("Failed to import Shadowrun 2E data");
+    }
+  }
+
+  static async _replaceCompendiumDocuments(pack, documents, documentType = "Item") {
+    if (!pack) return;
+
+    const wasLocked = Boolean(pack.locked);
+    if (wasLocked) await pack.configure({ locked: false });
+
+    try {
+      const existing = await pack.getDocuments();
+      const existingIds = existing.map(doc => doc.id).filter(Boolean);
+      if (existingIds.length) {
+        if (documentType === "Actor") {
+          await Actor.deleteDocuments(existingIds, { pack: pack.collection });
+        } else {
+          await Item.deleteDocuments(existingIds, { pack: pack.collection });
+        }
+      }
+
+      if (documents.length) {
+        if (documentType === "Actor") {
+          await Actor.createDocuments(documents, { pack: pack.collection });
+        } else {
+          await Item.createDocuments(documents, { pack: pack.collection });
+        }
+      }
+    } finally {
+      if (wasLocked) await pack.configure({ locked: true });
     }
   }
 
@@ -44,13 +74,9 @@ export class SR2DataImporter {
       return;
     }
 
-    console.log("SR2E | Importing cyberware...");
+    sr2LogDebug("Importing cyberware...");
 
     try {
-      // Unlock the compendium for editing
-      if (pack.locked) {
-        await pack.configure({ locked: false });
-      }
 
       const response = await fetch('/systems/shadowrun2e/data/cyberware.json');
       const data = await response.json();
@@ -81,18 +107,15 @@ export class SR2DataImporter {
         }
       }
 
-      console.log(`SR2E | About to create ${items.length} cyberware items`);
-      console.log("SR2E | Sample item data:", items[0]);
+      sr2LogDebug(`About to create ${items.length} cyberware items`);
+      sr2LogDebug("Sample item data:", items[0]);
 
-      const createdItems = await Item.createDocuments(items, { pack: pack.collection });
-      console.log(`SR2E | Successfully created ${createdItems.length} cyberware items`);
+      await this._replaceCompendiumDocuments(pack, items, "Item");
+      sr2LogDebug(`Successfully created ${items.length} cyberware items`);
 
       // Verify items were added to pack
       const packContents = await pack.getDocuments();
-      console.log(`SR2E | Pack now contains ${packContents.length} items`);
-
-      // Lock the compendium again after import
-      await pack.configure({ locked: true });
+      sr2LogDebug(`Pack now contains ${packContents.length} items`);
 
     } catch (error) {
       console.error("SR2E | Failed to import cyberware:", error);
@@ -109,13 +132,9 @@ export class SR2DataImporter {
       return;
     }
 
-    console.log("SR2E | Importing bioware...");
+    sr2LogDebug("Importing bioware...");
 
     try {
-      // Unlock the compendium for editing
-      if (pack.locked) {
-        await pack.configure({ locked: false });
-      }
 
       const response = await fetch('/systems/shadowrun2e/data/bioware.json');
       const data = await response.json();
@@ -146,11 +165,8 @@ export class SR2DataImporter {
         }
       }
 
-      await Item.createDocuments(items, { pack: pack.collection });
-      console.log(`SR2E | Imported ${items.length} bioware items`);
-
-      // Lock the compendium again after import
-      await pack.configure({ locked: true });
+      await this._replaceCompendiumDocuments(pack, items, "Item");
+      sr2LogDebug(`Imported ${items.length} bioware items`);
 
     } catch (error) {
       console.error("SR2E | Failed to import bioware:", error);
@@ -167,13 +183,9 @@ export class SR2DataImporter {
       return;
     }
 
-    console.log("SR2E | Importing spells...");
+    sr2LogDebug("Importing spells...");
 
     try {
-      // Unlock the compendium for editing
-      if (pack.locked) {
-        await pack.configure({ locked: false });
-      }
 
       const response = await fetch('/systems/shadowrun2e/data/spells.json');
       const data = await response.json();
@@ -203,11 +215,8 @@ export class SR2DataImporter {
         items.push(itemData);
       }
 
-      await Item.createDocuments(items, { pack: pack.collection });
-      console.log(`SR2E | Imported ${items.length} spells`);
-
-      // Lock the compendium again after import
-      await pack.configure({ locked: true });
+      await this._replaceCompendiumDocuments(pack, items, "Item");
+      sr2LogDebug(`Imported ${items.length} spells`);
 
     } catch (error) {
       console.error("SR2E | Failed to import spells:", error);
@@ -224,13 +233,9 @@ export class SR2DataImporter {
       return;
     }
 
-    console.log("SR2E | Importing adept powers...");
+    sr2LogDebug("Importing adept powers...");
 
     try {
-      // Unlock the compendium for editing
-      if (pack.locked) {
-        await pack.configure({ locked: false });
-      }
 
       const response = await fetch('/systems/shadowrun2e/data/AdeptPowers.json');
       const data = await response.json();
@@ -259,11 +264,8 @@ export class SR2DataImporter {
         items.push(itemData);
       }
 
-      await Item.createDocuments(items, { pack: pack.collection });
-      console.log(`SR2E | Imported ${items.length} adept powers`);
-
-      // Lock the compendium again after import
-      await pack.configure({ locked: true });
+      await this._replaceCompendiumDocuments(pack, items, "Item");
+      sr2LogDebug(`Imported ${items.length} adept powers`);
 
     } catch (error) {
       console.error("SR2E | Failed to import adept powers:", error);
@@ -280,13 +282,9 @@ export class SR2DataImporter {
       return;
     }
 
-    console.log("SR2E | Importing skills...");
+    sr2LogDebug("Importing skills...");
 
     try {
-      // Unlock the compendium for editing
-      if (pack.locked) {
-        await pack.configure({ locked: false });
-      }
 
       const response = await fetch('/systems/shadowrun2e/data/skills.json');
       const data = await response.json();
@@ -341,11 +339,8 @@ export class SR2DataImporter {
         }
       }
 
-      await Item.createDocuments(items, { pack: pack.collection });
-      console.log(`SR2E | Imported ${items.length} skill items`);
-
-      // Lock the compendium again after import
-      await pack.configure({ locked: true });
+      await this._replaceCompendiumDocuments(pack, items, "Item");
+      sr2LogDebug(`Imported ${items.length} skill items`);
 
     } catch (error) {
       console.error("SR2E | Failed to import skills:", error);
@@ -362,13 +357,9 @@ export class SR2DataImporter {
       return;
     }
 
-    console.log("SR2E | Importing cyberdecks...");
+    sr2LogDebug("Importing cyberdecks...");
 
     try {
-      // Unlock the compendium for editing
-      if (pack.locked) {
-        await pack.configure({ locked: false });
-      }
 
       const response = await fetch('/systems/shadowrun2e/data/cyberdeck.json');
       const data = await response.json();
@@ -411,11 +402,8 @@ export class SR2DataImporter {
         actors.push(actorData);
       }
 
-      await Actor.createDocuments(actors, { pack: pack.collection });
-      console.log(`SR2E | Imported ${actors.length} cyberdeck actors`);
-
-      // Lock the compendium again after import
-      await pack.configure({ locked: true });
+      await this._replaceCompendiumDocuments(pack, actors, "Actor");
+      sr2LogDebug(`Imported ${actors.length} cyberdeck actors`);
 
     } catch (error) {
       console.error("SR2E | Failed to import cyberdecks:", error);
@@ -432,13 +420,9 @@ export class SR2DataImporter {
       return;
     }
 
-    console.log("SR2E | Importing vehicles...");
+    sr2LogDebug("Importing vehicles...");
 
     try {
-      // Unlock the compendium for editing
-      if (pack.locked) {
-        await pack.configure({ locked: false });
-      }
 
       const response = await fetch('/systems/shadowrun2e/data/vehicles.json');
       const data = await response.json();
@@ -540,11 +524,8 @@ export class SR2DataImporter {
         actors.push(actorData);
       }
 
-      await Actor.createDocuments(actors, { pack: pack.collection });
-      console.log(`SR2E | Imported ${actors.length} vehicle actors`);
-
-      // Lock the compendium again after import
-      await pack.configure({ locked: true });
+      await this._replaceCompendiumDocuments(pack, actors, "Actor");
+      sr2LogDebug(`Imported ${actors.length} vehicle actors`);
 
     } catch (error) {
       console.error("SR2E | Failed to import vehicles:", error);
@@ -561,13 +542,9 @@ export class SR2DataImporter {
       return;
     }
 
-    console.log("SR2E | Importing drones...");
+    sr2LogDebug("Importing drones...");
 
     try {
-      // Unlock the compendium for editing
-      if (pack.locked) {
-        await pack.configure({ locked: false });
-      }
 
       const response = await fetch('/systems/shadowrun2e/data/drones.json');
       const data = await response.json();
@@ -660,11 +637,8 @@ export class SR2DataImporter {
         actors.push(actorData);
       }
 
-      await Actor.createDocuments(actors, { pack: pack.collection });
-      console.log(`SR2E | Imported ${actors.length} drone actors`);
-
-      // Lock the compendium again after import
-      await pack.configure({ locked: true });
+      await this._replaceCompendiumDocuments(pack, actors, "Actor");
+      sr2LogDebug(`Imported ${actors.length} drone actors`);
 
     } catch (error) {
       console.error("SR2E | Failed to import drones:", error);
@@ -681,13 +655,9 @@ export class SR2DataImporter {
       return;
     }
 
-    console.log("SR2E | Importing programs...");
+    sr2LogDebug("Importing programs...");
 
     try {
-      // Unlock the compendium for editing
-      if (pack.locked) {
-        await pack.configure({ locked: false });
-      }
 
       const response = await fetch('/systems/shadowrun2e/data/programs.json');
       const data = await response.json();
@@ -718,11 +688,8 @@ export class SR2DataImporter {
         items.push(itemData);
       }
 
-      await Item.createDocuments(items, { pack: pack.collection });
-      console.log(`SR2E | Imported ${items.length} programs`);
-
-      // Lock the compendium again after import
-      await pack.configure({ locked: true });
+      await this._replaceCompendiumDocuments(pack, items, "Item");
+      sr2LogDebug(`Imported ${items.length} programs`);
 
     } catch (error) {
       console.error("SR2E | Failed to import programs:", error);
@@ -739,13 +706,9 @@ export class SR2DataImporter {
       return;
     }
 
-    console.log("SR2E | Importing VR programs...");
+    sr2LogDebug("Importing VR programs...");
 
     try {
-      // Unlock the compendium for editing
-      if (pack.locked) {
-        await pack.configure({ locked: false });
-      }
 
       const response = await fetch('/systems/shadowrun2e/data/VirtualRealityPrograms.json');
       const data = await response.json();
@@ -776,11 +739,8 @@ export class SR2DataImporter {
         items.push(itemData);
       }
 
-      await Item.createDocuments(items, { pack: pack.collection });
-      console.log(`SR2E | Imported ${items.length} VR programs`);
-
-      // Lock the compendium again after import
-      await pack.configure({ locked: true });
+      await this._replaceCompendiumDocuments(pack, items, "Item");
+      sr2LogDebug(`Imported ${items.length} VR programs`);
 
     } catch (error) {
       console.error("SR2E | Failed to import VR programs:", error);
@@ -797,13 +757,9 @@ export class SR2DataImporter {
       return;
     }
 
-    console.log("SR2E | Importing gear...");
+    sr2LogDebug("Importing gear...");
 
     try {
-      // Unlock the compendium for editing
-      if (pack.locked) {
-        await pack.configure({ locked: false });
-      }
 
       const response = await fetch('/systems/shadowrun2e/data/gear.json');
       const data = await response.json();
@@ -846,11 +802,8 @@ export class SR2DataImporter {
         }
       }
 
-      await Item.createDocuments(items, { pack: pack.collection });
-      console.log(`SR2E | Imported ${items.length} gear items across ${Object.keys(data).length} categories`);
-
-      // Lock the compendium again after import
-      await pack.configure({ locked: true });
+      await this._replaceCompendiumDocuments(pack, items, "Item");
+      sr2LogDebug(`Imported ${items.length} gear items across ${Object.keys(data).length} categories`);
 
     } catch (error) {
       console.error("SR2E | Failed to import gear:", error);
@@ -1023,13 +976,9 @@ export class SR2DataImporter {
       return;
     }
 
-    console.log("SR2E | Importing totems...");
+    sr2LogDebug("Importing totems...");
 
     try {
-      // Unlock the compendium for editing
-      if (pack.locked) {
-        await pack.configure({ locked: false });
-      }
 
       const response = await fetch('/systems/shadowrun2e/data/totems.json');
       const data = await response.json();
@@ -1058,11 +1007,8 @@ export class SR2DataImporter {
         items.push(itemData);
       }
 
-      await Item.createDocuments(items, { pack: pack.collection });
-      console.log(`SR2E | Imported ${items.length} totems`);
-
-      // Lock the compendium again after import
-      await pack.configure({ locked: true });
+      await this._replaceCompendiumDocuments(pack, items, "Item");
+      sr2LogDebug(`Imported ${items.length} totems`);
 
     } catch (error) {
       console.error("SR2E | Failed to import totems:", error);

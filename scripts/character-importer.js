@@ -196,7 +196,7 @@ export class SR2CharacterImporter {
 
     // Create contacts if requested
     if (createContacts && data.contacts) {
-      await this._createContactActors(data.contacts, actor.name);
+      await this._createContactActors(data.contacts, actor.name, actor.id);
     }
 
     return actor;
@@ -211,12 +211,16 @@ export class SR2CharacterImporter {
     // Import skills
     if (data.skills) {
       for (const skill of data.skills) {
+        const importedRating = Number(skill.rating) || 0;
         const skillData = {
           name: skill.name,
           type: "skill",
           img: "systems/shadowrun2e/icons/skill.svg",
           system: {
-            rating: skill.rating || 0,
+            baseRating: importedRating,
+            concentrationRating: 0,
+            specializationRating: 0,
+            allocatedRating: importedRating,
             attribute: "body", // Default, should be mapped properly
             baseSkill: skill.name,
             concentration: "",
@@ -344,11 +348,17 @@ export class SR2CharacterImporter {
   /**
    * Create contact actors
    */
-  static async _createContactActors(contacts, characterName) {
-    for (const contact of contacts) {
+  static async _createContactActors(contacts, characterName, leaderId = null) {
+    const contactList = Array.isArray(contacts) ? contacts : Object.values(contacts || {});
+    if (!contactList.length) return;
+    let createdContacts = 0;
+
+    for (const contact of contactList) {
+      if (!contact?.Name) continue;
+
       const contactData = {
         name: contact.Name,
-        type: "character", // Contacts are just NPCs
+        type: "contact",
         img: "icons/svg/mystery-man.svg",
         system: {
           attributes: {
@@ -373,7 +383,7 @@ export class SR2CharacterImporter {
           },
           initiative: { base: 6, dice: 1, current: 0 },
           magic: { awakened: false, physicalAdept: false, tradition: "" },
-	          resources: { nuyen: 0, lifestyle: "street", lifestyles: [{ type: "street", months: 1 }] },
+          resources: { nuyen: 0, lifestyle: "street", lifestyles: [{ type: "street", months: 1 }] },
           details: {
             metatype: "human",
             age: "",
@@ -382,7 +392,8 @@ export class SR2CharacterImporter {
             eyes: "",
             hair: "",
             skin: "",
-            concept: contact.Archtype || "Contact"
+            concept: contact.Archtype || "Contact",
+            leaderId: leaderId ?? ""
           },
           health: {
             physical: { value: 0, max: 10 },
@@ -393,9 +404,10 @@ export class SR2CharacterImporter {
       };
 
       await Actor.create(contactData);
+      createdContacts += 1;
     }
     
-    console.log(`SR2E | Created ${contacts.length} contact actors for ${characterName}`);
+    console.log(`SR2E | Created ${createdContacts} contact actors for ${characterName}`);
   }
 
   /**

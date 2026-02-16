@@ -18,41 +18,10 @@ export class SR2Actor extends Actor {
   /** @override */
   prepareDerivedData() {
     const actorData = this;
-    const systemData = actorData.system;
-    const flags = actorData.flags.shadowrun2e || {};
-
-    // Migrate old skill data if needed
-    this._migrateSkillData();
 
     // Make separate methods for each Actor type to keep things organized
     this._prepareCharacterData(actorData);
     this._prepareSpiritData(actorData);
-  }
-
-  /**
-   * Migrate old skill data from single rating to three ratings
-   */
-  _migrateSkillData() {
-    const skills = this.items.filter(i => i.type === 'skill');
-    
-    for (const skill of skills) {
-      // Check if this skill has the old rating field but not the new ones
-      if (skill.system.rating !== undefined && 
-          skill.system.baseRating === undefined) {
-        
-        const oldRating = skill.system.rating || 0;
-        
-        // Update the skill with new rating structure
-        skill.update({
-          'system.baseRating': oldRating,
-          'system.concentrationRating': 0,
-          'system.specializationRating': 0,
-          'system.-=rating': null // Remove the old rating field
-        });
-        
-        console.log(`SR2E | Migrated skill ${skill.name} from old rating system`);
-      }
-    }
   }
 
   /**
@@ -216,18 +185,25 @@ export class SR2Actor extends Actor {
   /**
    * Get the rating of a skill by base skill name
    */
+  _getSkillMaxRatingValue(skill) {
+    if (!skill?.system) return 0;
+
+    const baseRating = Number(skill.system.baseRating) || 0;
+    const concRating = Number(skill.system.concentrationRating) || 0;
+    const specRating = Number(skill.system.specializationRating) || 0;
+    const legacyRating = Number(skill.system.rating) || 0;
+    return Math.max(baseRating, concRating, specRating, legacyRating);
+  }
+
+  /**
+   * Get the rating of a skill by base skill name
+   */
   _getSkillRating(baseSkillName) {
     const skills = this.items.filter(i => i.type === 'skill' && i.system.baseSkill === baseSkillName);
     if (skills.length === 0) return 0;
-
+    
     // Return the highest rating if multiple concentrations exist
-    // Check base rating, concentration rating, and specialization rating
-    return Math.max(...skills.map(skill => {
-      const baseRating = skill.system.baseRating || 0;
-      const concRating = skill.system.concentrationRating || 0;
-      const specRating = skill.system.specializationRating || 0;
-      return Math.max(baseRating, concRating, specRating);
-    }));
+    return Math.max(...skills.map(skill => this._getSkillMaxRatingValue(skill)));
   }
 
   /**
@@ -240,14 +216,9 @@ export class SR2Actor extends Actor {
     );
 
     if (computerSkills.length === 0) return 0;
-
+    
     // Return the highest rating among all Computer skill concentrations
-    return Math.max(...computerSkills.map(skill => {
-      const baseRating = skill.system.baseRating || 0;
-      const concRating = skill.system.concentrationRating || 0;
-      const specRating = skill.system.specializationRating || 0;
-      return Math.max(baseRating, concRating, specRating);
-    }));
+    return Math.max(...computerSkills.map(skill => this._getSkillMaxRatingValue(skill)));
   }
 
   /**
@@ -260,14 +231,9 @@ export class SR2Actor extends Actor {
     );
 
     if (sorcerySkills.length === 0) return 0;
-
+    
     // Return the highest rating among all Sorcery skill concentrations
-    return Math.max(...sorcerySkills.map(skill => {
-      const baseRating = skill.system.baseRating || 0;
-      const concRating = skill.system.concentrationRating || 0;
-      const specRating = skill.system.specializationRating || 0;
-      return Math.max(baseRating, concRating, specRating);
-    }));
+    return Math.max(...sorcerySkills.map(skill => this._getSkillMaxRatingValue(skill)));
   }
 
   /**
