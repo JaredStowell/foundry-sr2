@@ -1633,7 +1633,8 @@ Hooks.once("init", async function () {
         follower: "icons/svg/mystery-man.svg",
         cyberdeck: "systems/shadowrun2e/icons/cyberdeck.png",
         vehicle: "systems/shadowrun2e/icons/vehicle.png",
-        spirit: "systems/shadowrun2e/icons/spirit.png"
+        spirit: "systems/shadowrun2e/icons/spirit.png",
+        critter: "systems/shadowrun2e/icons/spirit.png"
     };
 
     // Register sheet application classes
@@ -1663,7 +1664,7 @@ Hooks.once("init", async function () {
 
     console.log("SR2E | Registering SR2SpiritSheet...", SR2SpiritSheet);
     Actors.registerSheet("shadowrun2e", SR2SpiritSheet, {
-        types: ["spirit"],
+        types: ["spirit", "critter"],
         makeDefault: true,
         label: "Shadowrun 2E Spirit Sheet"
     });
@@ -1723,6 +1724,16 @@ Hooks.once("init", async function () {
         CONFIG.Actor.sheetClasses.spirit = {};
     }
     CONFIG.Actor.sheetClasses.spirit["shadowrun2e.SR2SpiritSheet"] = {
+        id: "shadowrun2e.SR2SpiritSheet",
+        cls: SR2SpiritSheet,
+        default: true
+    };
+
+    // Force set as default for critter actors
+    if (!CONFIG.Actor.sheetClasses.critter) {
+        CONFIG.Actor.sheetClasses.critter = {};
+    }
+    CONFIG.Actor.sheetClasses.critter["shadowrun2e.SR2SpiritSheet"] = {
         id: "shadowrun2e.SR2SpiritSheet",
         cls: SR2SpiritSheet,
         default: true

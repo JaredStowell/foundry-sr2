@@ -46,7 +46,7 @@ export class SR2Actor extends Actor {
   }
 
   _prepareSpiritData(actorData) {
-    if (actorData.type !== 'spirit') return;
+    if (!['spirit', 'critter'].includes(actorData.type)) return;
 
     const systemData = actorData.system;
     if (!systemData) return;
@@ -497,8 +497,8 @@ export class SR2Actor extends Actor {
       const systemData = data.actor;
       if (!systemData.initiative) systemData.initiative = {};
 
-      // Spirits: base Reaction (per type) + 10/20 (manifest/astral), then roll 1d6.
-      if (this.type === "spirit") {
+      // Spirits/Critters: base Reaction (per type) + 10/20 (manifest/astral), then roll 1d6.
+      if (this.type === "spirit" || this.type === "critter") {
         const reaction = Number(systemData.attributes?.reaction?.value) || 0;
         const spiritForm = String(systemData.spiritForm || "manifest");
         const formBonus = spiritForm === "astral" ? 20 : 10;

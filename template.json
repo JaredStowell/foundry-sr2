@@ -1,6 +1,6 @@
 {
   "Actor": {
-    "types": ["character", "contact", "follower", "cyberdeck", "vehicle", "spirit"],
+    "types": ["character", "contact", "follower", "cyberdeck", "vehicle", "spirit", "critter"],
     "templates": {
       "base": {
         "health": {
@@ -512,6 +512,65 @@
       }
     },
     "spirit": {
+      "spiritType": "",
+      "spiritForm": "manifest",
+      "attributes": {
+        "body": {
+          "value": 1,
+          "min": 1,
+          "max": 20
+        },
+        "quickness": {
+          "value": 1,
+          "min": 1,
+          "max": 20
+        },
+        "strength": {
+          "value": 1,
+          "min": 1,
+          "max": 20
+        },
+        "charisma": {
+          "value": 1,
+          "min": 1,
+          "max": 20
+        },
+        "intelligence": {
+          "value": 1,
+          "min": 1,
+          "max": 20
+        },
+        "willpower": {
+          "value": 1,
+          "min": 1,
+          "max": 20
+        },
+        "force": {
+          "value": 1,
+          "min": 1,
+          "max": 12
+        },
+        "reaction": {
+          "value": 1,
+          "min": 1,
+          "max": 20
+        }
+      },
+      "initiative": {
+        "base": 0,
+        "dice": 1,
+        "current": 0
+      },
+      "health": {
+        "value": 0,
+        "max": 10
+      },
+      "powers": "",
+      "services": 0,
+      "summoner": "",
+      "biography": ""
+    },
+    "critter": {
       "spiritType": "",
       "spiritForm": "manifest",
       "attributes": {
