@@ -630,6 +630,8 @@
       "biography": ""
     },
     "ic": {
+      "icType": "",
+      "rating": 1,
       "spiritType": "",
       "spiritForm": "manifest",
       "attributes": {

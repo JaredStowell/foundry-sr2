@@ -55,7 +55,7 @@ export class SR2Actor extends Actor {
     const reaction = Number(attrs.reaction?.value) || 0;
 
     const spiritForm = String(systemData.spiritForm || "manifest");
-    const formBonus = spiritForm === "astral" ? 20 : 10;
+    const formBonus = actorData.type === "ic" ? 0 : (spiritForm === "astral" ? 20 : 10);
 
     if (!systemData.initiative) systemData.initiative = {};
 
@@ -501,7 +501,7 @@ export class SR2Actor extends Actor {
       if (this.type === "spirit" || this.type === "critter" || this.type === "ic") {
         const reaction = Number(systemData.attributes?.reaction?.value) || 0;
         const spiritForm = String(systemData.spiritForm || "manifest");
-        const formBonus = spiritForm === "astral" ? 20 : 10;
+        const formBonus = this.type === "ic" ? 0 : (spiritForm === "astral" ? 20 : 10);
 
         systemData.initiative.dice = 1;
         systemData.initiative.base = reaction + formBonus;

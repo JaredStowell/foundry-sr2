@@ -8,6 +8,7 @@ import { SR2ActorSheet } from "./actor/actor-sheet.js";
 import { SR2CyberdeckSheet } from "./actor/cyberdeck-sheet.js";
 import { SR2VehicleSheet } from "./actor/vehicle-sheet.js";
 import { SR2SpiritSheet } from "./actor/spirit-sheet.js";
+import { SR2ICSheet } from "./actor/ic-sheet.js";
 import { SR2Item } from "./item/item.js";
 import { SR2ItemSheet } from "./item/item-sheet.js";
 import { SR2ItemBrowser } from "./item-browser.js";
@@ -1665,9 +1666,16 @@ Hooks.once("init", async function () {
 
     console.log("SR2E | Registering SR2SpiritSheet...", SR2SpiritSheet);
     Actors.registerSheet("shadowrun2e", SR2SpiritSheet, {
-        types: ["spirit", "critter", "ic"],
+        types: ["spirit", "critter"],
         makeDefault: true,
         label: "Shadowrun 2E Spirit Sheet"
+    });
+
+    console.log("SR2E | Registering SR2ICSheet...", SR2ICSheet);
+    Actors.registerSheet("shadowrun2e", SR2ICSheet, {
+        types: ["ic"],
+        makeDefault: true,
+        label: "Shadowrun 2E IC Sheet"
     });
 
     // Force set as default for character actors
@@ -1744,9 +1752,9 @@ Hooks.once("init", async function () {
     if (!CONFIG.Actor.sheetClasses.ic) {
         CONFIG.Actor.sheetClasses.ic = {};
     }
-    CONFIG.Actor.sheetClasses.ic["shadowrun2e.SR2SpiritSheet"] = {
-        id: "shadowrun2e.SR2SpiritSheet",
-        cls: SR2SpiritSheet,
+    CONFIG.Actor.sheetClasses.ic["shadowrun2e.SR2ICSheet"] = {
+        id: "shadowrun2e.SR2ICSheet",
+        cls: SR2ICSheet,
         default: true
     };
 
@@ -3198,6 +3206,7 @@ function preloadHandlebarsTemplates() {
         "systems/shadowrun2e/templates/actor/cyberdeck-sheet.html",
         "systems/shadowrun2e/templates/actor/vehicle-sheet.html",
         "systems/shadowrun2e/templates/actor/spirit-sheet.html",
+        "systems/shadowrun2e/templates/actor/ic-sheet.html",
         "systems/shadowrun2e/templates/item/item-sheet.html",
         "systems/shadowrun2e/templates/apps/initiative-tracker.html",
         "systems/shadowrun2e/templates/apps/quick-actions.html",
