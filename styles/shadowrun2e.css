@@ -3382,6 +3382,16 @@
   text-align: center;
 }
 
+.shadowrun2e.cyberdeck .persona-program-summary {
+  color: #00ff00;
+  font-size: 12px;
+}
+
+.shadowrun2e.cyberdeck .persona-program-summary.over-limit {
+  color: #ff4444;
+  font-weight: bold;
+}
+
 .shadowrun2e.cyberdeck .memory-stat {
   margin-bottom: 15px;
 }

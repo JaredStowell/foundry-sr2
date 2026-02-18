@@ -70,6 +70,24 @@ export class SR2CyberdeckSheet extends ActorSheet {
     // Calculate available memory and storage
     context.memoryAvailable = context.system.memory.total - context.memoryUsed;
     context.storageAvailable = context.system.storage.total - context.storageUsed;
+
+    // Persona programs (Body/Evasion/Masking/Sensors) are allocated under a cap of MPCP * 3.
+    const mpcp = Math.max(1, parseInt(context.system?.persona, 10) || 1);
+    const maxTotal = mpcp * 3;
+    const personaPrograms = (context.system?.personaPrograms && typeof context.system.personaPrograms === "object")
+      ? context.system.personaPrograms
+      : { body: 0, evasion: 0, masking: 0, sensors: 0 };
+    context.system.personaPrograms = personaPrograms;
+    const keys = ["body", "evasion", "masking", "sensors"];
+    let total = 0;
+    for (const key of keys) {
+      const value = Math.max(0, parseInt(personaPrograms?.[key], 10) || 0);
+      total += value;
+    }
+    context.personaProgramMax = maxTotal;
+    context.personaProgramTotal = total;
+    context.personaProgramRemaining = Math.max(0, maxTotal - total);
+    context.personaProgramOver = total > maxTotal;
   }
 
   /** @override */
@@ -143,6 +161,83 @@ export class SR2CyberdeckSheet extends ActorSheet {
     
     // Repair damage
     html.find('.repair-damage').click(this._onRepairDamage.bind(this));
+
+    // Persona program allocation validation
+    html.find('input[name="system.persona"]').change(this._onPersonaMpcpChange.bind(this));
+    html.find('input[name^="system.personaPrograms."]').change(this._onPersonaProgramChange.bind(this));
+  }
+
+  async _onPersonaProgramChange(event) {
+    event.preventDefault();
+    const input = event.currentTarget;
+    const name = String(input?.name || "");
+    const match = name.match(/^system\\.personaPrograms\\.(body|evasion|masking|sensors)$/);
+    if (!match) return;
+
+    const key = match[1];
+    const keys = ["body", "evasion", "masking", "sensors"];
+
+    const mpcp = Math.max(1, parseInt(this.actor.system?.persona, 10) || 1);
+    const maxTotal = mpcp * 3;
+
+    const current = this.actor.system?.personaPrograms || {};
+    const otherSum = keys
+      .filter(k => k !== key)
+      .reduce((sum, k) => sum + Math.max(0, parseInt(current?.[k], 10) || 0), 0);
+
+    let next = parseInt(input.value, 10);
+    if (!Number.isFinite(next)) next = 0;
+    next = Math.max(0, next);
+
+    const allowed = Math.max(0, maxTotal - otherSum);
+    if (next > allowed) next = allowed;
+    if (String(input.value) !== String(next)) input.value = String(next);
+
+    await this.actor.update({ [`system.personaPrograms.${key}`]: next });
+    this.render(false);
+  }
+
+  async _onPersonaMpcpChange(event) {
+    event.preventDefault();
+    const input = event.currentTarget;
+
+    let mpcp = parseInt(input.value, 10);
+    if (!Number.isFinite(mpcp)) mpcp = 1;
+    mpcp = Math.max(1, mpcp);
+
+    const maxTotal = mpcp * 3;
+    const keys = ["body", "evasion", "masking", "sensors"];
+    const current = this.actor.system?.personaPrograms || {};
+    const values = {};
+    let total = 0;
+    for (const key of keys) {
+      const value = Math.max(0, parseInt(current?.[key], 10) || 0);
+      values[key] = value;
+      total += value;
+    }
+
+    const updates = { "system.persona": mpcp };
+    if (total > maxTotal) {
+      let overflow = total - maxTotal;
+      for (const key of ["sensors", "masking", "evasion", "body"]) {
+        if (overflow <= 0) break;
+        const value = values[key];
+        const reduction = Math.min(value, overflow);
+        values[key] = value - reduction;
+        overflow -= reduction;
+      }
+
+      for (const key of keys) {
+        if (values[key] !== (Math.max(0, parseInt(current?.[key], 10) || 0))) {
+          updates[`system.personaPrograms.${key}`] = values[key];
+        }
+      }
+
+      ui.notifications.warn("Persona program total exceeded MPCP×3; values were clamped.");
+    }
+
+    await this.actor.update(updates);
+    this.render(false);
   }
 
   /**

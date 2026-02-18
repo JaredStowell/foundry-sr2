@@ -28,14 +28,14 @@
         <h3>Cyberdeck Statistics</h3>
         
         <div class="stats-grid">
-          <div class="stat-group">
-            <h4>Core Stats</h4>
-            <div class="stat">
-              <label>Persona:</label>
-              <input type="number" name="system.persona" value="{{system.persona}}" data-dtype="Number" min="1" max="10"/>
-            </div>
-            <div class="stat">
-              <label>Hardening:</label>
+	          <div class="stat-group">
+	            <h4>Core Stats</h4>
+	            <div class="stat">
+	              <label>MPCP:</label>
+	              <input type="number" name="system.persona" value="{{system.persona}}" data-dtype="Number" min="1" max="10"/>
+	            </div>
+	            <div class="stat">
+	              <label>Hardening:</label>
               <input type="number" name="system.hardening" value="{{system.hardening}}" data-dtype="Number" min="0" max="10"/>
             </div>
             <div class="stat">
@@ -47,14 +47,40 @@
               <input type="number" name="system.ioSpeed" value="{{system.ioSpeed}}" data-dtype="Number" min="1"/>
             </div>
             <div class="stat">
-              <label>Response Increase:</label>
-              <input type="number" name="system.responseIncrease" value="{{system.responseIncrease}}" data-dtype="Number" min="0"/>
-            </div>
-          </div>
+	              <label>Response Increase:</label>
+	              <input type="number" name="system.responseIncrease" value="{{system.responseIncrease}}" data-dtype="Number" min="0"/>
+	            </div>
+	          </div>
 
-          <div class="stat-group">
-            <h4>Memory & Storage</h4>
-            <div class="memory-stat">
+	          <div class="stat-group">
+	            <h4>Persona Programs</h4>
+	            <div class="stat">
+	              <label>Body:</label>
+	              <input type="number" name="system.personaPrograms.body" value="{{system.personaPrograms.body}}" data-dtype="Number" min="0"/>
+	            </div>
+	            <div class="stat">
+	              <label>Evasion:</label>
+	              <input type="number" name="system.personaPrograms.evasion" value="{{system.personaPrograms.evasion}}" data-dtype="Number" min="0"/>
+	            </div>
+	            <div class="stat">
+	              <label>Masking:</label>
+	              <input type="number" name="system.personaPrograms.masking" value="{{system.personaPrograms.masking}}" data-dtype="Number" min="0"/>
+	            </div>
+	            <div class="stat">
+	              <label>Sensors:</label>
+	              <input type="number" name="system.personaPrograms.sensors" value="{{system.personaPrograms.sensors}}" data-dtype="Number" min="0"/>
+	            </div>
+	            <div class="stat">
+	              <label>Total:</label>
+	              <span class="persona-program-summary {{#if personaProgramOver}}over-limit{{/if}}">
+	                {{personaProgramTotal}} / {{personaProgramMax}} (Remaining: {{personaProgramRemaining}})
+	              </span>
+	            </div>
+	          </div>
+
+	          <div class="stat-group">
+	            <h4>Memory & Storage</h4>
+	            <div class="memory-stat">
               <label>Active Memory:</label>
               <div class="memory-bar">
                 <div class="memory-used" style="width: {{#if system.memory.total}}{{math memoryUsed '/' system.memory.total '*' 100}}{{else}}0{{/if}}%"></div>
