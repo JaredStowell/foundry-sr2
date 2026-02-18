@@ -4571,7 +4571,7 @@ export class SR2ActorSheet extends ActorSheet {
         try {
           const combatant = {
             id: foundry.utils.randomID(),
-            tokenId: token.id,
+            tokenId: token.document?.id ?? token.id,
             actorId: this.actor.id,
             name: this.actor.name || "Unknown Character",
             img: this.actor.img || "icons/svg/mystery-man.svg",

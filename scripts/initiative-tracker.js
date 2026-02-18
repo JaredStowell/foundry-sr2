@@ -32,14 +32,19 @@ export class SR2InitiativeTracker extends Application {
         const data = super.getData();
 
         // Get active combatants for current phase and sort by current initiative (highest first)
-        const activeCombatants = this._getActiveCombatantsForPhase();
+        const activeCombatantsRaw = this._getActiveCombatantsForPhase();
+        const activeCombatants = activeCombatantsRaw.map(c => ({
+            ...c,
+            currentInit: this.getCurrentInitiative(c)
+        }));
+        const activeCombatantId = this.isActive ? activeCombatantsRaw[this.currentTurn]?.id : null;
         
         // Map all combatants with current phase information
         const sortedCombatants = this.combatants
             .map(c => ({
                 ...c,
                 currentInit: this.getCurrentInitiative(c),
-                isActive: this.isActive && activeCombatants[this.currentTurn]?.id === c.id,
+                isActive: this.isActive && activeCombatantId === c.id,
                 isActiveInPhase: this.getCurrentInitiative(c) > 0
             }))
             .sort((a, b) => {
@@ -484,7 +489,7 @@ export class SR2InitiativeTracker extends Application {
         this.isActive = true;
         this.currentPhase = 1;
         this.currentTurn = 0;
-        this._recalculateCurrentInitiativeForPhase();
+        await this._recalculateCurrentInitiativeForPhase();
 
         // Start Foundry combat
         await this._startCombatInFoundry();
@@ -530,7 +535,7 @@ export class SR2InitiativeTracker extends Application {
 
         this.currentPhase++;
         this.currentTurn = 0;
-        this._recalculateCurrentInitiativeForPhase();
+        await this._recalculateCurrentInitiativeForPhase();
 
         // Check if any combatants are still active in this phase
         const activeCombatants = this._getActiveCombatantsForPhase();
@@ -541,7 +546,7 @@ export class SR2InitiativeTracker extends Application {
             if (this.currentPhase > maxPhases) {
                 // Start new round
                 this.currentPhase = 1;
-                this._recalculateCurrentInitiativeForPhase();
+                await this._recalculateCurrentInitiativeForPhase();
                 ChatMessage.create({
                     content: "<h3>New Combat Round</h3><p>All combatants have completed their actions. Starting new round.</p>",
                     speaker: { alias: "Initiative Tracker" }
@@ -624,11 +629,9 @@ export class SR2InitiativeTracker extends Application {
         if (combatant) {
             combatant.initiative = newValue;
             combatant.hasRolled = true;
-            if (this.isActive) {
-                const phaseOffset = Math.max(0, (this.currentPhase - 1) * 10);
-                combatant.currentInitiative = Math.max(0, newValue - phaseOffset);
-                combatant.actionPhases = this._calculateActionPhases(newValue);
-            }
+            const phaseOffset = Math.max(0, (this.currentPhase - 1) * 10);
+            combatant.currentInitiative = this.isActive ? Math.max(0, newValue - phaseOffset) : newValue;
+            combatant.actionPhases = this._calculateActionPhases(newValue);
             this.render();
         }
     }
@@ -745,49 +748,40 @@ export class SR2InitiativeTracker extends Application {
      * Updated to use SR2 phase system with action phases array
      */
     getCurrentInitiative(combatant) {
-        if (!combatant.hasRolled) return 0;
-        
-        const currentInitiative = combatant?.currentInitiative;
-        if (Number.isFinite(Number(currentInitiative))) {
-            return Math.max(0, Math.floor(Number(currentInitiative)));
+        if (!combatant?.hasRolled) return 0;
+
+        // SR2: combatants act on initiative, then again at initiative-10, -20, etc.
+        if (Array.isArray(combatant.actionPhases) && combatant.actionPhases.length) {
+            const phaseIndex = Math.max(0, this.currentPhase - 1);
+            const value = combatant.actionPhases[phaseIndex];
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? Math.max(0, Math.floor(numeric)) : 0;
         }
 
-        // If combatant has action phases array (new system), use it
-        if (combatant.actionPhases && Array.isArray(combatant.actionPhases)) {
-            // Find the phase value for the current phase number
-            const phaseIndex = this.currentPhase - 1;
-            if (phaseIndex < combatant.actionPhases.length) {
-                return combatant.actionPhases[phaseIndex];
-            } else {
-                return 0; // No more actions this round
-            }
-        }
-        
-        // Fallback to old calculation for backwards compatibility
-        return Math.max(0, combatant.initiative - ((this.currentPhase - 1) * 10));
+        const baseInitiative = Number(combatant.initiative);
+        if (!Number.isFinite(baseInitiative)) return 0;
+
+        const phaseOffset = Math.max(0, (this.currentPhase - 1) * 10);
+        return Math.max(0, Math.floor(baseInitiative) - phaseOffset);
     }
 
     /**
      * Recalculate each combatant's current initiative for the active phase.
      * This keeps the visible initiative value moving down by 10 each phase.
      */
-    _recalculateCurrentInitiativeForPhase() {
+    async _recalculateCurrentInitiativeForPhase() {
         if (!Array.isArray(this.combatants)) return;
 
-        const phaseOffset = Math.max(0, (this.currentPhase - 1) * 10);
         for (const combatant of this.combatants) {
             if (!combatant || !combatant.hasRolled) {
                 if (combatant) combatant.currentInitiative = 0;
                 continue;
             }
 
-            const baseInitiative = Number(combatant.initiative);
-            if (Number.isFinite(baseInitiative)) {
-                combatant.currentInitiative = Math.max(0, Math.floor(baseInitiative) - phaseOffset);
-            } else {
-                combatant.currentInitiative = 0;
-            }
+            combatant.currentInitiative = this.getCurrentInitiative(combatant);
         }
+
+        await this._syncFoundryInitiativeForPhase();
     }
 
     /**
@@ -801,20 +795,6 @@ export class SR2InitiativeTracker extends Application {
                 return currentInit > 0;
             })
             .sort((a, b) => this.getCurrentInitiative(b) - this.getCurrentInitiative(a));
-    }
-
-    /**
-     * Determine if an actor is an NPC (no player owners)
-     */
-    _isNPC(actor) {
-        // Check if the actor has any player owners
-        const playerOwners = Object.entries(actor.ownership || {})
-            .filter(([userId, permission]) => {
-                const user = game.users.get(userId);
-                return user && !user.isGM && permission >= CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER;
-            });
-        
-        return playerOwners.length === 0;
     }
 
     /**
@@ -975,17 +955,25 @@ export class SR2InitiativeTracker extends Application {
      * Ensure a combat encounter exists, create one if needed
      */
     async _ensureCombatEncounter() {
-        if (!game.combat) {
+        if (game.combat) return true;
+        if (!game.user?.isGM) return false;
+
+        try {
             // Create a new combat encounter
             const combat = await Combat.create({
-                scene: canvas.scene?.id,
+                scene: canvas.scene?.id ?? null,
                 active: true
             });
-            
+
             if (combat) {
                 ui.notifications.info("Created new combat encounter.");
+                return true;
             }
+        } catch (error) {
+            console.warn("Failed to create combat encounter:", error);
         }
+
+        return Boolean(game.combat);
     }
 
     /**
@@ -995,8 +983,13 @@ export class SR2InitiativeTracker extends Application {
         if (!game.combat || !token) return;
 
         try {
+            const tokenId = token.document?.id ?? token.id ?? null;
+            const actorId = token.actor?.id ?? token.document?.actorId ?? token.document?.actor?.id ?? null;
+            const sceneId = token.scene?.id ?? token.document?.parent?.id ?? canvas.scene?.id ?? null;
+            if (!tokenId || !actorId || !sceneId) return;
+
             // Check if already in Foundry combat
-            const existingCombatant = game.combat.combatants.find(c => c.tokenId === token.id);
+            const existingCombatant = game.combat.combatants.find(c => c.tokenId === tokenId);
             if (existingCombatant) {
                 // Store the Foundry combatant ID for later reference
                 combatant.foundryCombatantId = existingCombatant.id;
@@ -1005,9 +998,9 @@ export class SR2InitiativeTracker extends Application {
 
             // Add to Foundry combat
             const combatantData = {
-                tokenId: token.id,
-                actorId: token.actor.id,
-                sceneId: token.scene.id,
+                tokenId,
+                actorId,
+                sceneId,
                 initiative: null,
                 hidden: combatant.isNPC && game.settings.get("core", "combatTrackerHideNPCNames")
             };
@@ -1034,6 +1027,40 @@ export class SR2InitiativeTracker extends Application {
             }
         } catch (error) {
             console.warn("Failed to update Foundry combat initiative:", error);
+        }
+    }
+
+    async _syncFoundryInitiativeForPhase() {
+        if (!this.isActive) return;
+        if (!game.combat) return;
+        if (!Array.isArray(this.combatants)) return;
+
+        const updates = [];
+        for (const combatant of this.combatants) {
+            if (!combatant?.foundryCombatantId) continue;
+            if (!combatant.hasRolled) continue;
+            updates.push({
+                _id: combatant.foundryCombatantId,
+                initiative: this.getCurrentInitiative(combatant)
+            });
+        }
+
+        if (!updates.length) return;
+
+        try {
+            if (typeof game.combat.updateEmbeddedDocuments === "function") {
+                await game.combat.updateEmbeddedDocuments("Combatant", updates);
+                return;
+            }
+
+            for (const update of updates) {
+                const foundryCombatant = game.combat.combatants.get(update._id);
+                if (foundryCombatant) {
+                    await foundryCombatant.update({ initiative: update.initiative });
+                }
+            }
+        } catch (error) {
+            console.warn("Failed to sync Foundry initiative for phase:", error);
         }
     }
 
