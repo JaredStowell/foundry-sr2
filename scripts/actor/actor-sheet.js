@@ -2123,6 +2123,7 @@ export class SR2ActorSheet extends ActorSheet {
 
     return new Promise(resolve => {
       let isResolved = false;
+      let isRolling = false;
       const finish = (result) => {
         if (isResolved) return;
         isResolved = true;
@@ -2544,6 +2545,7 @@ export class SR2ActorSheet extends ActorSheet {
 
     return new Promise(resolve => {
       let isResolved = false;
+      let isRolling = false;
       const finish = (result) => {
         if (isResolved) return;
         isResolved = true;
@@ -2604,10 +2606,13 @@ export class SR2ActorSheet extends ActorSheet {
           }
         },
         buttons: {
-	          roll: {
-	            icon: '<i class="fas fa-dice-d6"></i>',
-	            label: "Roll",
-	            callback: async (html) => {
+          roll: {
+            icon: '<i class="fas fa-dice-d6"></i>',
+            label: "Roll",
+            callback: async (html) => {
+              if (isRolling || isResolved) return;
+              isRolling = true;
+              try {
 	              const baseTargetNumber = parseInt(html.find('#target-number').val());
 	              let finalDicePool = dicePool;
 
@@ -2743,6 +2748,13 @@ export class SR2ActorSheet extends ActorSheet {
                 tnModifier,
                 poolsUsed
               });
+              } catch (error) {
+                console.error("SR2E | Failed to resolve TN roll dialog", error);
+                ui.notifications?.error?.("Roll failed (see console).");
+                finish({ rolled: false });
+              } finally {
+                isRolling = false;
+              }
             }
           },
           cancel: {
@@ -2752,7 +2764,11 @@ export class SR2ActorSheet extends ActorSheet {
           }
         },
         default: "roll",
-        close: () => finish({ rolled: false })
+        close: () => {
+          // Dialog auto-close after clicking Roll should not short-circuit async roll handling.
+          if (isRolling) return;
+          finish({ rolled: false });
+        }
       });
 
       dialog.render(true);
