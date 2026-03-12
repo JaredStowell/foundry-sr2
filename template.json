@@ -1,6 +1,15 @@
 {
   "Actor": {
-    "types": ["character", "contact", "follower", "cyberdeck", "vehicle", "spirit", "critter", "ic"],
+    "types": [
+      "character",
+      "contact",
+      "follower",
+      "cyberdeck",
+      "vehicle",
+      "spirit",
+      "critter",
+      "ic"
+    ],
     "templates": {
       "base": {
         "health": {
@@ -16,39 +25,39 @@
         "biography": ""
       }
     },
-	    "character": {
-	      "templates": ["base"],
-	      "attributes": {
-	        "body": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "quickness": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "strength": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "charisma": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "intelligence": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "willpower": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
+    "character": {
+      "templates": ["base"],
+      "attributes": {
+        "body": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "quickness": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "strength": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "charisma": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "intelligence": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "willpower": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
         "essence": {
           "value": 6,
           "min": 0,
@@ -59,12 +68,12 @@
           "min": 0,
           "max": 6
         },
-	        "reaction": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 12
-	        }
-	      },
+        "reaction": {
+          "value": 0,
+          "min": 0,
+          "max": 12
+        }
+      },
       "pools": {
         "combat": {
           "current": 0,
@@ -161,39 +170,39 @@
         }
       }
     },
-	    "contact": {
-	      "templates": ["base"],
-	      "attributes": {
-	        "body": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "quickness": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "strength": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "charisma": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "intelligence": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "willpower": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
+    "contact": {
+      "templates": ["base"],
+      "attributes": {
+        "body": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "quickness": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "strength": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "charisma": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "intelligence": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "willpower": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
         "essence": {
           "value": 6,
           "min": 0,
@@ -204,12 +213,12 @@
           "min": 0,
           "max": 6
         },
-	        "reaction": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 12
-	        }
-	      },
+        "reaction": {
+          "value": 0,
+          "min": 0,
+          "max": 12
+        }
+      },
       "pools": {
         "combat": {
           "current": 0,
@@ -308,39 +317,39 @@
         "leaderId": ""
       }
     },
-	    "follower": {
-	      "templates": ["base"],
-	      "attributes": {
-	        "body": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "quickness": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "strength": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "charisma": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "intelligence": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
-	        "willpower": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 6
-	        },
+    "follower": {
+      "templates": ["base"],
+      "attributes": {
+        "body": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "quickness": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "strength": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "charisma": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "intelligence": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
+        "willpower": {
+          "value": 0,
+          "min": 0,
+          "max": 6
+        },
         "essence": {
           "value": 6,
           "min": 0,
@@ -351,12 +360,12 @@
           "min": 0,
           "max": 6
         },
-	        "reaction": {
-	          "value": 0,
-	          "min": 0,
-	          "max": 12
-	        }
-	      },
+        "reaction": {
+          "value": 0,
+          "min": 0,
+          "max": 12
+        }
+      },
       "pools": {
         "combat": {
           "current": 0,
@@ -698,7 +707,19 @@
     }
   },
   "Item": {
-    "types": ["skill", "weapon", "armor", "gear", "cyberware", "bioware", "spell", "adeptpower", "contact", "program", "totem"],
+    "types": [
+      "skill",
+      "weapon",
+      "armor",
+      "gear",
+      "cyberware",
+      "bioware",
+      "spell",
+      "adeptpower",
+      "contact",
+      "program",
+      "totem"
+    ],
     "templates": {
       "base": {
         "description": "",

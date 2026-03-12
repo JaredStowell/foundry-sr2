@@ -1,17 +1,37 @@
 <form class="{{cssClass}} {{actor.type}} flexcol" autocomplete="off">
-
   {{!-- IC Header --}}
   <header class="sheet-header">
-    <img class="profile-img" src="{{actor.img}}" data-edit="img" title="{{actor.name}}" height="80" width="80"/>
+    <img
+      class="profile-img"
+      src="{{actor.img}}"
+      data-edit="img"
+      title="{{actor.name}}"
+      height="80"
+      width="80"
+    />
     <div class="header-fields">
-      <h1 class="spiritname"><input name="name" type="text" value="{{actor.name}}" placeholder="IC Name"/></h1>
+      <h1 class="spiritname">
+        <input name="name" type="text" value="{{actor.name}}" placeholder="IC Name" />
+      </h1>
       <div class="spirit-type">
         <label>IC Type:</label>
-        <input name="system.icType" type="text" value="{{system.icType}}" placeholder="e.g. Killer, Tar Baby, Trace"/>
+        <input
+          name="system.icType"
+          type="text"
+          value="{{system.icType}}"
+          placeholder="e.g. Killer, Tar Baby, Trace"
+        />
       </div>
       <div class="spirit-summoner">
         <label>Rating:</label>
-        <input name="system.rating" type="number" value="{{system.rating}}" data-dtype="Number" min="1" max="12"/>
+        <input
+          name="system.rating"
+          type="number"
+          value="{{system.rating}}"
+          data-dtype="Number"
+          min="1"
+          max="12"
+        />
       </div>
     </div>
   </header>
@@ -24,7 +44,6 @@
 
   {{!-- Sheet Body --}}
   <section class="sheet-body">
-
     {{!-- Stats Tab --}}
     <div class="tab stats" data-group="primary" data-tab="stats">
       <div class="spirit-stats">
@@ -43,18 +62,32 @@
             <label>Matrix Damage:</label>
             <div class="damage-track">
               {{#times system.health.max}}
-                <div class="damage-box {{#if (lte @index ../system.health.value)}}damaged{{/if}}"
-                     data-damage="{{@index}}"></div>
+              <div
+                class="damage-box {{#if (lte @index ../system.health.value)}}damaged{{/if}}"
+                data-damage="{{@index}}"
+              ></div>
               {{/times}}
             </div>
             <div class="damage-controls">
-              <input type="number" name="system.health.value" value="{{system.health.value}}"
-                     data-dtype="Number" min="0" max="{{system.health.max}}" title="Current Damage"/>
+              <input
+                type="number"
+                name="system.health.value"
+                value="{{system.health.value}}"
+                data-dtype="Number"
+                min="0"
+                max="{{system.health.max}}"
+                title="Current Damage"
+              />
               <span>/ {{system.health.max}}</span>
               <button type="button" class="heal-damage" data-amount="1" title="Heal 1 Damage">
                 <i class="fas fa-heart"></i>
               </button>
-              <button type="button" class="heal-damage" data-amount="{{system.health.value}}" title="Full Heal">
+              <button
+                type="button"
+                class="heal-damage"
+                data-amount="{{system.health.value}}"
+                title="Full Heal"
+              >
                 <i class="fas fa-plus-circle"></i>
               </button>
             </div>
@@ -63,7 +96,13 @@
 
         <div class="powers-section">
           <h3>IC Functions</h3>
-          <textarea name="system.powers" rows="10" placeholder="Describe IC functions, triggers, and effects...">{{system.powers}}</textarea>
+          <textarea
+            name="system.powers"
+            rows="10"
+            placeholder="Describe IC functions, triggers, and effects..."
+          >
+{{system.powers}}</textarea
+          >
         </div>
       </div>
     </div>
@@ -72,10 +111,10 @@
     <div class="tab notes" data-group="primary" data-tab="notes">
       <div class="biography-section">
         <h3>Notes</h3>
-        <textarea name="system.biography" rows="15" placeholder="Notes...">{{system.biography}}</textarea>
+        <textarea name="system.biography" rows="15" placeholder="Notes...">
+{{system.biography}}</textarea
+        >
       </div>
     </div>
-
   </section>
 </form>
-

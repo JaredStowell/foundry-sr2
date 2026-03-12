@@ -47,10 +47,7 @@
       "label": "Combat Mage",
       "source": { "book": "SR2", "page": 50 },
       "contacts": 2,
-      "cyberware": [
-        { "name": "Eye Thermographic" },
-        { "name": "Eye Low-light" }
-      ],
+      "cyberware": [{ "name": "Eye Thermographic" }, { "name": "Eye Low-light" }],
       "gear": [
         { "type": "armor", "name": "Armor Jacket" },
         { "type": "weapon", "name": "Heckler & Koch HK227" },
@@ -69,26 +66,16 @@
         { "name": "Armor", "force": 3 },
         { "name": "Confusion", "force": 3 }
       ],
-      "missing": [
-        "Increase Reaction (+2)",
-        "Ammo: HK227 SMG (50 rounds regular ammo)"
-      ]
+      "missing": ["Increase Reaction (+2)", "Ammo: HK227 SMG (50 rounds regular ammo)"]
     },
     "decker": {
       "label": "Decker",
       "source": { "book": "SR2", "page": 51 },
       "contacts": 2,
       "lifestyle": { "key": "middle", "months": 1 },
-      "cyberware": [
-        { "name": "Datajack" },
-        { "name": "Headware Memory (30 Mp)" }
-      ],
-      "cyberdecks": [
-        { "name": "Fuchi Cyber-4" }
-      ],
-      "vehicles": [
-        { "name": "Yamaha Rapier" }
-      ],
+      "cyberware": [{ "name": "Datajack" }, { "name": "Headware Memory (30 Mp)" }],
+      "cyberdecks": [{ "name": "Fuchi Cyber-4" }],
+      "vehicles": [{ "name": "Yamaha Rapier" }],
       "programs": [
         { "name": "Attack", "rating": 6 },
         { "name": "Browse", "rating": 4 },
@@ -109,9 +96,7 @@
       "source": { "book": "SR2", "page": 52 },
       "contacts": 6,
       "lifestyle": { "key": "low", "months": 1 },
-      "vehicles": [
-        { "name": "Ford Americar" }
-      ],
+      "vehicles": [{ "name": "Ford Americar" }],
       "gear": [
         { "type": "weapon", "name": "Ares Predator" },
         { "type": "weapon", "name": "Walther Palm Pistol" },
@@ -125,33 +110,22 @@
       "source": { "book": "SR2", "page": 53 },
       "contacts": 2,
       "lifestyle": { "key": "low", "months": 1 },
-      "cyberware": [
-        { "name": "Smartlink I" }
-      ],
+      "cyberware": [{ "name": "Smartlink I" }],
       "gear": [
         { "type": "armor", "name": "Armor Clothing" },
         { "type": "weapon", "name": "FN HAR" },
         { "type": "weapon", "name": "Defensive", "quantity": 2 }
       ],
-      "missing": [
-        "Ammo details (100 rounds)"
-      ]
+      "missing": ["Ammo details (100 rounds)"]
     },
     "elvenDecker": {
       "label": "Elven Decker",
       "source": { "book": "SR2", "page": 54 },
       "contacts": 2,
       "lifestyle": { "key": "middle", "months": 1 },
-      "cyberware": [
-        { "name": "Datajack" },
-        { "name": "Headware Memory (30 Mp)" }
-      ],
-      "cyberdecks": [
-        { "name": "Fuchi Cyber-4" }
-      ],
-      "vehicles": [
-        { "name": "Yamaha Rapier" }
-      ],
+      "cyberware": [{ "name": "Datajack" }, { "name": "Headware Memory (30 Mp)" }],
+      "cyberdecks": [{ "name": "Fuchi Cyber-4" }],
+      "vehicles": [{ "name": "Yamaha Rapier" }],
       "programs": [
         { "name": "Attack", "rating": 6 },
         { "name": "Browse", "rating": 4 },
@@ -177,9 +151,7 @@
         { "name": "Smartlink II" },
         { "name": "Wired Reflexes 2" }
       ],
-      "vehicles": [
-        { "name": "Eurocar Westwind 2000" }
-      ],
+      "vehicles": [{ "name": "Eurocar Westwind 2000" }],
       "gear": [
         { "type": "armor", "name": "Armor Clothing" },
         { "type": "armor", "name": "Armor Jacket" },
@@ -196,10 +168,7 @@
         { "type": "gear", "name": "Trauma Patch" },
         { "type": "gear", "name": "White Noise Generator Lv 6" }
       ],
-      "missing": [
-        "Ammo details (100 rounds)",
-        "Weapon model confirmation for “Fichetti Pistol”"
-      ]
+      "missing": ["Ammo details (100 rounds)", "Weapon model confirmation for “Fichetti Pistol”"]
     },
     "formerWageMage": {
       "label": "Former Wage Mage",
@@ -224,13 +193,8 @@
       "source": { "book": "SR2", "page": 57 },
       "contacts": 4,
       "lifestyle": { "key": "squatter", "months": 1 },
-      "cyberware": [
-        { "name": "Eye Low-light" },
-        { "name": "Hand Razors" }
-      ],
-      "vehicles": [
-        { "name": "Yamaha Rapier" }
-      ],
+      "cyberware": [{ "name": "Eye Low-light" }, { "name": "Hand Razors" }],
+      "vehicles": [{ "name": "Yamaha Rapier" }],
       "gear": [
         { "type": "weapon", "name": "Knife" },
         { "type": "gear", "name": "Simsense Player Unit" },
@@ -255,9 +219,7 @@
         { "type": "gear", "name": "Smart Goggles" },
         { "type": "weapon", "name": "Throwing Knife" }
       ],
-      "missing": [
-        "Ammo details (clips/rounds)"
-      ]
+      "missing": ["Ammo details (clips/rounds)"]
     },
     "rigger": {
       "label": "Rigger",
@@ -273,9 +235,7 @@
         { "name": "Eye Flare comp." },
         { "name": "Eye Thermographic" }
       ],
-      "vehicles": [
-        { "name": "Eurocar Westwind 2000" }
-      ],
+      "vehicles": [{ "name": "Eurocar Westwind 2000" }],
       "gear": [
         { "type": "weapon", "name": "Ares Predator" },
         { "type": "gear", "name": "Remote Control Deck (R3)" },
@@ -303,9 +263,7 @@
         { "name": "Powerball", "force": 6 },
         { "name": "Sleep", "force": 5 }
       ],
-      "missing": [
-        "Totem selection (not modeled as gear)"
-      ]
+      "missing": ["Totem selection (not modeled as gear)"]
     },
     "streetShaman": {
       "label": "Street Shaman",
@@ -322,9 +280,7 @@
         { "name": "Powerball", "force": 6 },
         { "name": "Sleep", "force": 5 }
       ],
-      "missing": [
-        "Totem selection (not modeled as gear)"
-      ]
+      "missing": ["Totem selection (not modeled as gear)"]
     },
     "tribesman": {
       "label": "Tribesman",

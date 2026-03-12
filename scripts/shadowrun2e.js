@@ -15,1595 +15,38 @@ import { SR2ItemBrowser } from "./item-browser.js";
 import { SR2GearPurchaseApp } from "./gear-purchase.js";
 import { SR2DataImporter } from "./data-importer.js";
 import { SR2CharacterImporter } from "./character-importer.js";
-import { initializeInitiativeTracker } from "./initiative-tracker.js";
 import { initializeQuickActions } from "./quick-actions.js";
+import {
+  SR2_CONTACT_ARCHETYPES,
+  SR2_FOLLOWER_ARCHETYPES,
+  sr2AreBuddiesDisabled,
+  sr2AreContactLevelsEnabled,
+  sr2BuildContactBiography,
+  sr2BuildCyberwareItemData,
+  sr2BuildSpellItemData,
+  sr2GetAllowedMetatypesForPriority,
+  sr2GetContactLevelsSummaryForLeader,
+  sr2GetSystemSetting,
+  sr2NormalizeCatalogName,
+  sr2RepairExistingConnectionActors,
+  sr2RepairLegacySkillAllocatedRatings,
+  sr2SyncFreeLanguageSkills,
+} from "./actor-creation.js";
+import { sr2EnhanceActorCreateDialog } from "./create-actor-dialog.js";
 import { registerPoolAutoRefreshHooks } from "./hooks/pool-auto-refresh.js";
 import { registerActorRuleHooks } from "./hooks/actor-rules.js";
-import { registerActorCreateDialogHooks, installActorCreateDialogObserver } from "./hooks/actor-create-dialog.js";
+import {
+  registerActorCreateDialogHooks,
+  installActorCreateDialogObserver,
+} from "./hooks/actor-create-dialog.js";
 import { registerConnectionFolderHooks } from "./hooks/connection-folders.js";
 import { registerCreationRuleHooks } from "./hooks/creation-rules.js";
 import { sr2ApplyCharacterPrioritiesOnCreate } from "./hooks/priority-bootstrap.js";
 import "./hotbar.js";
-import {
-    sr2ComputeContactLevelSummary,
-    sr2GetRacialAttributeBounds,
-    sr2GetRacialModifiers,
-    sr2GetRacialTraits,
-    sr2IsPriorityLetter
-} from "./sr2-rules.js";
-
-/* -------------------------------------------- */
-/*  Actor Creation Helpers                      */
-/* -------------------------------------------- */
-
-const SR2_METAHUMAN_METATYPES = ["elf", "dwarf", "ork", "troll"];
-const SR2_METATYPE_VALUES = ["human", ...SR2_METAHUMAN_METATYPES];
-const SR2_ALLOWED_METATYPES_BY_PRIORITY = {
-    A: SR2_METATYPE_VALUES,
-    B: ["human"],
-    C: ["human"],
-    D: ["human"],
-    E: ["human"]
-};
-
-function sr2GetSystemSetting(key, fallback) {
-    try {
-        return game?.settings?.get("shadowrun2e", key) ?? fallback;
-    } catch (err) {
-        return fallback;
-    }
-}
-
-function sr2GetAllowedMetatypesForPriority(priority) {
-    if (!sr2IsPriorityLetter(priority)) return null;
-    if (Boolean(sr2GetSystemSetting("moreMetahumans", false))) {
-        // House rule: allow metahumans at priorities A–C (default SR2 is A only).
-        if (["A", "B", "C"].includes(priority)) return SR2_METATYPE_VALUES;
-        return ["human"];
-    }
-    return SR2_ALLOWED_METATYPES_BY_PRIORITY[priority] ?? null;
-}
-
-function sr2AreContactLevelsEnabled() {
-    return Boolean(sr2GetSystemSetting("contactLevels", false));
-}
-
-function sr2AreBuddiesDisabled() {
-    // Contact Levels house rule implies no Buddies.
-    return sr2AreContactLevelsEnabled() || Boolean(sr2GetSystemSetting("disableBuddies", false));
-}
+import { sr2GetRacialAttributeBounds, sr2GetRacialTraits } from "./sr2-rules.js";
 
 function sr2InstallPoolAutoRefreshHooks() {
-    registerPoolAutoRefreshHooks();
-}
-
-function sr2GetContactLevelsSummaryForLeader(leaderActor, pendingContact = null) {
-    if (!sr2AreContactLevelsEnabled()) return null;
-    if (!leaderActor || leaderActor.type !== "character") return null;
-
-    const leaderId = leaderActor.id;
-    if (!leaderId) return null;
-
-    const charisma = Number(leaderActor.system?.attributes?.charisma?.value) || 0;
-    const linkedContacts = globalThis.game?.actors?.filter(a => a.type === "contact" && a.system?.details?.leaderId === leaderId) ?? [];
-    const contacts = linkedContacts.map(a => ({
-        id: a.id,
-        // Treat new/pending contacts as "last" so we don't shift free-contact selection unexpectedly.
-        sort: Number(a.sort) || 0,
-        contactLevel: a.system?.details?.contactLevel
-    }));
-
-    if (pendingContact && pendingContact.id) {
-        const idx = contacts.findIndex(c => c.id === pendingContact.id);
-        const pending = {
-            id: String(pendingContact.id),
-            sort: Number.isFinite(Number(pendingContact.sort)) ? Number(pendingContact.sort) : Number.MAX_SAFE_INTEGER,
-            contactLevel: pendingContact.contactLevel
-        };
-        if (idx >= 0) contacts[idx] = pending;
-        else contacts.push(pending);
-    }
-
-    return sr2ComputeContactLevelSummary(contacts, charisma);
-}
-
-const SR2_FOLLOWER_ARCHETYPES = {
-    // Source reference: `ARCHETYPES.md` (OCR dump from SR2 archetype section).
-    // NOTE: We currently apply only attributes + skills + magic flags. Cyberware/bioware/spells/gear are TODO.
-
-    bodyguard: {
-        label: "Bodyguard",
-        source: { book: "SR2", page: 49 },
-        attributes: { body: 6, quickness: 6, strength: 5, charisma: 3, intelligence: 5, willpower: 5 },
-        skills: [
-            { baseSkill: "Car", baseRating: 6 },
-            { baseSkill: "Firearms", baseRating: 6 },
-            { baseSkill: "Negotiation", baseRating: 4 },
-            { baseSkill: "Stealth", baseRating: 2 },
-            { baseSkill: "Unarmed combat", baseRating: 6 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Filter: Air 5",
-            "Dermal Plating 3",
-            "Skillwires 3",
-            "Smartlink II",
-            "Wired Reflexes 2"
-        ]
-    },
-    combatMage: {
-        label: "Combat Mage",
-        source: { book: "SR2", page: 50 },
-        attributes: { body: 2, quickness: 4, strength: 2, charisma: 2, intelligence: 5, willpower: 5, magic: 5 },
-        skills: [
-            { baseSkill: "Conjuring", baseRating: 3 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 2 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Magical theory", baseRating: 4 },
-            { baseSkill: "Sorcery", baseRating: 6 },
-            { baseSkill: "Unarmed combat", baseRating: 2 }
-        ],
-        magic: { awakened: true, physicalAdept: false, tradition: "hermetic" },
-        cyberware: ["Eye Thermographic", "Eye Low-light"],
-        spells: [
-            { name: "Manaball", force: 4 },
-            { name: "Mana Bolt", force: 4 },
-            { name: "Power Bolt", force: 3 },
-            { name: "Clairvoyance", force: 3 },
-            { name: "Detect Enemies", force: 2 },
-            { name: "Personal Combat Sense", force: 5 },
-            { name: "Heal", force: 3 },
-            { name: "Increase Reaction (+2)", force: 2 },
-            { name: "Armor", force: 3 },
-            { name: "Confusion", force: 3 }
-        ]
-    },
-    decker: {
-        label: "Decker",
-        source: { book: "SR2", page: 51 },
-        attributes: { body: 2, quickness: 4, strength: 3, charisma: 1, intelligence: 6, willpower: 4 },
-        skills: [
-            { baseSkill: "Bike", baseRating: 4 },
-            { baseSkill: "Computer", baseRating: 6 },
-            { baseSkill: "Computer theory", baseRating: 6 },
-            { baseSkill: "Computer B/R", baseRating: 6 },
-            { baseSkill: "Electronics", baseRating: 6 },
-            { baseSkill: "Etiquette: Street", baseRating: 5 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Physical sciences", baseRating: 4 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: ["Datajack", "Headware Memory (30 Mp)"]
-    },
-    detective: {
-        label: "Detective",
-        source: { book: "SR2", page: 52 },
-        attributes: { body: 4, quickness: 4, strength: 3, charisma: 3, intelligence: 6, willpower: 4 },
-        skills: [
-            { baseSkill: "Biotech", baseRating: 2 },
-            { baseSkill: "Car", baseRating: 4 },
-            { baseSkill: "Computer", baseRating: 4 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 3 },
-            { baseSkill: "Etiquette: Street", baseRating: 4 },
-            { baseSkill: "Firearms", baseRating: 6 },
-            { baseSkill: "Negotiation", baseRating: 6 },
-            { baseSkill: "Stealth", baseRating: 5 },
-            { baseSkill: "Unarmed combat", baseRating: 6 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    dwarfMercenary: {
-        label: "Dwarf Mercenary",
-        source: { book: "SR2", page: 53 },
-        metatype: "dwarf",
-        attributes: { body: 6, quickness: 3, strength: 5, charisma: 2, intelligence: 3, willpower: 4 },
-        skills: [
-            { baseSkill: "Car", baseRating: 4 },
-            { baseSkill: "Etiquette: Mercenary", baseRating: 2 },
-            { baseSkill: "Firearms", baseRating: 6 },
-            { baseSkill: "Gunnery", baseRating: 5 },
-            { baseSkill: "Stealth", baseRating: 4 },
-            { baseSkill: "Throwing", baseRating: 4 },
-            { baseSkill: "Unarmed combat", baseRating: 5 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: ["Smartlink II"]
-    },
-    elvenDecker: {
-        label: "Elven Decker",
-        source: { book: "SR2", page: 54 },
-        metatype: "elf",
-        attributes: { body: 2, quickness: 5, strength: 2, charisma: 5, intelligence: 5, willpower: 4 },
-        skills: [
-            { baseSkill: "Bike", baseRating: 3 },
-            { baseSkill: "Computer", baseRating: 5 },
-            { baseSkill: "Computer theory", baseRating: 5 },
-            { baseSkill: "Etiquette: Elven", baseRating: 2 },
-            { baseSkill: "Etiquette: Street", baseRating: 2 },
-            { baseSkill: "Firearms", baseRating: 3 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: ["Datajack", "Headware Memory (30 Mp)"]
-    },
-    formerCompanyMan: {
-        label: "Former Company Man",
-        source: { book: "SR2", page: 55 },
-        attributes: { body: 4, quickness: 4, strength: 4, charisma: 2, intelligence: 3, willpower: 3 },
-        skills: [
-            { baseSkill: "Car", baseRating: 6 },
-            { baseSkill: "Computer", baseRating: 3 },
-            { baseSkill: "Demolitions", baseRating: 2 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 4 },
-            { baseSkill: "Firearms", baseRating: 6 },
-            { baseSkill: "Stealth", baseRating: 4 },
-            { baseSkill: "Unarmed combat", baseRating: 6 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: ["Datajack", "Muscle Replac. 1", "Smartlink II", "Wired Reflexes 2"]
-    },
-    formerWageMage: {
-        label: "Former Wage Mage",
-        source: { book: "SR2", page: 56 },
-        attributes: { body: 2, quickness: 3, strength: 1, charisma: 1, intelligence: 6, willpower: 4, magic: 6 },
-        skills: [
-            { baseSkill: "Conjuring", baseRating: 6 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 5 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Magical theory", baseRating: 6 },
-            { baseSkill: "Negotiation", baseRating: 2 },
-            { baseSkill: "Psychology", baseRating: 2 },
-            { baseSkill: "Sorcery", baseRating: 6 }
-        ],
-        magic: { awakened: true, physicalAdept: false, tradition: "hermetic" },
-        spells: [
-            { name: "Fireball", force: 5 },
-            { name: "Heal", force: 3 },
-            { name: "Mana Bolt", force: 6 },
-            { name: "Powerball", force: 6 },
-            { name: "Sleep", force: 5 }
-        ]
-    },
-    gangMember: {
-        label: "Gang Member",
-        source: { book: "SR2", page: 57 },
-        attributes: { body: 5, quickness: 6, strength: 5, charisma: 6, intelligence: 4, willpower: 4 },
-        skills: [
-            { baseSkill: "Armed Combat", baseRating: 4 },
-            { baseSkill: "Etiquette: Street", baseRating: 4 },
-            { baseSkill: "Firearms", baseRating: 4 },
-            { baseSkill: "Projectile Weapons", baseRating: 3 },
-            { baseSkill: "Stealth", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 3 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: ["Hand Razors", "Eye Low-light"]
-    },
-    mercenary: {
-        label: "Mercenary",
-        source: { book: "SR2", page: 58 },
-        attributes: { body: 5, quickness: 4, strength: 5, charisma: 3, intelligence: 4, willpower: 3 },
-        skills: [
-            { baseSkill: "Armed Combat", baseRating: 6 },
-            { baseSkill: "Car", baseRating: 4 },
-            { baseSkill: "Demolitions", baseRating: 3 },
-            { baseSkill: "Firearms", baseRating: 6 },
-            { baseSkill: "Gunnery", baseRating: 4 },
-            { baseSkill: "Military theory", baseRating: 2 },
-            { baseSkill: "Rotor craft", baseRating: 3 },
-            { baseSkill: "Stealth", baseRating: 3 },
-            { baseSkill: "Throwing", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 6 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: ["Eye Low-light", "Radio receiver", "Wired Reflexes 1"]
-    },
-    rigger: {
-        label: "Rigger",
-        source: { book: "SR2", page: 59 },
-        attributes: { body: 5, quickness: 6, strength: 4, charisma: 4, intelligence: 6, willpower: 5 },
-        skills: [
-            { baseSkill: "Bike", baseRating: 4 },
-            { baseSkill: "Car", baseRating: 5 },
-            { baseSkill: "Computer", baseRating: 3 },
-            { baseSkill: "Electronics", baseRating: 3 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 1 },
-            { baseSkill: "Firearms", baseRating: 2 },
-            { baseSkill: "Gunnery", baseRating: 4 },
-            { baseSkill: "Ground vehicles B/R", baseRating: 2 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack",
-            "Radio receiver",
-            "Smartlink II",
-            "Vehicle Ctrl Rig 2",
-            "Eye Low-light",
-            "Eye Flare comp.",
-            "Eye Thermographic"
-        ]
-    },
-    shaman: {
-        label: "Shaman",
-        source: { book: "SR2", page: 60 },
-        attributes: { body: 3, quickness: 3, strength: 3, charisma: 5, intelligence: 4, willpower: 6, magic: 6 },
-        skills: [
-            { baseSkill: "Armed Combat", baseRating: 3 },
-            { baseSkill: "Conjuring", baseRating: 6 },
-            { baseSkill: "Etiquette: Tribal", baseRating: 4 },
-            { baseSkill: "Magical theory", baseRating: 3 },
-            { baseSkill: "Sorcery", baseRating: 5 },
-            { baseSkill: "Stealth", baseRating: 3 }
-        ],
-        magic: { awakened: true, physicalAdept: false, tradition: "shamanic" },
-        spells: [
-            { name: "Mana Bolt", force: 4 },
-            { name: "Powerball", force: 6 },
-            { name: "Sleep", force: 5 }
-        ]
-    },
-    streetShaman: {
-        label: "Street Shaman",
-        source: { book: "SR2", page: 63 },
-        attributes: { body: 4, quickness: 3, strength: 2, charisma: 5, intelligence: 4, willpower: 6, magic: 6 },
-        skills: [
-            { baseSkill: "Conjuring", baseRating: 5 },
-            { baseSkill: "Etiquette: Street", baseRating: 3 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Magical theory", baseRating: 5 },
-            { baseSkill: "Sorcery", baseRating: 5 },
-            { baseSkill: "Stealth", baseRating: 3 }
-        ],
-        magic: { awakened: true, physicalAdept: false, tradition: "shamanic" },
-        spells: [
-            { name: "Mana Bolt", force: 4 },
-            { name: "Powerball", force: 6 },
-            { name: "Sleep", force: 5 }
-        ]
-    },
-    tribesman: {
-        label: "Tribesman",
-        source: { book: "SR2", page: 63 },
-        attributes: { body: 5, quickness: 5, strength: 3, charisma: 2, intelligence: 3, willpower: 3 },
-        skills: [
-            { baseSkill: "Armed Combat", baseRating: 5 },
-            { baseSkill: "Biology", baseRating: 3 },
-            { baseSkill: "Biotech", baseRating: 3 },
-            { baseSkill: "Etiquette: Tribal", baseRating: 4 },
-            { baseSkill: "Projectile Weapons", baseRating: 6 },
-            { baseSkill: "Stealth", baseRating: 6 },
-            { baseSkill: "Horseback Riding", baseRating: 3 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    }
-};
-
-const SR2_CONTACT_ARCHETYPES = {
-    // Source reference: `guide-raw.md` Contact templates section (SR2 p. 202+).
-    //
-    // NOTE: We only apply attributes + core skills + magic flags + cyberware. Many entries
-    // list “Special Skills” in the book which are not currently represented in `data/skills.json`
-    // and are therefore omitted here (to avoid creating unusable skill items).
-
-    bountyHunter: {
-        label: "Bounty Hunter",
-        source: { book: "SR2", page: 202 },
-        guide: { startLine: 34131 },
-        attributes: { body: 6, quickness: 5, strength: 5, charisma: 1, intelligence: 4, willpower: 4 },
-        skills: [
-            { baseSkill: "Bike", baseRating: 5 },
-            { baseSkill: "Car", baseRating: 5 },
-            { baseSkill: "Computer", baseRating: 4 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 3 },
-            { baseSkill: "Etiquette: Street", baseRating: 5 },
-            { baseSkill: "Firearms", baseRating: 8 },
-            { baseSkill: "Stealth", baseRating: 4 },
-            { baseSkill: "Unarmed combat", baseRating: 6 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Eye Thermographic",
-            "Smartlink I",
-            "Wired Reflexes 2"
-        ]
-    },
-    bartender: {
-        label: "Bartender",
-        source: { book: "SR2", page: 202 },
-        guide: { startLine: 34196 },
-        attributes: { body: 4, quickness: 3, strength: 4, charisma: 3, intelligence: 2, willpower: 2 },
-        skills: [
-            { baseSkill: "Etiquette: Street", baseRating: 4 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 3 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    companyMan: {
-        label: "Company Man",
-        source: { book: "SR2", page: 203 },
-        guide: { startLine: 34264 },
-        attributes: { body: 6, quickness: 5, strength: 6, charisma: 2, intelligence: 4, willpower: 5 },
-        skills: [
-            { baseSkill: "Car", baseRating: 5 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 3 },
-            { baseSkill: "Firearms", baseRating: 7 },
-            { baseSkill: "Stealth", baseRating: 5 },
-            { baseSkill: "Unarmed combat", baseRating: 6 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Skillwires 5",
-            "Wired Reflexes 1"
-        ]
-    },
-    cityOfficial: {
-        label: "City Official",
-        source: { book: "SR2", page: 203 },
-        guide: { startLine: 34306, prependHeading: "CITY OFFICIAL" },
-        attributes: { body: 2, quickness: 2, strength: 2, charisma: 5, intelligence: 3, willpower: 2 },
-        skills: [
-            { baseSkill: "Etiquette: Corporate", baseRating: 4 },
-            { baseSkill: "Etiquette: Tribal", baseRating: 3 },
-            { baseSkill: "Negotiation", baseRating: 4 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    corporateSecretary: {
-        label: "Corporate Secretary",
-        source: { book: "SR2", page: 204 },
-        guide: { startLine: 34368 },
-        attributes: { body: 2, quickness: 2, strength: 2, charisma: 4, intelligence: 4, willpower: 2 },
-        skills: [
-            { baseSkill: "Computer", baseRating: 3 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 4 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack"
-        ]
-    },
-    corporateSecurityGuard: {
-        label: "Corporate Security Guard",
-        source: { book: "SR2", page: 204 },
-        guide: { startLine: 34425 },
-        attributes: { body: 4, quickness: 3, strength: 3, charisma: 2, intelligence: 2, willpower: 2 },
-        skills: [
-            { baseSkill: "Etiquette: Corporate", baseRating: 2 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Interrogation", baseRating: 2 },
-            { baseSkill: "Unarmed combat", baseRating: 3 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    dwarfTechnician: {
-        label: "Dwarf Technician",
-        source: { book: "SR2", page: 205 },
-        guide: { startLine: 34514 },
-        metatype: "dwarf",
-        attributes: { body: 4, quickness: 2, strength: 3, charisma: 2, intelligence: 6, willpower: 4 },
-        skills: [
-            { baseSkill: "Computer theory", baseRating: 6 },
-            { baseSkill: "Computer B/R", baseRating: 6 },
-            { baseSkill: "Electronics B/R", baseRating: 9 },
-            { baseSkill: "Electronics", baseRating: 6 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 3 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack"
-        ]
-    },
-    elvenHitman: {
-        label: "Elven Hitman",
-        source: { book: "SR2", page: 205 },
-        guide: { startLine: 34581 },
-        metatype: "elf",
-        attributes: { body: 5, quickness: 6, strength: 5, charisma: 2, intelligence: 4, willpower: 4 },
-        skills: [
-            { baseSkill: "Bike", baseRating: 4 },
-            { baseSkill: "Car", baseRating: 4 },
-            { baseSkill: "Demolitions", baseRating: 4 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 3 },
-            { baseSkill: "Etiquette: Street", baseRating: 3 },
-            { baseSkill: "Firearms", baseRating: 8 },
-            { baseSkill: "Unarmed combat", baseRating: 4 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Smartlink I",
-            "Wired Reflexes 2"
-        ]
-    },
-    gangBoss: {
-        label: "Gang Boss",
-        source: { book: "SR2", page: 206 },
-        guide: { startLine: 34654 },
-        attributes: { body: 3, quickness: 3, strength: 4, charisma: 4, intelligence: 4, willpower: 4 },
-        skills: [
-            { baseSkill: "Armed Combat", baseRating: 4 },
-            { baseSkill: "Etiquette: Street", baseRating: 6 },
-            { baseSkill: "Firearms", baseRating: 4 },
-            { baseSkill: "Leadership", baseRating: 4 },
-            { baseSkill: "Unarmed combat", baseRating: 2 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    fixer: {
-        label: "Fixer",
-        source: { book: "SR2", page: 206 },
-        guide: { startLine: 34702 },
-        attributes: { body: 2, quickness: 3, strength: 2, charisma: 3, intelligence: 5, willpower: 5 },
-        skills: [
-            { baseSkill: "Computer", baseRating: 3 },
-            { baseSkill: "Electronics", baseRating: 3 },
-            { baseSkill: "Etiquette: Street", baseRating: 5 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Negotiation", baseRating: 7 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack"
-        ]
-    },
-    humanisPoliclubMember: {
-        label: "Humanis Policlub Member",
-        source: { book: "SR2", page: 207 },
-        guide: { startLine: 34813 },
-        attributes: { body: 4, quickness: 4, strength: 4, charisma: 2, intelligence: 2, willpower: 4 },
-        skills: [
-            { baseSkill: "Bike", baseRating: 3 },
-            { baseSkill: "Car", baseRating: 3 },
-            { baseSkill: "Demolitions", baseRating: 4 },
-            { baseSkill: "Etiquette: Street", baseRating: 3 },
-            { baseSkill: "Firearms", baseRating: 4 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    mechanic: {
-        label: "Mechanic",
-        source: { book: "SR2", page: 207 },
-        guide: { startLine: 34884 },
-        attributes: { body: 2, quickness: 3, strength: 3, charisma: 2, intelligence: 6, willpower: 4 },
-        skills: [
-            { baseSkill: "Aircraft B/R", baseRating: 6 },
-            { baseSkill: "Computer theory", baseRating: 6 },
-            { baseSkill: "Computer", baseRating: 3 },
-            { baseSkill: "Electronics B/R", baseRating: 5 },
-            { baseSkill: "Electronics", baseRating: 3 },
-            { baseSkill: "Ground vehicles B/R", baseRating: 8 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    mediaProducer: {
-        label: "Media Producer",
-        source: { book: "SR2", page: 208 },
-        guide: { startLine: 34943 },
-        attributes: { body: 2, quickness: 3, strength: 2, charisma: 5, intelligence: 4, willpower: 4 },
-        skills: [
-            { baseSkill: "Computer", baseRating: 3 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 4 },
-            { baseSkill: "Etiquette: Media", baseRating: 4 },
-            { baseSkill: "Etiquette: Street", baseRating: 4 },
-            { baseSkill: "Negotiation", baseRating: 4 },
-            { baseSkill: "Stealth", baseRating: 2 },
-            { baseSkill: "Unarmed combat", baseRating: 2 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    metahumanRightsActivist: {
-        label: "Metahuman Rights Activist",
-        source: { book: "SR2", page: 208 },
-        guide: { startLine: 35004 },
-        attributes: { body: 2, quickness: 2, strength: 2, charisma: 2, intelligence: 2, willpower: 2 },
-        skills: [
-            { baseSkill: "Etiquette: Media", baseRating: 5 },
-            { baseSkill: "Interrogation", baseRating: 3 },
-            { baseSkill: "Leadership", baseRating: 3 },
-            { baseSkill: "Negotiation", baseRating: 3 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    mrJohnson: {
-        label: "Mr. Johnson",
-        source: { book: "SR2", page: 209 },
-        guide: { startLine: 35066 },
-        attributes: { body: 2, quickness: 2, strength: 2, charisma: 4, intelligence: 6, willpower: 5 },
-        skills: [
-            { baseSkill: "Computer theory", baseRating: 5 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 8 },
-            { baseSkill: "Negotiation", baseRating: 6 },
-            { baseSkill: "Psychology", baseRating: 8 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack"
-        ]
-    },
-    squatter: {
-        label: "Squatter",
-        source: { book: "SR2", page: 209 },
-        guide: { startLine: 35119 },
-        attributes: { body: 2, quickness: 2, strength: 1, charisma: 1, intelligence: 2, willpower: 2 },
-        skills: [
-            { baseSkill: "Etiquette: Street", baseRating: 3 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    streetDoc: {
-        label: "Street Doc",
-        source: { book: "SR2", page: 210 },
-        guide: { startLine: 35177 },
-        attributes: { body: 2, quickness: 3, strength: 2, charisma: 2, intelligence: 4, willpower: 2 },
-        skills: [
-            { baseSkill: "Biotech", baseRating: 8 },
-            { baseSkill: "Etiquette: Street", baseRating: 3 },
-            { baseSkill: "Negotiation", baseRating: 4 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack"
-        ]
-    },
-    streetCop: {
-        label: "Street Cop",
-        source: { book: "SR2", page: 210 },
-        guide: { startLine: 35232 },
-        attributes: { body: 4, quickness: 4, strength: 4, charisma: 2, intelligence: 3, willpower: 3 },
-        skills: [
-            { baseSkill: "Armed Combat", baseRating: 2 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 2 },
-            { baseSkill: "Etiquette: Street", baseRating: 4 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 3 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    talismonger: {
-        label: "Talismonger",
-        source: { book: "SR2", page: 211 },
-        guide: { startLine: 35339 },
-        attributes: { body: 2, quickness: 3, strength: 3, charisma: 2, intelligence: 3, willpower: 4, magic: 6 },
-        skills: [
-            { baseSkill: "Etiquette: Street", baseRating: 4 },
-            { baseSkill: "Magical theory", baseRating: 8 },
-            { baseSkill: "Negotiation", baseRating: 6 },
-            { baseSkill: "Sorcery", baseRating: 4 }
-        ],
-        magic: { awakened: true, physicalAdept: false, tradition: "" }
-    },
-    tribalChief: {
-        label: "Tribal Chief",
-        source: { book: "SR2", page: 211 },
-        guide: { startLine: 35441 },
-        attributes: { body: 3, quickness: 3, strength: 4, charisma: 4, intelligence: 4, willpower: 4 },
-        skills: [
-            { baseSkill: "Etiquette: Corporate", baseRating: 4 },
-            { baseSkill: "Etiquette: Tribal", baseRating: 8 },
-            { baseSkill: "Leadership", baseRating: 5 },
-            { baseSkill: "Negotiation", baseRating: 4 },
-            { baseSkill: "Projectile Weapons", baseRating: 4 },
-            { baseSkill: "Psychology", baseRating: 5 },
-            { baseSkill: "Stealth", baseRating: 5 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    trollBouncer: {
-        label: "Troll Bouncer",
-        source: { book: "SR2", page: 212 },
-        guide: { startLine: 35506 },
-        metatype: "troll",
-        attributes: { body: 9, quickness: 3, strength: 9, charisma: 1, intelligence: 1, willpower: 2 },
-        skills: [
-            { baseSkill: "Armed Combat", baseRating: 3 },
-            { baseSkill: "Etiquette: Street", baseRating: 2 },
-            { baseSkill: "Firearms", baseRating: 2 },
-            { baseSkill: "Unarmed combat", baseRating: 6 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    yakuzaBoss: {
-        label: "Yakuza Boss",
-        source: { book: "SR2", page: 212 },
-        guide: { startLine: 35563 },
-        attributes: { body: 3, quickness: 4, strength: 3, charisma: 5, intelligence: 6, willpower: 5 },
-        skills: [
-            { baseSkill: "Etiquette: Corporate", baseRating: 4 },
-            { baseSkill: "Etiquette: Street", baseRating: 5 },
-            { baseSkill: "Leadership", baseRating: 5 },
-            { baseSkill: "Negotiation", baseRating: 6 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack",
-            "Wired Reflexes 1"
-        ]
-    },
-
-    // Source reference: Shadowrun Contacts Insert (FASA 7902), compiled by Tom Dowd.
-    // These entries are not present in `guide-raw.md`, so they won't auto-populate biographies.
-
-    armorer: {
-        label: "Armorer",
-        source: { book: "SR2 Contacts Insert", page: 14 },
-        attributes: { body: 3, quickness: 3, strength: 4, charisma: 4, intelligence: 7, willpower: 4 },
-        skills: [
-            { baseSkill: "Armed Combat B/R", baseRating: 5 },
-            { baseSkill: "Computer B/R", baseRating: 4 },
-            { baseSkill: "Computer", baseRating: 4 },
-            { baseSkill: "Electronics B/R", baseRating: 3 },
-            { baseSkill: "Electronics", baseRating: 4 },
-            { baseSkill: "Firearms B/R", baseRating: 6 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Gunnery B/R", baseRating: 5 },
-            { baseSkill: "Projectile Weapons B/R", baseRating: 4 },
-            { baseSkill: "Throwing Weapons B/R", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 2 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack",
-            "Display Link",
-            "Headware Memory (100 Mp)"
-        ]
-    },
-    clubHabitue: {
-        label: "Club Habitué",
-        source: { book: "SR2 Contacts Insert", page: 14 },
-        attributes: { body: 3, quickness: 3, strength: 2, charisma: 4, intelligence: 2, willpower: 2 },
-        skills: [
-            { baseSkill: "Unarmed combat", baseRating: 2 },
-            { baseSkill: "Club Rumormill", baseRating: 2, category: "special" },
-            { baseSkill: "Day Job", baseRating: 3, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    clubOwner: {
-        label: "Club Owner",
-        source: { book: "SR2 Contacts Insert", page: 15 },
-        attributes: { body: 2, quickness: 2, strength: 2, charisma: 3, intelligence: 3, willpower: 3 },
-        skills: [
-            { baseSkill: "Etiquette: Media", baseRating: 4 },
-            { baseSkill: "Etiquette: Street", baseRating: 4 },
-            { baseSkill: "Negotiation", baseRating: 4 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    corporateDecker: {
-        label: "Corporate Decker",
-        source: { book: "SR2 Contacts Insert", page: 15 },
-        attributes: { body: 2, quickness: 3, strength: 1, intelligence: 4, willpower: 3 },
-        skills: [
-            { baseSkill: "Computer", baseRating: 5 },
-            { baseSkill: "Computer theory", baseRating: 4 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 2 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack"
-        ]
-    },
-    corporateOfficial: {
-        label: "Corporate Official",
-        source: { book: "SR2 Contacts Insert", page: 16 },
-        attributes: { body: 2, quickness: 2, strength: 3, charisma: 3, intelligence: 5, willpower: 4 },
-        skills: [
-            { baseSkill: "Etiquette: Corporate", baseRating: 5 },
-            { baseSkill: "Interrogation", baseRating: 4 },
-            { baseSkill: "Negotiation", baseRating: 4 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack",
-            "Headware Memory (100 Mp)"
-        ]
-    },
-    corporateRigger: {
-        label: "Corporate Rigger",
-        source: { book: "SR2 Contacts Insert", page: 16 },
-        attributes: { body: 4, quickness: 6, strength: 3, charisma: 4, intelligence: 6, willpower: 4 },
-        skills: [
-            { baseSkill: "Car", baseRating: 6 },
-            { baseSkill: "Computer", baseRating: 3 },
-            { baseSkill: "Electronics", baseRating: 3 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 4 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Gunnery", baseRating: 3 },
-            { baseSkill: "Rotor craft", baseRating: 5 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Eye Low-light",
-            "Eye Thermographic",
-            "Eye Flare comp.",
-            "Datajack",
-            "Vehicle Control Rig 1"
-        ]
-    },
-    corporateScientist: {
-        label: "Corporate Scientist",
-        source: { book: "SR2 Contacts Insert", page: 17 },
-        attributes: { body: 2, quickness: 2, strength: 1, intelligence: 8, willpower: 5 },
-        skills: [
-            { baseSkill: "Appropriate Science Skill", baseRating: 7, category: "knowledge" },
-            { baseSkill: "Computer", baseRating: 4 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 2 },
-            { baseSkill: "Related Science Skill", baseRating: 6, category: "knowledge" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack",
-            "Display Link",
-            "Headware Memory (500 Mp)"
-        ]
-    },
-    corporateWageSlave: {
-        label: "Corporate Wage Slave",
-        source: { book: "SR2 Contacts Insert", page: 17 },
-        attributes: { body: 2, quickness: 2, strength: 2, charisma: 2, intelligence: 2, willpower: 1 },
-        skills: [
-            { baseSkill: "Computer", baseRating: 2 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 2 },
-            { baseSkill: "Being Ignored", baseRating: 6, category: "special" },
-            { baseSkill: "Corporate Rumormill", baseRating: 2, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    derNachtmachenPoliclubMember: {
-        label: "Der Nachtmachen Policlub Member",
-        source: { book: "SR2 Contacts Insert", page: 18 },
-        attributes: { body: 5, quickness: 4, strength: 3, charisma: 2, intelligence: 2, willpower: 4 },
-        skills: [
-            { baseSkill: "Armed Combat", baseRating: 5 },
-            { baseSkill: "Car", baseRating: 3 },
-            { baseSkill: "Etiquette: Street", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 4 },
-            { baseSkill: "Local Politics", baseRating: 4, category: "special" },
-            { baseSkill: "Rabble-Rousing", baseRating: 3, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    dockWorker: {
-        label: "Dock Worker",
-        source: { book: "SR2 Contacts Insert", page: 18 },
-        attributes: { body: 6, quickness: 3, strength: 6, charisma: 3, intelligence: 3, willpower: 4 },
-        skills: [
-            { baseSkill: "Athletics", baseRating: 3 },
-            { baseSkill: "Car", baseRating: 3 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 2 },
-            { baseSkill: "Negotiation", baseRating: 2 },
-            { baseSkill: "Throwing Weapons", baseRating: 2 },
-            { baseSkill: "Unarmed combat", baseRating: 2 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    elfPoserGangMember: {
-        label: "Elf-Poser Gang Member",
-        source: { book: "SR2 Contacts Insert", page: 19 },
-        attributes: { body: 4, quickness: 4, strength: 2, charisma: 3, intelligence: 2, willpower: 2 },
-        skills: [
-            { baseSkill: "Armed Combat", baseRating: 2 },
-            { baseSkill: "Bike", baseRating: 3 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 2 },
-            { baseSkill: "Elf Gang Speak", baseRating: 2, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    fan: {
-        label: "Fan",
-        source: { book: "SR2 Contacts Insert", page: 19 },
-        attributes: { body: 2, quickness: 2, strength: 2, charisma: 1, intelligence: 2, willpower: 1 },
-        skills: [
-            { baseSkill: "Etiquette (Varies)", baseRating: 2, category: "special" },
-            { baseSkill: "Useful Skill (Idol)", baseRating: 5, category: "special" },
-            { baseSkill: "History of Idol's Career", baseRating: 8, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack"
-        ]
-    },
-    fireFighter: {
-        label: "Fire Fighter",
-        source: { book: "SR2 Contacts Insert", page: 20 },
-        attributes: { body: 5, quickness: 6, strength: 5, charisma: 3, intelligence: 3, willpower: 5 },
-        skills: [
-            { baseSkill: "Athletics", baseRating: 3 },
-            { baseSkill: "Biotech", baseRating: 3 },
-            { baseSkill: "Car", baseRating: 2 },
-            { baseSkill: "Fire Fighting", baseRating: 4, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    governmentAgent: {
-        label: "Government Agent",
-        source: { book: "SR2 Contacts Insert", page: 20 },
-        attributes: { body: 4, quickness: 6, strength: 4, charisma: 4, intelligence: 5, willpower: 4 },
-        skills: [
-            { baseSkill: "Car", baseRating: 3 },
-            { baseSkill: "Electronics", baseRating: 3 },
-            { baseSkill: "Etiquette: Agency", baseRating: 3 },
-            { baseSkill: "Etiquette: Political", baseRating: 1 },
-            { baseSkill: "Firearms", baseRating: 5 },
-            { baseSkill: "Interrogation", baseRating: 3 },
-            { baseSkill: "Rotor craft", baseRating: 2 },
-            { baseSkill: "Unarmed combat", baseRating: 4 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack",
-            "Headware Memory (50 Mp)",
-            "Smartlink I",
-            "Wired Reflexes 1"
-        ]
-    },
-    governmentOfficial: {
-        label: "Government Official",
-        source: { book: "SR2 Contacts Insert", page: 21 },
-        attributes: { body: 2, quickness: 2, strength: 2, charisma: 6, intelligence: 6, willpower: 5 },
-        skills: [
-            { baseSkill: "Etiquette: Corporate", baseRating: 6 },
-            { baseSkill: "Etiquette: Political", baseRating: 6 },
-            { baseSkill: "Leadership", baseRating: 4 },
-            { baseSkill: "Negotiation", baseRating: 5 },
-            { baseSkill: "Economic Theory", baseRating: 2, category: "knowledge" },
-            { baseSkill: "Politics", baseRating: 4, category: "knowledge" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack",
-            "Headware Memory (20 Mp)"
-        ]
-    },
-    mafiaDon: {
-        label: "Mafia Don",
-        source: { book: "SR2 Contacts Insert", page: 21 },
-        attributes: { body: 2, quickness: 2, strength: 2, charisma: 6, intelligence: 7, willpower: 6 },
-        skills: [
-            { baseSkill: "Etiquette: Family", baseRating: 5 },
-            { baseSkill: "Interrogation", baseRating: 3 },
-            { baseSkill: "Leadership", baseRating: 6 },
-            { baseSkill: "Negotiation", baseRating: 6 },
-            { baseSkill: "Local Politics", baseRating: 4, category: "special" },
-            { baseSkill: "Neighborhood Knowledge", baseRating: 3, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    mafiaSoldier: {
-        label: "Mafia Soldier",
-        source: { book: "SR2 Contacts Insert", page: 22 },
-        attributes: { body: 5, quickness: 4, strength: 4, charisma: 3, intelligence: 4, willpower: 3 },
-        skills: [
-            { baseSkill: "Car", baseRating: 3 },
-            { baseSkill: "Etiquette: Family", baseRating: 4 },
-            { baseSkill: "Etiquette: Street", baseRating: 5 },
-            { baseSkill: "Firearms", baseRating: 5 },
-            { baseSkill: "Interrogation", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 3 },
-            { baseSkill: "Local Rumormill", baseRating: 4, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    newsmanMediaEntrepreneur: {
-        label: "Newsman/Media Entrepreneur",
-        source: { book: "SR2 Contacts Insert", page: 22 },
-        attributes: { body: 3, quickness: 3, strength: 2, charisma: 6, intelligence: 5, willpower: 4 },
-        skills: [
-            { baseSkill: "Computer", baseRating: 2 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 3 },
-            { baseSkill: "Etiquette: Media", baseRating: 5 },
-            { baseSkill: "Etiquette: Street", baseRating: 4 },
-            { baseSkill: "Etiquette: Tribal", baseRating: 3 },
-            { baseSkill: "Negotiation", baseRating: 4 },
-            { baseSkill: "Stealth", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 2 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    metroplexGuardsman: {
-        label: "Metroplex Guardsman",
-        source: { book: "SR2 Contacts Insert", page: 23 },
-        attributes: { body: 4, quickness: 4, strength: 4, charisma: 2, intelligence: 3, willpower: 3 },
-        skills: [
-            { baseSkill: "Etiquette: Corporate", baseRating: 2 },
-            { baseSkill: "Etiquette: Street", baseRating: 2 },
-            { baseSkill: "Firearms", baseRating: 5 },
-            { baseSkill: "Unarmed combat", baseRating: 4 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    orkRightsCommitteeMember: {
-        label: "Ork Rights Committee Member (ORC)",
-        source: { book: "SR2 Contacts Insert", page: 23 },
-        attributes: { body: 7, quickness: 2, strength: 6, charisma: 2, intelligence: 4, willpower: 4 },
-        skills: [
-            { baseSkill: "Etiquette: Political", baseRating: 3 },
-            { baseSkill: "Leadership", baseRating: 2 },
-            { baseSkill: "Negotiation", baseRating: 3 },
-            { baseSkill: "Sociology", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 3 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    orkShaman: {
-        label: "Ork Shaman",
-        source: { book: "SR2 Contacts Insert", page: 24 },
-        metatype: "ork",
-        attributes: { body: 5, quickness: 2, strength: 5, charisma: 4, intelligence: 5, willpower: 6 },
-        skills: [
-            { baseSkill: "Armed Combat", baseRating: 3 },
-            { baseSkill: "Conjuring", baseRating: 6 },
-            { baseSkill: "Magical theory", baseRating: 4 },
-            { baseSkill: "Sorcery", baseRating: 4 },
-            { baseSkill: "Unarmed combat", baseRating: 3 }
-        ],
-        magic: { awakened: true, physicalAdept: false, tradition: "shamanic" }
-    },
-    paramedic: {
-        label: "Paramedic",
-        source: { book: "SR2 Contacts Insert", page: 24 },
-        attributes: { body: 3, quickness: 4, strength: 3, charisma: 3, intelligence: 4, willpower: 3 },
-        skills: [
-            { baseSkill: "Biotech", baseRating: 5 },
-            { baseSkill: "Car", baseRating: 3 },
-            { baseSkill: "Cybertechnology", baseRating: 1 },
-            { baseSkill: "Firearms", baseRating: 2 },
-            { baseSkill: "Unarmed combat", baseRating: 2 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    pedestrian: {
-        label: "Pedestrian",
-        source: { book: "SR2 Contacts Insert", page: 25 },
-        attributes: { body: 3, quickness: 4, strength: 3, charisma: 3, intelligence: 3, willpower: 3 },
-        skills: [
-            { baseSkill: "Professional Skill", baseRating: 3, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    plainclothesCop: {
-        label: "Plainclothes Cop",
-        source: { book: "SR2 Contacts Insert", page: 25 },
-        attributes: { body: 4, quickness: 5, strength: 3, charisma: 3, intelligence: 4, willpower: 5 },
-        skills: [
-            { baseSkill: "Car", baseRating: 3 },
-            { baseSkill: "Etiquette: Law Enforcement", baseRating: 4 },
-            { baseSkill: "Etiquette: Street", baseRating: 7 },
-            { baseSkill: "Firearms", baseRating: 5 },
-            { baseSkill: "Military Theory", baseRating: 2, category: "knowledge" },
-            { baseSkill: "Psychology", baseRating: 4 },
-            { baseSkill: "Sociology", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 4 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    reporter: {
-        label: "Reporter",
-        source: { book: "SR2 Contacts Insert", page: 26 },
-        attributes: { body: 3, quickness: 5, strength: 2, charisma: 5, intelligence: 6, willpower: 5 },
-        skills: [
-            { baseSkill: "Car", baseRating: 2 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 5 },
-            { baseSkill: "Etiquette: Political", baseRating: 5 },
-            { baseSkill: "Etiquette: Street", baseRating: 5 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Interrogation", baseRating: 6 },
-            { baseSkill: "Negotiation", baseRating: 5 },
-            { baseSkill: "Unarmed combat", baseRating: 3 },
-            { baseSkill: "Nose for News", baseRating: 5, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack",
-            "Display Link",
-            "Headware Memory (100 Mp)"
-        ]
-    },
-    sasquatchEntertainer: {
-        label: "Sasquatch Entertainer",
-        source: { book: "SR2 Contacts Insert", page: 26 },
-        attributes: { body: 8, quickness: 3, strength: 7, charisma: 3, intelligence: 3, willpower: 2 },
-        skills: [
-            { baseSkill: "Unarmed combat", baseRating: 6 },
-            { baseSkill: "Sound Mimicry", baseRating: 8, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    simsenseStar: {
-        label: "Simsense Star",
-        source: { book: "SR2 Contacts Insert", page: 27 },
-        attributes: { body: 3, quickness: 3, strength: 3, charisma: 6, intelligence: 3, willpower: 4 },
-        skills: [
-            { baseSkill: "Acting", baseRating: 2 },
-            { baseSkill: "Athletics", baseRating: 4 },
-            { baseSkill: "Bike", baseRating: 3 },
-            { baseSkill: "Car", baseRating: 3 },
-            { baseSkill: "Etiquette: Corporate", baseRating: 4 },
-            { baseSkill: "Etiquette: Media", baseRating: 6 },
-            { baseSkill: "Negotiation", baseRating: 6 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Custom Simsense Rig",
-            "Senselink",
-            "Internal Transmitter"
-        ]
-    },
-    snitch: {
-        label: "Snitch",
-        source: { book: "SR2 Contacts Insert", page: 27 },
-        attributes: { body: 2, quickness: 6, strength: 2, charisma: 1, intelligence: 3, willpower: 2 },
-        skills: [
-            { baseSkill: "Etiquette: Street", baseRating: 4 },
-            { baseSkill: "Negotiation", baseRating: 4 },
-            { baseSkill: "Unarmed combat", baseRating: 2 },
-            { baseSkill: "Local Rumormill", baseRating: 6, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    storeOwner: {
-        label: "Store Owner",
-        source: { book: "SR2 Contacts Insert", page: 28 },
-        attributes: { body: 4, quickness: 2, strength: 3, charisma: 4, intelligence: 3, willpower: 5 },
-        skills: [
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Negotiation", baseRating: 5 },
-            { baseSkill: "Neighborhood Rumormill", baseRating: 5, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    streetKid: {
-        label: "Street Kid",
-        source: { book: "SR2 Contacts Insert", page: 28 },
-        attributes: { body: 2, quickness: 6, strength: 2, charisma: 4, intelligence: 4, willpower: 3 },
-        skills: [
-            { baseSkill: "Armed Combat", baseRating: 2 },
-            { baseSkill: "Athletics", baseRating: 4 },
-            { baseSkill: "Etiquette: Street", baseRating: 4 },
-            { baseSkill: "Stealth", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 2 },
-            { baseSkill: "Street Rumormill", baseRating: 3, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" }
-    },
-    taxiDriver: {
-        label: "Taxi Driver",
-        source: { book: "SR2 Contacts Insert", page: 29 },
-        attributes: { body: 3, quickness: 3, strength: 3, charisma: 4, intelligence: 4, willpower: 5 },
-        skills: [
-            { baseSkill: "Car", baseRating: 5 },
-            { baseSkill: "Etiquette: Street", baseRating: 2 },
-            { baseSkill: "Firearms", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 2 },
-            { baseSkill: "Street Rumormill", baseRating: 3, category: "special" }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack",
-            "Display Link"
-        ]
-    },
-    technician: {
-        label: "Technician",
-        source: { book: "SR2 Contacts Insert", page: 29 },
-        attributes: { body: 2, quickness: 3, strength: 3, charisma: 2, intelligence: 6, willpower: 4 },
-        skills: [
-            { baseSkill: "Biotech", baseRating: 3 },
-            { baseSkill: "Computer", baseRating: 4 },
-            { baseSkill: "Computer B/R", baseRating: 6 },
-            { baseSkill: "Computer theory", baseRating: 5 },
-            { baseSkill: "Cybertechnology", baseRating: 3 },
-            { baseSkill: "Electronics", baseRating: 3 },
-            { baseSkill: "Electronics B/R", baseRating: 3 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Datajack"
-        ]
-    },
-    terrorist: {
-        label: "Terrorist",
-        source: { book: "SR2 Contacts Insert", page: 30 },
-        attributes: { body: 3, quickness: 4, strength: 3, charisma: 4, intelligence: 4, willpower: 3 },
-        skills: [
-            { baseSkill: "Armed Combat", baseRating: 3 },
-            { baseSkill: "Car", baseRating: 2 },
-            { baseSkill: "Demolitions B/R", baseRating: 3 },
-            { baseSkill: "Demolitions", baseRating: 3 },
-            { baseSkill: "Firearms", baseRating: 6 },
-            { baseSkill: "Psychology", baseRating: 4 },
-            { baseSkill: "Unarmed combat", baseRating: 4 }
-        ],
-        magic: { awakened: false, physicalAdept: false, tradition: "" },
-        cyberware: [
-            "Smartlink I",
-            "Wired Reflexes 1"
-        ]
-    },
-    wizKidMage: {
-        label: "Wiz Kid Mage",
-        source: { book: "SR2 Contacts Insert", page: 30 },
-        attributes: { body: 2, quickness: 5, strength: 2, charisma: 2, intelligence: 3, willpower: 2, magic: 3 },
-        skills: [
-            { baseSkill: "Bike", baseRating: 2 },
-            { baseSkill: "Conjuring", baseRating: 2 },
-            { baseSkill: "Firearms", baseRating: 2 },
-            { baseSkill: "Magical theory", baseRating: 1 },
-            { baseSkill: "Sorcery", baseRating: 3 },
-            { baseSkill: "Unarmed combat", baseRating: 2 }
-        ],
-        magic: { awakened: true, physicalAdept: false, tradition: "" },
-        spells: [
-            { name: "Fireball", force: 3 },
-            { name: "Power Bolt", force: 4 },
-            { name: "Heal", force: 3 },
-            { name: "Chaos", force: 2 },
-            { name: "Mask", force: 2 }
-        ]
-    }
-};
-
-function sr2NormalizeCatalogName(name) {
-    return String(name || "").trim().toLowerCase();
-}
-
-let sr2CyberwareCatalogIndex = null;
-let sr2CyberwareCatalogIndexPromise = null;
-
-async function sr2LoadCyberwareCatalogIndex() {
-    if (sr2CyberwareCatalogIndex) return sr2CyberwareCatalogIndex;
-    if (!sr2CyberwareCatalogIndexPromise) {
-        sr2CyberwareCatalogIndexPromise = fetch('/systems/shadowrun2e/data/cyberware.json')
-            .then(response => response.json())
-            .then((data) => {
-                const map = new Map();
-                for (const [category, items] of Object.entries(data || {})) {
-                    for (const item of (items || [])) {
-                        const key = sr2NormalizeCatalogName(item?.Name);
-                        if (!key) continue;
-                        if (!map.has(key)) map.set(key, { category, item });
-                    }
-                }
-                sr2CyberwareCatalogIndex = map;
-                return map;
-            })
-            .catch((error) => {
-                sr2CyberwareCatalogIndexPromise = null;
-                throw error;
-            });
-    }
-    return sr2CyberwareCatalogIndexPromise;
-}
-
-let sr2SpellsCatalogIndex = null;
-let sr2SpellsCatalogIndexPromise = null;
-
-async function sr2LoadSpellsCatalogIndex() {
-    if (sr2SpellsCatalogIndex) return sr2SpellsCatalogIndex;
-    if (!sr2SpellsCatalogIndexPromise) {
-        sr2SpellsCatalogIndexPromise = fetch('/systems/shadowrun2e/data/spells.json')
-            .then(response => response.json())
-            .then((data) => {
-                const map = new Map();
-                for (const spell of (data || [])) {
-                    const key = sr2NormalizeCatalogName(spell?.Name);
-                    if (!key) continue;
-                    if (!map.has(key)) map.set(key, spell);
-                }
-                sr2SpellsCatalogIndex = map;
-                return map;
-            })
-            .catch((error) => {
-                sr2SpellsCatalogIndexPromise = null;
-                throw error;
-            });
-    }
-    return sr2SpellsCatalogIndexPromise;
-}
-
-async function sr2BuildCyberwareItemData(name, { installed = true } = {}) {
-    const trimmedName = String(name || "").trim();
-    const fallback = {
-        name: trimmedName || "Cyberware",
-        type: "cyberware",
-        img: "systems/shadowrun2e/icons/cyberware.svg",
-        system: {
-            description: "",
-            essence: 0,
-            cost: 0,
-            streetIndex: 1.0,
-            mods: "",
-            installed,
-            rating: 0,
-            bodyLocation: "",
-            quantity: 1,
-            weight: 0,
-            price: 0
-        }
-    };
-
-    if (!trimmedName) return fallback;
-
-    try {
-        const index = await sr2LoadCyberwareCatalogIndex();
-        const entry = index?.get(sr2NormalizeCatalogName(trimmedName));
-        if (!entry?.item) return fallback;
-
-        const item = entry.item;
-        const category = entry.category || "";
-        return {
-            name: String(item.Name || trimmedName).trim(),
-            type: "cyberware",
-            img: "systems/shadowrun2e/icons/cyberware.svg",
-            system: {
-                description: `Category: ${category}\nSource: ${item.BookPage || ""}`.trim(),
-                essence: item.EssCost ?? 0,
-                cost: item.Cost ?? 0,
-                streetIndex: item.StreetIndex ?? 1.0,
-                mods: item.Mods || "",
-                installed,
-                rating: 0,
-                bodyLocation: String(category || "").toLowerCase(),
-                quantity: 1,
-                weight: 0,
-                price: item.Cost ?? 0
-            }
-        };
-    } catch (err) {
-        console.warn("SR2E | Failed to load cyberware catalog for archetype item:", trimmedName, err);
-        return fallback;
-    }
-}
-
-async function sr2BuildSpellItemData(name, { force = 1 } = {}) {
-    const trimmedName = String(name || "").trim();
-    const fallback = {
-        name: trimmedName || "Spell",
-        type: "spell",
-        img: "systems/shadowrun2e/icons/spell.svg",
-        system: {
-            description: "",
-            drain: "",
-            type: "",
-            duration: "",
-            class: "",
-            force: Math.max(1, Number(force) || 1),
-            category: "c",
-            range: "touch",
-            damage: "M",
-            quantity: 1,
-            weight: 0,
-            price: 0
-        }
-    };
-
-    if (!trimmedName) return fallback;
-
-    try {
-        const index = await sr2LoadSpellsCatalogIndex();
-        const spell = index?.get(sr2NormalizeCatalogName(trimmedName));
-        if (!spell) return fallback;
-
-        return {
-            name: String(spell.Name || trimmedName).trim(),
-            type: "spell",
-            img: "systems/shadowrun2e/icons/spell.svg",
-            system: {
-                description: `Source: ${spell.BookPage || ""}`.trim(),
-                drain: spell.Drain || "",
-                type: spell.Type || "",
-                duration: spell.Duration || "",
-                class: spell.Class || "",
-                force: Math.max(1, Number(force) || 1),
-                category: String(spell.Class || "c").toLowerCase(),
-                range: "touch",
-                damage: "M",
-                quantity: 1,
-                weight: 0,
-                price: 0
-            }
-        };
-    } catch (err) {
-        console.warn("SR2E | Failed to load spells catalog for archetype item:", trimmedName, err);
-        return fallback;
-    }
-}
-
-function sr2GetGuideRawCache() {
-    const key = "__sr2eGuideRawCache";
-    if (!globalThis[key]) {
-        globalThis[key] = { lines: null, promise: null };
-    }
-    return globalThis[key];
-}
-
-async function sr2LoadGuideRawLines() {
-    const cache = sr2GetGuideRawCache();
-    if (cache.lines) return cache.lines;
-    if (cache.promise) return cache.promise;
-
-    cache.promise = (async () => {
-        const systemId = globalThis.game?.system?.id || "shadowrun2e";
-        const response = await fetch(`/systems/${systemId}/guide-raw.md`);
-        if (!response.ok) throw new Error(`Failed to load guide-raw.md (${response.status})`);
-
-        const text = await response.text();
-        const normalized = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-        const lines = normalized.split("\n");
-        cache.lines = lines;
-        return lines;
-    })();
-
-    try {
-        return await cache.promise;
-    } catch (err) {
-        cache.promise = null;
-        throw err;
-    }
-}
-
-function sr2ExtractContactStoryFromGuide(archetype, guideLines) {
-    const startLine = Number(archetype?.guide?.startLine);
-    if (!Number.isFinite(startLine) || startLine <= 0) return "";
-
-    const startIndex = Math.max(0, Math.floor(startLine) - 1);
-    const raw = [];
-
-    for (let i = startIndex; i < guideLines.length; i++) {
-        const line = String(guideLines[i] ?? "").replace(/\f/g, "").trimEnd();
-        if (line.trim() === "ATTRIBUTES") break;
-        raw.push(line);
-    }
-
-    while (raw.length && !raw[0].trim()) raw.shift();
-    while (raw.length && !raw[raw.length - 1].trim()) raw.pop();
-
-    const collapsed = [];
-    let lastWasBlank = false;
-    for (const line of raw) {
-        const blank = !line.trim();
-        if (blank) {
-            if (lastWasBlank) continue;
-            collapsed.push("");
-            lastWasBlank = true;
-            continue;
-        }
-        collapsed.push(line);
-        lastWasBlank = false;
-    }
-
-    const heading = String(archetype?.guide?.prependHeading || "").trim();
-    if (heading) {
-        const headingUpper = heading.toUpperCase();
-        const existingHeading = String(collapsed[0] || "").trim().toUpperCase();
-        if (existingHeading !== headingUpper) {
-            collapsed.unshift(heading);
-        }
-        if (collapsed.length > 1 && collapsed[1].trim() !== "") {
-            collapsed.splice(1, 0, "");
-        }
-    }
-
-    return collapsed.join("\n").trim();
-}
-
-function sr2BuildContactBiographyFallback(archetype) {
-    if (!archetype) return "";
-
-    const label = String(archetype.label || "Contact").trim();
-    const sourceBook = String(archetype.source?.book || "").trim();
-    const sourcePage = String(archetype.source?.page || "").trim();
-    const sourceParts = [];
-    if (sourceBook) sourceParts.push(sourceBook);
-    if (sourcePage) sourceParts.push(`p. ${sourcePage}`);
-
-    const lines = [];
-    lines.push(label.toUpperCase());
-
-    if (sourceParts.length) {
-        lines.push(`Source: ${sourceParts.join(", ")}`);
-    }
-
-    const skills = Array.isArray(archetype.skills)
-        ? archetype.skills.map(skill => String(skill?.baseSkill || "").trim()).filter(Boolean)
-        : [];
-    if (skills.length) {
-        const limitedSkills = skills.slice(0, 10);
-        const suffix = skills.length > limitedSkills.length ? ", ..." : "";
-        lines.push(`Typical Skills: ${limitedSkills.join(", ")}${suffix}`);
-    }
-
-    const cyberware = Array.isArray(archetype.cyberware)
-        ? archetype.cyberware.map(item => String(item || "").trim()).filter(Boolean)
-        : [];
-    if (cyberware.length) {
-        lines.push(`Typical Cyberware: ${cyberware.join(", ")}`);
-    }
-
-    const awakened = Boolean(archetype.magic?.awakened || archetype.magic?.physicalAdept);
-    if (awakened) {
-        const tradition = String(archetype.magic?.tradition || "").trim();
-        lines.push(`Magical: Yes${tradition ? ` (${tradition})` : ""}`);
-    }
-
-    lines.push("");
-    lines.push("Notes:");
-
-    return lines.join("\n").trim();
-}
-
-async function sr2BuildContactBiography({ archetype } = {}) {
-    if (!archetype) return "";
-
-    const fallbackBiography = sr2BuildContactBiographyFallback(archetype);
-
-    try {
-        const guideLines = await sr2LoadGuideRawLines();
-        const story = sr2ExtractContactStoryFromGuide(archetype, guideLines);
-        if (!story) return fallbackBiography;
-        return `${story}\n\nNotes:`;
-    } catch (err) {
-        console.warn("SR2E | Failed to build contact biography from guide:", err);
-        return fallbackBiography;
-    }
-}
-
-async function sr2RepairLegacySkillAllocatedRatings(actor) {
-    if (!actor?.items?.size) return;
-
-    const updates = [];
-
-    for (const item of actor.items) {
-        if (item.type !== "skill") continue;
-
-        const allocated = Number(item.system?.allocatedRating);
-        if (!Number.isFinite(allocated) || allocated > 0) continue;
-
-        const base = Number(item.system?.baseRating) || 0;
-        if (base <= 0) continue;
-
-        const hasConcentration = Boolean(item.system?.concentration);
-        const hasSpecialization = Boolean(item.system?.specialization);
-        if (hasConcentration || hasSpecialization) continue;
-
-        updates.push({ _id: item.id, "system.allocatedRating": base });
-    }
-
-    if (!updates.length) return;
-    await actor.updateEmbeddedDocuments("Item", updates, { sr2SkipBudget: true });
-}
-
-async function sr2RepairExistingConnectionActors() {
-    if (!globalThis.game?.user?.isGM) return;
-
-    const actors = globalThis.game?.actors?.filter(a => a && ["contact", "follower"].includes(a.type)) ?? [];
-    for (const actor of actors) {
-        try {
-            await sr2RepairLegacySkillAllocatedRatings(actor);
-        } catch (err) {
-            console.warn("SR2E | Failed to repair skill allocated ratings:", actor?.name, err);
-        }
-
-        if (actor.type !== "contact") continue;
-
-        const existingBio = String(actor.system?.biography || "").trim();
-        const shouldUpdateBio = !existingBio || existingBio.startsWith("Contact Template:");
-        if (!shouldUpdateBio) continue;
-
-        const archetypeKey = actor.system?.details?.archetype;
-        const archetype = archetypeKey ? SR2_CONTACT_ARCHETYPES[archetypeKey] : null;
-        if (!archetype) continue;
-
-        try {
-            const biography = await sr2BuildContactBiography({ archetype });
-            const currentBio = String(actor.system?.biography || "").trim();
-            if (biography && (!currentBio || currentBio.startsWith("Contact Template:"))) {
-                await actor.update({ "system.biography": biography });
-            }
-        } catch (err) {
-            console.warn("SR2E | Failed to repair contact biography:", actor?.name, err);
-        }
-    }
+  registerPoolAutoRefreshHooks();
 }
 
 /* -------------------------------------------- */
@@ -1611,1078 +54,179 @@ async function sr2RepairExistingConnectionActors() {
 /* -------------------------------------------- */
 
 Hooks.once("init", async function () {
-    console.log("Shadowrun 2E | Initializing Shadowrun 2nd Edition System");
+  console.log("Shadowrun 2E | Initializing Shadowrun 2nd Edition System");
 
-    // Debug: Log that we're starting initialization
-    console.log("SR2E | Registering document classes...");
+  // Debug: Log that we're starting initialization
+  console.log("SR2E | Registering document classes...");
 
-    // Assign custom classes and constants
-    CONFIG.Actor.documentClass = SR2Actor;
-    CONFIG.Item.documentClass = SR2Item;
+  // Assign custom classes and constants
+  CONFIG.Actor.documentClass = SR2Actor;
+  CONFIG.Item.documentClass = SR2Item;
 
-    // Ensure core Combat "Roll All" initiative works.
-    if (CONFIG.Combat) {
-        if (!CONFIG.Combat.initiative) CONFIG.Combat.initiative = {};
-        CONFIG.Combat.initiative.formula = "(@actor.initiative.dice)d6 + @actor.initiative.base";
-        CONFIG.Combat.initiative.decimals = 0;
-    }
+  // Ensure core Combat "Roll All" initiative works.
+  if (CONFIG.Combat) {
+    if (!CONFIG.Combat.initiative) CONFIG.Combat.initiative = {};
+    CONFIG.Combat.initiative.formula = "(@actor.initiative.dice)d6 + @actor.initiative.base";
+    CONFIG.Combat.initiative.decimals = 0;
+  }
 
-    // Set default actor icons
-    CONFIG.Actor.typeIcons = {
-        character: "icons/svg/mystery-man.svg",
-        contact: "icons/svg/mystery-man.svg",
-        follower: "icons/svg/mystery-man.svg",
-        cyberdeck: "systems/shadowrun2e/icons/cyberdeck.png",
-        vehicle: "systems/shadowrun2e/icons/vehicle.png",
-        spirit: "systems/shadowrun2e/icons/spirit.png",
-        critter: "systems/shadowrun2e/icons/spirit.png",
-        ic: "systems/shadowrun2e/icons/cyberdeck.png"
-    };
+  // Set default actor icons
+  CONFIG.Actor.typeIcons = {
+    character: "icons/svg/mystery-man.svg",
+    contact: "icons/svg/mystery-man.svg",
+    follower: "icons/svg/mystery-man.svg",
+    cyberdeck: "systems/shadowrun2e/icons/cyberdeck.png",
+    vehicle: "systems/shadowrun2e/icons/vehicle.png",
+    spirit: "systems/shadowrun2e/icons/spirit.png",
+    critter: "systems/shadowrun2e/icons/spirit.png",
+    ic: "systems/shadowrun2e/icons/cyberdeck.png",
+  };
 
-    // Register sheet application classes
-    console.log("SR2E | Unregistering core sheets...");
-    Actors.unregisterSheet("core", ActorSheet);
+  // Register sheet application classes
+  console.log("SR2E | Unregistering core sheets...");
+  Actors.unregisterSheet("core", ActorSheet);
 
-    console.log("SR2E | Registering SR2ActorSheet...", SR2ActorSheet);
-    Actors.registerSheet("shadowrun2e", SR2ActorSheet, {
-        types: ["character", "contact", "follower"],
-        makeDefault: true,
-        label: "Shadowrun 2E Character Sheet"
-    });
+  console.log("SR2E | Registering SR2ActorSheet...", SR2ActorSheet);
+  Actors.registerSheet("shadowrun2e", SR2ActorSheet, {
+    types: ["character", "contact", "follower"],
+    makeDefault: true,
+    label: "Shadowrun 2E Character Sheet",
+  });
 
-    console.log("SR2E | Registering SR2CyberdeckSheet...", SR2CyberdeckSheet);
-    Actors.registerSheet("shadowrun2e", SR2CyberdeckSheet, {
-        types: ["cyberdeck"],
-        makeDefault: true,
-        label: "Shadowrun 2E Cyberdeck Sheet"
-    });
+  console.log("SR2E | Registering SR2CyberdeckSheet...", SR2CyberdeckSheet);
+  Actors.registerSheet("shadowrun2e", SR2CyberdeckSheet, {
+    types: ["cyberdeck"],
+    makeDefault: true,
+    label: "Shadowrun 2E Cyberdeck Sheet",
+  });
 
-    console.log("SR2E | Registering SR2VehicleSheet...", SR2VehicleSheet);
-    Actors.registerSheet("shadowrun2e", SR2VehicleSheet, {
-        types: ["vehicle"],
-        makeDefault: true,
-        label: "Shadowrun 2E Vehicle Sheet"
-    });
+  console.log("SR2E | Registering SR2VehicleSheet...", SR2VehicleSheet);
+  Actors.registerSheet("shadowrun2e", SR2VehicleSheet, {
+    types: ["vehicle"],
+    makeDefault: true,
+    label: "Shadowrun 2E Vehicle Sheet",
+  });
 
-    console.log("SR2E | Registering SR2SpiritSheet...", SR2SpiritSheet);
-    Actors.registerSheet("shadowrun2e", SR2SpiritSheet, {
-        types: ["spirit", "critter"],
-        makeDefault: true,
-        label: "Shadowrun 2E Spirit Sheet"
-    });
+  console.log("SR2E | Registering SR2SpiritSheet...", SR2SpiritSheet);
+  Actors.registerSheet("shadowrun2e", SR2SpiritSheet, {
+    types: ["spirit", "critter"],
+    makeDefault: true,
+    label: "Shadowrun 2E Spirit Sheet",
+  });
 
-    console.log("SR2E | Registering SR2ICSheet...", SR2ICSheet);
-    Actors.registerSheet("shadowrun2e", SR2ICSheet, {
-        types: ["ic"],
-        makeDefault: true,
-        label: "Shadowrun 2E IC Sheet"
-    });
+  console.log("SR2E | Registering SR2ICSheet...", SR2ICSheet);
+  Actors.registerSheet("shadowrun2e", SR2ICSheet, {
+    types: ["ic"],
+    makeDefault: true,
+    label: "Shadowrun 2E IC Sheet",
+  });
 
-    // Force set as default for character actors
-    if (!CONFIG.Actor.sheetClasses.character) {
-        CONFIG.Actor.sheetClasses.character = {};
-    }
-    CONFIG.Actor.sheetClasses.character["shadowrun2e.SR2ActorSheet"] = {
-        id: "shadowrun2e.SR2ActorSheet",
-        cls: SR2ActorSheet,
-        default: true
-    };
+  // Force set as default for character actors
+  if (!CONFIG.Actor.sheetClasses.character) {
+    CONFIG.Actor.sheetClasses.character = {};
+  }
+  CONFIG.Actor.sheetClasses.character["shadowrun2e.SR2ActorSheet"] = {
+    id: "shadowrun2e.SR2ActorSheet",
+    cls: SR2ActorSheet,
+    default: true,
+  };
 
-    // Force set as default for contact actors
-    if (!CONFIG.Actor.sheetClasses.contact) {
-        CONFIG.Actor.sheetClasses.contact = {};
-    }
-    CONFIG.Actor.sheetClasses.contact["shadowrun2e.SR2ActorSheet"] = {
-        id: "shadowrun2e.SR2ActorSheet",
-        cls: SR2ActorSheet,
-        default: true
-    };
+  // Force set as default for contact actors
+  if (!CONFIG.Actor.sheetClasses.contact) {
+    CONFIG.Actor.sheetClasses.contact = {};
+  }
+  CONFIG.Actor.sheetClasses.contact["shadowrun2e.SR2ActorSheet"] = {
+    id: "shadowrun2e.SR2ActorSheet",
+    cls: SR2ActorSheet,
+    default: true,
+  };
 
-    // Force set as default for follower actors
-    if (!CONFIG.Actor.sheetClasses.follower) {
-        CONFIG.Actor.sheetClasses.follower = {};
-    }
-    CONFIG.Actor.sheetClasses.follower["shadowrun2e.SR2ActorSheet"] = {
-        id: "shadowrun2e.SR2ActorSheet",
-        cls: SR2ActorSheet,
-        default: true
-    };
+  // Force set as default for follower actors
+  if (!CONFIG.Actor.sheetClasses.follower) {
+    CONFIG.Actor.sheetClasses.follower = {};
+  }
+  CONFIG.Actor.sheetClasses.follower["shadowrun2e.SR2ActorSheet"] = {
+    id: "shadowrun2e.SR2ActorSheet",
+    cls: SR2ActorSheet,
+    default: true,
+  };
 
-    // Force set as default for cyberdeck actors
-    if (!CONFIG.Actor.sheetClasses.cyberdeck) {
-        CONFIG.Actor.sheetClasses.cyberdeck = {};
-    }
-    CONFIG.Actor.sheetClasses.cyberdeck["shadowrun2e.SR2CyberdeckSheet"] = {
-        id: "shadowrun2e.SR2CyberdeckSheet",
-        cls: SR2CyberdeckSheet,
-        default: true
-    };
+  // Force set as default for cyberdeck actors
+  if (!CONFIG.Actor.sheetClasses.cyberdeck) {
+    CONFIG.Actor.sheetClasses.cyberdeck = {};
+  }
+  CONFIG.Actor.sheetClasses.cyberdeck["shadowrun2e.SR2CyberdeckSheet"] = {
+    id: "shadowrun2e.SR2CyberdeckSheet",
+    cls: SR2CyberdeckSheet,
+    default: true,
+  };
 
-    // Force set as default for vehicle actors
-    if (!CONFIG.Actor.sheetClasses.vehicle) {
-        CONFIG.Actor.sheetClasses.vehicle = {};
-    }
-    CONFIG.Actor.sheetClasses.vehicle["shadowrun2e.SR2VehicleSheet"] = {
-        id: "shadowrun2e.SR2VehicleSheet",
-        cls: SR2VehicleSheet,
-        default: true
-    };
+  // Force set as default for vehicle actors
+  if (!CONFIG.Actor.sheetClasses.vehicle) {
+    CONFIG.Actor.sheetClasses.vehicle = {};
+  }
+  CONFIG.Actor.sheetClasses.vehicle["shadowrun2e.SR2VehicleSheet"] = {
+    id: "shadowrun2e.SR2VehicleSheet",
+    cls: SR2VehicleSheet,
+    default: true,
+  };
 
-    // Force set as default for spirit actors
-    if (!CONFIG.Actor.sheetClasses.spirit) {
-        CONFIG.Actor.sheetClasses.spirit = {};
-    }
-    CONFIG.Actor.sheetClasses.spirit["shadowrun2e.SR2SpiritSheet"] = {
-        id: "shadowrun2e.SR2SpiritSheet",
-        cls: SR2SpiritSheet,
-        default: true
-    };
+  // Force set as default for spirit actors
+  if (!CONFIG.Actor.sheetClasses.spirit) {
+    CONFIG.Actor.sheetClasses.spirit = {};
+  }
+  CONFIG.Actor.sheetClasses.spirit["shadowrun2e.SR2SpiritSheet"] = {
+    id: "shadowrun2e.SR2SpiritSheet",
+    cls: SR2SpiritSheet,
+    default: true,
+  };
 
-    // Force set as default for critter actors
-    if (!CONFIG.Actor.sheetClasses.critter) {
-        CONFIG.Actor.sheetClasses.critter = {};
-    }
-    CONFIG.Actor.sheetClasses.critter["shadowrun2e.SR2SpiritSheet"] = {
-        id: "shadowrun2e.SR2SpiritSheet",
-        cls: SR2SpiritSheet,
-        default: true
-    };
+  // Force set as default for critter actors
+  if (!CONFIG.Actor.sheetClasses.critter) {
+    CONFIG.Actor.sheetClasses.critter = {};
+  }
+  CONFIG.Actor.sheetClasses.critter["shadowrun2e.SR2SpiritSheet"] = {
+    id: "shadowrun2e.SR2SpiritSheet",
+    cls: SR2SpiritSheet,
+    default: true,
+  };
 
-    // Force set as default for IC actors
-    if (!CONFIG.Actor.sheetClasses.ic) {
-        CONFIG.Actor.sheetClasses.ic = {};
-    }
-    CONFIG.Actor.sheetClasses.ic["shadowrun2e.SR2ICSheet"] = {
-        id: "shadowrun2e.SR2ICSheet",
-        cls: SR2ICSheet,
-        default: true
-    };
+  // Force set as default for IC actors
+  if (!CONFIG.Actor.sheetClasses.ic) {
+    CONFIG.Actor.sheetClasses.ic = {};
+  }
+  CONFIG.Actor.sheetClasses.ic["shadowrun2e.SR2ICSheet"] = {
+    id: "shadowrun2e.SR2ICSheet",
+    cls: SR2ICSheet,
+    default: true,
+  };
 
-    Items.unregisterSheet("core", ItemSheet);
-    Items.registerSheet("shadowrun2e", SR2ItemSheet, {
-        makeDefault: true,
-        label: "Shadowrun 2E Item Sheet"
-    });
+  Items.unregisterSheet("core", ItemSheet);
+  Items.registerSheet("shadowrun2e", SR2ItemSheet, {
+    makeDefault: true,
+    label: "Shadowrun 2E Item Sheet",
+  });
 
-    console.log("SR2E | Sheet registration completed");
+  console.log("SR2E | Sheet registration completed");
 
-    // Register system settings
-    registerSystemSettings();
+  // Register system settings
+  registerSystemSettings();
 
-    // Preload Handlebars templates
-    preloadHandlebarsTemplates();
+  // Preload Handlebars templates
+  preloadHandlebarsTemplates();
 
-    // Register Handlebars helpers
-    registerHandlebarsHelpers();
+  // Register Handlebars helpers
+  registerHandlebarsHelpers();
 
-    // Initiative tracker controls, helpers, and hotkeys.
-    initializeInitiativeTracker();
+  // SR2 rules: dice pools refresh at the start of the acting character's turn.
+  sr2InstallPoolAutoRefreshHooks();
 
-    // SR2 rules: dice pools refresh at the start of the acting character's turn.
-    sr2InstallPoolAutoRefreshHooks();
+  // Token quick actions popup
+  initializeQuickActions();
 
-    // Token quick actions popup
-    initializeQuickActions();
-
-    // Expose data importer globally for debugging
-    window.SR2DataImporter = SR2DataImporter;
+  // Expose data importer globally for debugging
+  window.SR2DataImporter = SR2DataImporter;
 });
-
-/* -------------------------------------------- */
-/*  Actor Create Dialog Enhancements            */
-/* -------------------------------------------- */
-
-	async function sr2SyncFreeLanguageSkills(actor) {
-	    if (!actor || !["character", "contact", "follower"].includes(actor.type)) return;
-	
-	    const nativeLanguage = actor.system?.details?.nativeLanguage || "English";
-	    const dialectLanguage = actor.system?.details?.dialectLanguage || "City Speak";
-	    const legacyLifestyle = actor.system?.resources?.lifestyle || "street";
-	    const lifestyles = actor.system?.resources?.lifestyles;
-	    const shouldHaveDialect = Array.isArray(lifestyles) && lifestyles.length
-	        ? lifestyles.some(l => (l?.type || legacyLifestyle) === "street")
-	        : legacyLifestyle === "street";
-	
-	    const intelligence = Number(actor.system?.attributes?.intelligence?.value) || 1;
-	    const nativeRating = Math.min(6, intelligence + 2);
-	    const dialectRating = Math.max(1, Math.floor(intelligence / 2));
-
-    const existingLanguageSkills = actor.items.filter(i => i.type === "skill" && i.system?.baseSkill === "Language" && i.system?.isFree);
-    const nativeItem = existingLanguageSkills.find(i => i.system?.freeLanguageType === "native");
-    const dialectItem = existingLanguageSkills.find(i => i.system?.freeLanguageType === "dialect");
-
-    const updates = [];
-
-    if (nativeItem) {
-        const updateData = {};
-        if (nativeItem.name !== nativeLanguage) updateData["name"] = nativeLanguage;
-        if (nativeItem.system.allocatedRating !== nativeRating) updateData["system.allocatedRating"] = nativeRating;
-        if (nativeItem.system.baseRating !== nativeRating) updateData["system.baseRating"] = nativeRating;
-        if (nativeItem.system.concentrationRating !== 0) updateData["system.concentrationRating"] = 0;
-        if (nativeItem.system.specializationRating !== 0) updateData["system.specializationRating"] = 0;
-        if (Object.keys(updateData).length) updates.push({ _id: nativeItem.id, ...updateData });
-    }
-
-	    if (dialectItem) {
-	        if (!shouldHaveDialect) {
-	            await dialectItem.delete({ sr2SyncingLanguages: true });
-	        } else {
-            const updateData = {};
-            if (dialectItem.name !== dialectLanguage) updateData["name"] = dialectLanguage;
-            if (dialectItem.system.allocatedRating !== dialectRating) updateData["system.allocatedRating"] = dialectRating;
-            if (dialectItem.system.baseRating !== dialectRating) updateData["system.baseRating"] = dialectRating;
-            if (dialectItem.system.concentrationRating !== 0) updateData["system.concentrationRating"] = 0;
-            if (dialectItem.system.specializationRating !== 0) updateData["system.specializationRating"] = 0;
-            if (Object.keys(updateData).length) updates.push({ _id: dialectItem.id, ...updateData });
-        }
-    }
-
-    if (updates.length) {
-        await actor.updateEmbeddedDocuments("Item", updates, { sr2SyncingLanguages: true });
-    }
-
-    // Create missing items (after updates so we don't race on IDs)
-    const createData = [];
-    if (!nativeItem) {
-        createData.push({
-            name: nativeLanguage,
-            type: "skill",
-            system: {
-                baseSkill: "Language",
-                allocatedRating: nativeRating,
-                baseRating: nativeRating,
-                concentrationRating: 0,
-                specializationRating: 0,
-                concentration: "",
-                specialization: "",
-                category: "language",
-                isFree: true,
-                freeLanguageType: "native",
-                requiresConcentration: false
-            }
-        });
-    }
-
-    if (shouldHaveDialect && !dialectItem) {
-        createData.push({
-            name: dialectLanguage,
-            type: "skill",
-            system: {
-                baseSkill: "Language",
-                allocatedRating: dialectRating,
-                baseRating: dialectRating,
-                concentrationRating: 0,
-                specializationRating: 0,
-                concentration: "",
-                specialization: "",
-                category: "language",
-                isFree: true,
-                freeLanguageType: "dialect",
-                requiresConcentration: false
-            }
-        });
-    }
-
-    if (createData.length) {
-        await actor.createEmbeddedDocuments("Item", createData, { sr2SyncingLanguages: true });
-    }
-}
-
-function sr2EnhanceActorCreateDialog(app, html) {
-    // In some Foundry versions/hooks, "html" may not be a jQuery object.
-    const jq = globalThis.jQuery;
-    const $html = (jq && html instanceof jq) ? html : $(html);
-
-    const form = $html.is("form") ? $html : $html.find("form");
-    if (!form.length) return;
-
-    const typeSelect = form.find('select[name="type"]');
-    if (!typeSelect.length) return;
-
-    // Only target the "Create Actor" dialog for this system.
-    const optionValues = typeSelect.find("option").map((_, el) => el.value).get();
-    const isSR2ActorCreateDialog =
-        optionValues.includes("character") &&
-        optionValues.includes("cyberdeck") &&
-        optionValues.includes("vehicle") &&
-        optionValues.includes("spirit");
-    if (!isSR2ActorCreateDialog) return;
-
-    // Avoid injecting multiple times on re-renders
-    if (form.find(".sr2-create-extras").length) return;
-
-    const priorityLetters = [
-        { value: "", label: "" },
-        { value: "A", label: "A" },
-        { value: "B", label: "B" },
-        { value: "C", label: "C" },
-        { value: "D", label: "D" },
-        { value: "E", label: "E" }
-    ];
-
-    const priorityOptionsHtml = priorityLetters
-        .map(o => `<option value="${o.value}">${o.label}</option>`)
-        .join("");
-
-    const metatypeOptionsHtml = SR2_METATYPE_VALUES
-        .map(m => `<option value="${m}">${m.charAt(0).toUpperCase() + m.slice(1)}</option>`)
-        .join("");
-
-    const escapeHtml = (value) => {
-        if (globalThis.foundry?.utils?.escapeHTML) return foundry.utils.escapeHTML(String(value));
-        return String(value).replace(/[&<>"']/g, c => ({
-            "&": "&amp;",
-            "<": "&lt;",
-            ">": "&gt;",
-            '"': "&quot;",
-            "'": "&#039;"
-        }[c]));
-    };
-
-    const followerArchetypeOptionsHtml = [
-        `<option value=""></option>`,
-        ...Object.entries(SR2_FOLLOWER_ARCHETYPES).map(([key, data]) => `<option value="${key}">${data.label}</option>`)
-    ].join("");
-
-    const contactArchetypeOptionsHtml = [
-        `<option value=""></option>`,
-        ...Object.entries(SR2_CONTACT_ARCHETYPES).map(([key, data]) => `<option value="${key}">${data.label}</option>`)
-    ].join("");
-
-    const contactLevelsEnabled = sr2AreContactLevelsEnabled();
-
-    const followerFromContactsOptionsHtml = (() => {
-        if (!contactLevelsEnabled) return followerArchetypeOptionsHtml;
-
-        const gangTribeKeys = ["gangMember", "tribesman"];
-        const gangTribeOptions = gangTribeKeys
-            .filter(k => SR2_FOLLOWER_ARCHETYPES[k])
-            .map(k => `<option value="${k}">${SR2_FOLLOWER_ARCHETYPES[k].label}</option>`);
-
-        const contactOptions = Object.entries(SR2_CONTACT_ARCHETYPES)
-            .map(([key, data]) => `<option value="${key}">${data.label}</option>`);
-
-        return [
-            `<option value=""></option>`,
-            ...(gangTribeOptions.length ? [`<option value="" disabled>— Gang/Tribe —</option>`, ...gangTribeOptions] : []),
-            `<option value="" disabled>— Contacts —</option>`,
-            ...contactOptions
-        ].join("");
-    })();
-
-    const currentUser = globalThis.game?.user;
-    const ownershipLevels = globalThis.CONST?.DOCUMENT_OWNERSHIP_LEVELS;
-    const visibleLevel = ownershipLevels?.LIMITED ?? ownershipLevels?.OBSERVER ?? 1;
-
-    const leaderActors = (globalThis.game?.actors?.filter(a => a.type === "character") ?? [])
-        .filter(a => {
-            if (!currentUser) return true;
-            if (currentUser.isGM) return true;
-            if (typeof a?.testUserPermission === "function") {
-                return a.testUserPermission(currentUser, visibleLevel);
-            }
-            const ownership = a?.ownership;
-            const level = ownership?.[currentUser.id] ?? ownership?.default;
-            return (Number(level) || 0) >= visibleLevel;
-        });
-    const leaderOptionsHtml = [
-        `<option value=""></option>`,
-        ...leaderActors.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`)
-    ].join("");
-
-    const spiritTypeOptionsHtml = `
-      <option value=""></option>
-      <option value="elemental">Elemental</option>
-      <option value="nature">Nature Spirit</option>
-      <option value="city">City Spirit</option>
-      <option value="hearth">Hearth Spirit</option>
-      <option value="ancestor">Ancestor Spirit</option>
-      <option value="task">Task Spirit</option>
-      <option value="guidance">Guidance Spirit</option>
-      <option value="plant">Plant Spirit</option>
-      <option value="beast">Beast Spirit</option>
-      <option value="water">Water Elemental</option>
-      <option value="air">Air Elemental</option>
-      <option value="earth">Earth Elemental</option>
-      <option value="fire">Fire Elemental</option>
-      <option value="man">Man Spirit</option>
-      <option value="toxic">Toxic Spirit</option>
-    `;
-
-    const extrasHtml = `
-      <div class="sr2-create-extras">
-        <hr/>
-        <div class="sr2-create-priorities">
-          <h3>Priorities (ABCDE)</h3>
-          <div class="form-group">
-            <label>Metatype</label>
-            <div class="form-fields">
-              <div class="sr2-metatype-fields">
-                <select name="system.priorities.metatype" class="sr2-priority-select" data-sr2-priority="metatype">${priorityOptionsHtml}</select>
-                <select name="system.details.metatype" class="sr2-metatype-select">${metatypeOptionsHtml}</select>
-              </div>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Attributes</label>
-            <div class="form-fields">
-              <select name="system.priorities.attributes" class="sr2-priority-select" data-sr2-priority="attributes">${priorityOptionsHtml}</select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Skills</label>
-            <div class="form-fields">
-              <select name="system.priorities.skills" class="sr2-priority-select" data-sr2-priority="skills">${priorityOptionsHtml}</select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Resources</label>
-            <div class="form-fields">
-              <select name="system.priorities.resources" class="sr2-priority-select" data-sr2-priority="resources">${priorityOptionsHtml}</select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Magic</label>
-            <div class="form-fields">
-              <select name="system.priorities.magic" class="sr2-priority-select" data-sr2-priority="magic">${priorityOptionsHtml}</select>
-            </div>
-          </div>
-        </div>
-        <div class="sr2-create-archetype">
-          <h3 class="sr2-archetype-title">Archetype</h3>
-          <div class="form-group">
-            <label class="sr2-archetype-label">Archetype</label>
-            <div class="form-fields">
-              <select name="system.details.archetype" class="sr2-archetype-select">${followerArchetypeOptionsHtml}</select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Leader</label>
-            <div class="form-fields">
-              <select name="system.details.leaderId" class="sr2-leader-select">${leaderOptionsHtml}</select>
-            </div>
-          </div>
-        </div>
-        <div class="sr2-create-vehicle-details">
-          <h3>Vehicle</h3>
-          <div class="form-group">
-            <label>Vehicle</label>
-            <div class="form-fields">
-              <select class="sr2-vehicle-template-select">
-                <option value=""></option>
-                <option value="" disabled>Loading vehicles…</option>
-              </select>
-            </div>
-          </div>
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.model" data-dtype="String" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.vehicleType" data-dtype="String" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.handling.on" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.handling.off" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.speed" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.accel" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.body" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.armor" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.sig" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.autonav" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.pilot" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.sensor" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.cargo" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.load" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.seating" data-dtype="String" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.cost" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.availability" data-dtype="String" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.streetIndex" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.notes" data-dtype="String" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.bookPage" data-dtype="String" disabled />
-        </div>
-        <div class="sr2-create-cyberdeck-details">
-          <h3>Cyberdeck</h3>
-          <div class="form-group">
-            <label>Cyberdeck</label>
-            <div class="form-fields">
-              <select name="system.model" class="sr2-cyberdeck-template-select">
-                <option value=""></option>
-                <option value="" disabled>Loading cyberdecks…</option>
-              </select>
-            </div>
-          </div>
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.persona" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.hardening" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.memory.total" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.memory.used" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.storage.total" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.storage.used" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.load" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.ioSpeed" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.responseIncrease" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.cost" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.streetIndex" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.availability" data-dtype="String" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.bookPage" data-dtype="String" disabled />
-        </div>
-        <div class="sr2-create-spirit-details">
-          <h3>Spirit</h3>
-          <div class="form-group">
-            <label>Spirit Type</label>
-            <div class="form-fields">
-              <select name="system.spiritType" class="sr2-spirit-type-select">${spiritTypeOptionsHtml}</select>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    const typeFormGroup = typeSelect.closest(".form-group");
-    if (typeFormGroup.length) {
-        typeFormGroup.after(extrasHtml);
-    } else {
-        typeSelect.after(extrasHtml);
-    }
-
-    const extras = form.find(".sr2-create-extras");
-    const prioritiesSection = extras.find(".sr2-create-priorities");
-    const archetypeSection = extras.find(".sr2-create-archetype");
-    const vehicleSection = extras.find(".sr2-create-vehicle-details");
-    const cyberdeckSection = extras.find(".sr2-create-cyberdeck-details");
-    const spiritSection = extras.find(".sr2-create-spirit-details");
-    const nameInput = form.find('input[name="name"]');
-    const vehicleTemplateSelect = vehicleSection.find("select.sr2-vehicle-template-select");
-    const cyberdeckTemplateSelect = cyberdeckSection.find("select.sr2-cyberdeck-template-select");
-
-    const metatypePrioritySelect = prioritiesSection.find('select.sr2-priority-select[data-sr2-priority="metatype"]');
-    const metatypeSelect = prioritiesSection.find("select.sr2-metatype-select");
-
-    function applyMetatypeRestrictions() {
-        if (!metatypePrioritySelect.length || !metatypeSelect.length) return;
-
-        const priority = metatypePrioritySelect.val();
-        const allowed = sr2GetAllowedMetatypesForPriority(priority);
-
-        const options = Array.from(metatypeSelect[0].options);
-        for (const opt of options) {
-            if (!allowed) {
-                opt.disabled = false;
-                continue;
-            }
-            opt.disabled = !allowed.includes(opt.value);
-        }
-
-        const shouldDisableMetatypeSelect = Array.isArray(allowed) && allowed.length <= 1;
-        metatypeSelect.prop("disabled", shouldDisableMetatypeSelect);
-
-        if (allowed) {
-            const current = metatypeSelect.val();
-            if (!allowed.includes(current)) {
-                metatypeSelect.val(allowed[0] ?? "human");
-            }
-        }
-    }
-
-    function syncPrioritySelects() {
-        const selects = prioritiesSection.find("select.sr2-priority-select");
-        const selectedValues = selects.map((_, el) => el.value).get().filter(Boolean);
-
-        selects.each((_, el) => {
-            const currentValue = el.value;
-            const options = Array.from(el.options);
-            for (const opt of options) {
-                if (!opt.value) {
-                    opt.disabled = false;
-                    continue;
-                }
-                opt.disabled = opt.value !== currentValue && selectedValues.includes(opt.value);
-            }
-        });
-    }
-
-    const leaderNameById = leaderActors.reduce((acc, a) => {
-        acc[a.id] = a.name;
-        return acc;
-    }, {});
-
-    const nameByTypeKey = "sr2NameByType";
-    const currentTypeKey = "sr2CurrentActorType";
-
-    if (nameInput.length && !nameInput.data(nameByTypeKey)) {
-        nameInput.data(nameByTypeKey, {});
-    }
-    if (typeSelect.data(currentTypeKey) === undefined) {
-        typeSelect.data(currentTypeKey, typeSelect.val());
-    }
-
-    function rememberNameForType(type) {
-        if (!nameInput.length) return;
-        if (!type) return;
-
-        const map = nameInput.data(nameByTypeKey) || {};
-        map[type] = nameInput.val();
-        nameInput.data(nameByTypeKey, map);
-    }
-
-    function applyNameForType(type) {
-        if (!nameInput.length) return;
-
-        const map = nameInput.data(nameByTypeKey) || {};
-
-        if (type === "follower") {
-            const archetypeKey = archetypeSection.find("select.sr2-archetype-select").val();
-            const leaderId = archetypeSection.find("select.sr2-leader-select").val();
-
-            const archetypeLabel = archetypeKey
-                ? (
-                    (contactLevelsEnabled && SR2_CONTACT_ARCHETYPES[archetypeKey]?.label)
-                        ? SR2_CONTACT_ARCHETYPES[archetypeKey].label
-                        : (SR2_FOLLOWER_ARCHETYPES[archetypeKey]?.label || "Follower")
-                )
-                : "Follower";
-            const leaderName = leaderId ? (leaderNameById[leaderId] || "") : "";
-
-	            let name = archetypeLabel === "Follower" ? "Follower" : `${archetypeLabel} Follower`;
-	            if (leaderName) name = `${name} - ${leaderName}`;
-
-            nameInput.val(name);
-            nameInput.prop("readonly", true);
-            return;
-        }
-
-        if (type === "contact") {
-            const contactKey = archetypeSection.find("select.sr2-archetype-select").val();
-            const leaderId = archetypeSection.find("select.sr2-leader-select").val();
-
-            const contactLabel = contactKey ? (SR2_CONTACT_ARCHETYPES[contactKey]?.label || "Contact") : "Contact";
-            const leaderName = leaderId ? (leaderNameById[leaderId] || "") : "";
-
-            let name = `${contactLabel}`;
-            if (leaderName) name = `${name} - ${leaderName}`;
-
-            nameInput.val(name);
-            nameInput.prop("readonly", true);
-            return;
-        }
-
-        const autoDefaults = {
-            vehicle: "Vehicle",
-            cyberdeck: "Cyberdeck",
-            spirit: "Spirit",
-            ic: "IC"
-        };
-
-        const autoDefault = autoDefaults[type];
-
-        if (autoDefault) {
-            nameInput.val(autoDefault);
-            nameInput.prop("readonly", true);
-            return;
-        }
-
-        const saved = map[type];
-        nameInput.prop("readonly", false);
-        if (saved !== undefined) {
-            nameInput.val(saved);
-        }
-    }
-
-    function applyArchetypeOptions(type) {
-        const select = archetypeSection.find("select.sr2-archetype-select");
-        if (!select.length) return;
-
-        const current = select.val();
-        let options = `<option value=""></option>`;
-
-        if (type === "follower") {
-            options = followerFromContactsOptionsHtml;
-        } else if (type === "contact") {
-            options = contactArchetypeOptionsHtml;
-        }
-
-        const last = select.data("__sr2eArchetypeOptionsType");
-        if (last === type) return;
-
-        select.html(options);
-
-        if (current && select.find(`option[value="${current}"]`).length) {
-            select.val(current);
-        } else {
-            select.val("");
-        }
-
-        select.data("__sr2eArchetypeOptionsType", type);
-    }
-
-    function sr2GetCreateActorCatalogCache() {
-        const key = "__sr2eCreateActorCatalogCache";
-        if (!globalThis[key]) {
-            globalThis[key] = {
-                vehicleCatalog: null,
-                vehicleCatalogPromise: null,
-                cyberdeckCatalog: null,
-                cyberdeckCatalogPromise: null
-            };
-        }
-        return globalThis[key];
-    }
-
-    function sr2GetSystemId() {
-        return globalThis.game?.system?.id || "shadowrun2e";
-    }
-
-    async function sr2LoadVehicleCatalog() {
-        const cache = sr2GetCreateActorCatalogCache();
-        if (cache.vehicleCatalog) return cache.vehicleCatalog;
-        if (cache.vehicleCatalogPromise) return cache.vehicleCatalogPromise;
-
-        cache.vehicleCatalogPromise = (async () => {
-            const systemId = sr2GetSystemId();
-            const [vehicles, drones] = await Promise.all([
-                fetch(`/systems/${systemId}/data/vehicles.json`).then(r => r.json()),
-                fetch(`/systems/${systemId}/data/drones.json`).then(r => r.json())
-            ]);
-
-            const map = {};
-
-            const vehicleOptions = (vehicles || [])
-                .map(v => ({ key: `vehicles:${(v?.name || "").toString().trim()}`, label: (v?.name || "").toString().trim(), data: v }))
-                .filter(v => v.label);
-            const droneOptions = (drones || [])
-                .map(v => ({ key: `drones:${(v?.name || "").toString().trim()}`, label: (v?.name || "").toString().trim(), data: v }))
-                .filter(v => v.label);
-
-            vehicleOptions.sort((a, b) => a.label.localeCompare(b.label));
-            droneOptions.sort((a, b) => a.label.localeCompare(b.label));
-
-            for (const o of vehicleOptions) map[o.key] = { source: "vehicles", data: o.data };
-            for (const o of droneOptions) map[o.key] = { source: "drones", data: o.data };
-
-            const optionGroups = [];
-            if (vehicleOptions.length) {
-                optionGroups.push(`<optgroup label="Vehicles">${vehicleOptions.map(o => `<option value="${escapeHtml(o.key)}">${escapeHtml(o.label)}</option>`).join("")}</optgroup>`);
-            }
-            if (droneOptions.length) {
-                optionGroups.push(`<optgroup label="Drones">${droneOptions.map(o => `<option value="${escapeHtml(o.key)}">${escapeHtml(o.label)}</option>`).join("")}</optgroup>`);
-            }
-
-            cache.vehicleCatalog = {
-                map,
-                optionsHtml: `<option value=""></option>${optionGroups.join("")}`
-            };
-
-            return cache.vehicleCatalog;
-        })();
-
-        try {
-            return await cache.vehicleCatalogPromise;
-        } catch (err) {
-            cache.vehicleCatalogPromise = null;
-            throw err;
-        }
-    }
-
-    async function sr2LoadCyberdeckCatalog() {
-        const cache = sr2GetCreateActorCatalogCache();
-        if (cache.cyberdeckCatalog) return cache.cyberdeckCatalog;
-        if (cache.cyberdeckCatalogPromise) return cache.cyberdeckCatalogPromise;
-
-        cache.cyberdeckCatalogPromise = (async () => {
-            const systemId = sr2GetSystemId();
-            const decks = await fetch(`/systems/${systemId}/data/cyberdeck.json`).then(r => r.json());
-
-            const map = {};
-            const options = (decks || [])
-                .map(d => {
-                    const label = (d?.Name || "").toString().trim();
-                    return { key: label, label, data: d };
-                })
-                .filter(d => d.label);
-
-            options.sort((a, b) => a.label.localeCompare(b.label));
-            for (const o of options) map[o.key] = o.data;
-
-            cache.cyberdeckCatalog = {
-                map,
-                optionsHtml: `<option value=""></option>${options.map(o => `<option value="${escapeHtml(o.key)}">${escapeHtml(o.label)}</option>`).join("")}`
-            };
-
-            return cache.cyberdeckCatalog;
-        })();
-
-        try {
-            return await cache.cyberdeckCatalogPromise;
-        } catch (err) {
-            cache.cyberdeckCatalogPromise = null;
-            throw err;
-        }
-    }
-
-    function sr2ParseDelimitedPair(rawValue, fallbackRightToLeft = false) {
-        if (rawValue === undefined || rawValue === null) return [0, 0];
-        const parts = rawValue.toString().split("/");
-        const left = parseInt(parts[0]) || 0;
-        let right = parseInt(parts[1]) || 0;
-        if (fallbackRightToLeft && parts.length === 1) right = left;
-        return [left, right];
-    }
-
-    function sr2InferVehicleType(vehicle) {
-        const name = (vehicle?.name || "").toString();
-        const notes = (vehicle?.Notes || "").toString();
-        const speedAccel = (vehicle?.["Speed/Accel"] || "").toString();
-
-        const haystack = `${name} ${notes}`.toLowerCase();
-
-        const airKeywords = ["aircraft", "helicopter", "plane", "vtol", "rotor", "aerospace", "jet", "tiltrotor"];
-        const waterKeywords = ["boat", "ship", "marine", "hydrofoil", "submarine", "submersible"];
-
-        if (airKeywords.some(k => haystack.includes(k))) return "air";
-        if (waterKeywords.some(k => haystack.includes(k))) return "water";
-        if (speedAccel.includes("(") && speedAccel.includes(")")) return "air";
-
-        return "ground";
-    }
-
-    function applyVehicleTemplateFromSelection() {
-        const templateKey = vehicleTemplateSelect.val();
-        const templateFields = vehicleSection.find("input.sr2-vehicle-template-field");
-
-        if (!templateKey) {
-            templateFields.prop("disabled", true);
-            return;
-        }
-
-        sr2LoadVehicleCatalog().then(({ map }) => {
-            // Avoid enabling hidden inputs if the user changed type/selection while loading.
-            if (typeSelect.val() !== "vehicle" || vehicleTemplateSelect.val() !== templateKey) {
-                templateFields.prop("disabled", true);
-                return;
-            }
-
-            const entry = map[templateKey];
-            if (!entry) {
-                templateFields.prop("disabled", true);
-                return;
-            }
-
-            const vehicle = entry.data || {};
-
-            let handlingOn = 0, handlingOff = 0;
-            if (vehicle.Handling) {
-                const [on, off] = sr2ParseDelimitedPair(vehicle.Handling, true);
-                handlingOn = on;
-                handlingOff = off;
-            }
-
-            let speed = 0, accel = 0;
-            if (vehicle["Speed/Accel"]) {
-                const [s, a] = sr2ParseDelimitedPair(vehicle["Speed/Accel"]);
-                speed = s;
-                accel = a;
-            }
-
-            let body = 0, armor = 0;
-            if (vehicle["Body/Armor"]) {
-                const [b, a] = sr2ParseDelimitedPair(vehicle["Body/Armor"]);
-                body = b;
-                armor = a;
-            }
-
-            let sig = 0, autonav = 0;
-            if (vehicle["Sig/Autonav"]) {
-                const parts = vehicle["Sig/Autonav"].toString().split("/");
-                sig = parseInt(parts[0]) || 0;
-                autonav = parts[1] === "-" ? 0 : (parseInt(parts[1]) || 0);
-            }
-
-            let pilot = 0, sensor = 0;
-            if (vehicle["Pilot/Sensor"]) {
-                const parts = vehicle["Pilot/Sensor"].toString().split("/");
-                pilot = parts[0] === "-" ? 0 : (parseInt(parts[0]) || 0);
-                sensor = parseInt(parts[1]) || 0;
-            }
-
-            let cargo = 0, load = 0;
-            if (vehicle["Cargo/Load"]) {
-                const [c, l] = sr2ParseDelimitedPair(vehicle["Cargo/Load"]);
-                cargo = c;
-                load = l;
-            }
-
-            const isDrone = entry.source === "drones";
-            const vehicleType = isDrone ? "drone" : sr2InferVehicleType(vehicle);
-
-            const modelName = (vehicle.name || "").toString().trim();
-            const cost = parseInt(vehicle["$Cost"]?.toString().replace(/[^\d]/g, "")) || 0;
-            const streetIndex = parseFloat(vehicle["Street Index"]) || 1.0;
-
-            vehicleSection.find('input[name="system.model"]').val(modelName);
-            vehicleSection.find('input[name="system.vehicleType"]').val(vehicleType);
-            vehicleSection.find('input[name="system.handling.on"]').val(handlingOn);
-            vehicleSection.find('input[name="system.handling.off"]').val(handlingOff);
-            vehicleSection.find('input[name="system.speed"]').val(speed);
-            vehicleSection.find('input[name="system.accel"]').val(accel);
-            vehicleSection.find('input[name="system.body"]').val(body);
-            vehicleSection.find('input[name="system.armor"]').val(armor);
-            vehicleSection.find('input[name="system.sig"]').val(sig);
-            vehicleSection.find('input[name="system.autonav"]').val(autonav);
-            vehicleSection.find('input[name="system.pilot"]').val(pilot);
-            vehicleSection.find('input[name="system.sensor"]').val(sensor);
-            vehicleSection.find('input[name="system.cargo"]').val(cargo);
-            vehicleSection.find('input[name="system.load"]').val(load);
-            vehicleSection.find('input[name="system.seating"]').val((vehicle.Seating || "").toString());
-            vehicleSection.find('input[name="system.cost"]').val(cost);
-            vehicleSection.find('input[name="system.availability"]').val((vehicle.Availability || "").toString());
-            vehicleSection.find('input[name="system.streetIndex"]').val(streetIndex);
-            vehicleSection.find('input[name="system.notes"]').val((vehicle.Notes || "").toString());
-            vehicleSection.find('input[name="system.bookPage"]').val((vehicle["Book.Page"] || "").toString());
-
-            if (typeSelect.val() !== "vehicle" || vehicleTemplateSelect.val() !== templateKey) {
-                templateFields.prop("disabled", true);
-                return;
-            }
-
-            templateFields.prop("disabled", false);
-        }).catch(() => {
-            templateFields.prop("disabled", true);
-        });
-    }
-
-    function applyCyberdeckTemplateFromSelection() {
-        const model = cyberdeckTemplateSelect.val();
-        const templateFields = cyberdeckSection.find("input.sr2-cyberdeck-template-field");
-
-        if (!model) {
-            templateFields.prop("disabled", true);
-            return;
-        }
-
-        sr2LoadCyberdeckCatalog().then(({ map }) => {
-            // Avoid enabling hidden inputs if the user changed type/selection while loading.
-            if (typeSelect.val() !== "cyberdeck" || cyberdeckTemplateSelect.val() !== model) {
-                templateFields.prop("disabled", true);
-                return;
-            }
-
-            const deck = map[model];
-            if (!deck) {
-                templateFields.prop("disabled", true);
-                return;
-            }
-
-            cyberdeckSection.find('input[name="system.persona"]').val(deck.Persona ?? 1);
-            cyberdeckSection.find('input[name="system.hardening"]').val(deck.Hardening ?? 0);
-            cyberdeckSection.find('input[name="system.memory.total"]').val(deck.Memory ?? 100);
-            cyberdeckSection.find('input[name="system.memory.used"]').val(0);
-            cyberdeckSection.find('input[name="system.storage.total"]').val(deck.Storage ?? 500);
-            cyberdeckSection.find('input[name="system.storage.used"]').val(0);
-            cyberdeckSection.find('input[name="system.load"]').val(deck.Load ?? 5);
-            cyberdeckSection.find('input[name="system.ioSpeed"]').val(deck["I/O Speed"] ?? 1);
-            cyberdeckSection.find('input[name="system.responseIncrease"]').val(deck["Response Increase"] ?? 0);
-            cyberdeckSection.find('input[name="system.cost"]').val(deck.Cost ?? 0);
-            cyberdeckSection.find('input[name="system.streetIndex"]').val(parseFloat(deck["Street Index"]) || 1.0);
-            cyberdeckSection.find('input[name="system.availability"]').val((deck.Availability || "").toString());
-            cyberdeckSection.find('input[name="system.bookPage"]').val((deck.BookPage || "").toString());
-
-            if (typeSelect.val() !== "cyberdeck" || cyberdeckTemplateSelect.val() !== model) {
-                templateFields.prop("disabled", true);
-                return;
-            }
-
-            templateFields.prop("disabled", false);
-        }).catch(() => {
-            templateFields.prop("disabled", true);
-        });
-    }
-
-    function applyVisibility() {
-        const type = typeSelect.val();
-        const showPriorities = type === "character";
-        const showArchetype = type === "follower" || type === "contact";
-        const showVehicle = type === "vehicle";
-        const showCyberdeck = type === "cyberdeck";
-        const showSpirit = type === "spirit";
-
-        prioritiesSection.toggle(showPriorities);
-        prioritiesSection.find("select").prop("disabled", !showPriorities);
-
-        const archetypeLabel = (type === "contact" || (type === "follower" && contactLevelsEnabled)) ? "Contact" : "Archetype";
-        archetypeSection.find(".sr2-archetype-title").text(archetypeLabel);
-        archetypeSection.find("label.sr2-archetype-label").text(archetypeLabel);
-
-        applyArchetypeOptions(type);
-        archetypeSection.toggle(showArchetype);
-        archetypeSection.find("select").prop("disabled", !showArchetype);
-
-        vehicleSection.toggle(showVehicle);
-        vehicleSection.find("select, input").prop("disabled", true);
-        vehicleTemplateSelect.prop("disabled", !showVehicle);
-
-        cyberdeckSection.toggle(showCyberdeck);
-        cyberdeckSection.find("select, input").prop("disabled", true);
-        cyberdeckTemplateSelect.prop("disabled", !showCyberdeck);
-
-        spiritSection.toggle(showSpirit);
-        spiritSection.find("select").prop("disabled", !showSpirit);
-
-        if (showPriorities) syncPrioritySelects();
-        if (showPriorities) applyMetatypeRestrictions();
-
-        if (showVehicle) applyVehicleTemplateFromSelection();
-        if (showCyberdeck) applyCyberdeckTemplateFromSelection();
-
-        applyNameForType(type);
-    }
-
-    prioritiesSection.find("select.sr2-priority-select").on("change", syncPrioritySelects);
-    metatypePrioritySelect.on("change", applyMetatypeRestrictions);
-    vehicleTemplateSelect.on("change", applyVehicleTemplateFromSelection);
-    cyberdeckTemplateSelect.on("change", applyCyberdeckTemplateFromSelection);
-
-    typeSelect.on("change", () => {
-        const previousType = typeSelect.data(currentTypeKey);
-        rememberNameForType(previousType);
-        typeSelect.data(currentTypeKey, typeSelect.val());
-        applyVisibility();
-    });
-
-    archetypeSection.find("select").on("change", () => {
-        const type = typeSelect.val();
-        if (type !== "follower" && type !== "contact") return;
-        applyNameForType(type);
-    });
-
-    rememberNameForType(typeSelect.val());
-    applyVisibility();
-
-    sr2LoadVehicleCatalog()
-        .then(({ optionsHtml }) => vehicleTemplateSelect.html(optionsHtml))
-        .catch(() => vehicleTemplateSelect.html(`<option value=""></option><option value="" disabled>Failed to load vehicles</option>`));
-
-    sr2LoadCyberdeckCatalog()
-        .then(({ optionsHtml }) => cyberdeckTemplateSelect.html(optionsHtml))
-        .catch(() => cyberdeckTemplateSelect.html(`<option value=""></option><option value="" disabled>Failed to load cyberdecks</option>`));
-
-    // Visible confirmation for environments without devtools access
-    const noticeKey = "__sr2eCreateActorDialogEnhancedNoticeShown";
-    if (!globalThis[noticeKey] && globalThis.ui?.notifications?.info) {
-        globalThis[noticeKey] = true;
-    }
-
-    // Let the dialog resize to fit the new content (when supported).
-    let windowApp = app;
-    if (!windowApp) {
-        const windowElement = form.closest(".window-app");
-        const appId = windowElement?.data?.("appid");
-        if (appId && globalThis.ui?.windows?.[appId]) {
-            windowApp = ui.windows[appId];
-        }
-    }
-
-    if (typeof windowApp?.setPosition === "function") {
-        try {
-            windowApp.setPosition({ height: "auto" });
-        } catch (err) {
-            // Ignore.
-        }
-    }
-}
 
 registerActorCreateDialogHooks(sr2EnhanceActorCreateDialog);
 
@@ -2697,142 +241,169 @@ registerActorRuleHooks({ syncFreeLanguageSkills: sr2SyncFreeLanguageSkills });
 /* -------------------------------------------- */
 
 Hooks.on("createActor", async function (actor, options, userId) {
-    if (typeof userId === "string" && userId !== game.user.id) return;
-    if (actor.type !== "follower") return;
-    if (actor.getFlag("shadowrun2e", "followerBootstrapApplied")) {
-        await sr2RepairLegacySkillAllocatedRatings(actor);
-        await sr2SyncFreeLanguageSkills(actor);
-        return;
-    }
-
-    const archetypeKey = actor.system?.details?.archetype;
-    const contactLevelsEnabled = sr2AreContactLevelsEnabled();
-    const contactArchetype = contactLevelsEnabled ? (SR2_CONTACT_ARCHETYPES[archetypeKey] ?? null) : null;
-    const followerArchetype = archetypeKey ? (SR2_FOLLOWER_ARCHETYPES[archetypeKey] ?? null) : null;
-    const usesContactArchetype = Boolean(contactArchetype);
-    const archetype = contactArchetype || followerArchetype;
-    if (!archetype) return;
-
-    // Contact Levels house rule: gang/tribe members are capped at 3 for skills and attributes.
-    const isGangTribeMember = contactLevelsEnabled && !usesContactArchetype && ["gangMember", "tribesman"].includes(archetypeKey);
-    const gangTribeCap = 3;
-
-    const updates = {};
-
-    for (const [attributeKey, value] of Object.entries(archetype.attributes || {})) {
-        const raw = Number(value) || 0;
-        updates[`system.attributes.${attributeKey}.value`] = isGangTribeMember ? Math.min(gangTribeCap, raw) : raw;
-    }
-
-    if (archetype.metatype) {
-        updates["system.details.metatype"] = archetype.metatype;
-    }
-
-    if (archetype.magic) {
-        updates["system.magic.awakened"] = Boolean(archetype.magic.awakened);
-        updates["system.magic.physicalAdept"] = Boolean(archetype.magic.physicalAdept);
-        updates["system.magic.tradition"] = archetype.magic.tradition || "";
-
-        const hasExplicitMagicValue = typeof archetype.attributes?.magic === "number";
-        if ((archetype.magic.awakened || archetype.magic.physicalAdept) && !hasExplicitMagicValue) {
-            updates["system.attributes.magic.value"] = Math.max(actor.system.attributes.magic.value || 0, 6);
-        }
-    }
-
-    // Standardize follower name on create (Archetype Follower - Leader)
-    const leaderId = actor.system?.details?.leaderId;
-    const leaderName = leaderId ? (game.actors.get(leaderId)?.name || "") : "";
-    const archetypeLabel = archetype.label || "Follower";
-    updates["name"] = leaderName ? `${archetypeLabel} Follower - ${leaderName}` : `${archetypeLabel} Follower`;
-
-    if (Object.keys(updates).length) {
-        await actor.update(updates, { render: false });
-    }
-
-    const normalizedSkillKey = (baseSkill, concentration, specialization) =>
-        `${sr2NormalizeCatalogName(baseSkill)}|${sr2NormalizeCatalogName(concentration)}|${sr2NormalizeCatalogName(specialization)}`;
-
-    const existingSkillKeys = new Set(
-        actor.items
-            .filter(i => i.type === "skill")
-            .map(i => normalizedSkillKey(i.system?.baseSkill || i.name, i.system?.concentration, i.system?.specialization))
-    );
-
-    const skillsToCreate = [];
-    for (const skill of (archetype.skills || [])) {
-        const key = normalizedSkillKey(skill.baseSkill, skill.concentration, skill.specialization);
-        if (existingSkillKeys.has(key)) continue;
-        const rawAllocated = Number(skill.allocatedRating ?? skill.baseRating) || 0;
-        const rawBase = Number(skill.baseRating) || 0;
-        const allocatedRating = isGangTribeMember ? Math.min(gangTribeCap, rawAllocated) : rawAllocated;
-        const baseRating = isGangTribeMember ? Math.min(gangTribeCap, rawBase) : rawBase;
-        const concentrationRatingRaw = Number(skill.concentrationRating) || 0;
-        const specializationRatingRaw = Number(skill.specializationRating) || 0;
-        const concentrationRating = isGangTribeMember ? Math.min(gangTribeCap, concentrationRatingRaw) : concentrationRatingRaw;
-        const specializationRating = isGangTribeMember ? Math.min(gangTribeCap, specializationRatingRaw) : specializationRatingRaw;
-        skillsToCreate.push({
-            name: skill.baseSkill,
-            type: "skill",
-            system: {
-                baseSkill: skill.baseSkill,
-                allocatedRating,
-                baseRating,
-                concentrationRating,
-                specializationRating,
-                concentration: skill.concentration ?? "",
-                specialization: skill.specialization ?? "",
-                category: skill.category ?? "active",
-                requiresConcentration: false
-            }
-        });
-    }
-
-    if (skillsToCreate.length) {
-        await actor.createEmbeddedDocuments("Item", skillsToCreate, { sr2SkipBudget: true });
-    }
-
-    const existingCyberwareNames = new Set(actor.items.filter(i => i.type === "cyberware").map(i => sr2NormalizeCatalogName(i.name)));
-    const cyberwareToCreate = [];
-    for (const cyberwareName of (archetype.cyberware || [])) {
-        const key = sr2NormalizeCatalogName(cyberwareName);
-        if (!key || existingCyberwareNames.has(key)) continue;
-        cyberwareToCreate.push(await sr2BuildCyberwareItemData(cyberwareName, { installed: true }));
-    }
-
-    if (cyberwareToCreate.length) {
-        await actor.createEmbeddedDocuments("Item", cyberwareToCreate, { sr2SkipBudget: true });
-    }
-
-    const existingSpellNames = new Set(actor.items.filter(i => i.type === "spell").map(i => sr2NormalizeCatalogName(i.name)));
-    const spellsToCreate = [];
-    const isSpellcaster = Boolean(archetype.magic?.awakened) && !Boolean(archetype.magic?.physicalAdept);
-    if (isSpellcaster) {
-        for (const spell of (archetype.spells || [])) {
-            const spellName = String(spell?.name || "").trim();
-            if (!spellName) continue;
-            const key = sr2NormalizeCatalogName(spellName);
-            if (existingSpellNames.has(key)) continue;
-            spellsToCreate.push(await sr2BuildSpellItemData(spellName, { force: spell.force ?? 1 }));
-        }
-    }
-
-    if (spellsToCreate.length) {
-        await actor.createEmbeddedDocuments("Item", spellsToCreate, { sr2SkipBudget: true });
-    }
-
-    await sr2SyncFreeLanguageSkills(actor);
+  if (typeof userId === "string" && userId !== game.user.id) return;
+  if (actor.type !== "follower") return;
+  if (actor.getFlag("shadowrun2e", "followerBootstrapApplied")) {
     await sr2RepairLegacySkillAllocatedRatings(actor);
-    await actor.setFlag("shadowrun2e", "followerBootstrapApplied", true);
+    await sr2SyncFreeLanguageSkills(actor);
+    return;
+  }
 
-    const shouldOfferGearPurchase = !usesContactArchetype;
-    if (shouldOfferGearPurchase && !actor.getFlag("shadowrun2e", "gearPurchaseOffered")) {
-        try {
-            new SR2GearPurchaseApp(actor, { archetypeKey }).render(true);
-            await actor.setFlag("shadowrun2e", "gearPurchaseOffered", true);
-        } catch (error) {
-            console.error("SR2E | Failed to open gear purchase panel:", error);
-        }
+  const archetypeKey = actor.system?.details?.archetype;
+  const contactLevelsEnabled = sr2AreContactLevelsEnabled();
+  const contactArchetype = contactLevelsEnabled
+    ? (SR2_CONTACT_ARCHETYPES[archetypeKey] ?? null)
+    : null;
+  const followerArchetype = archetypeKey ? (SR2_FOLLOWER_ARCHETYPES[archetypeKey] ?? null) : null;
+  const usesContactArchetype = Boolean(contactArchetype);
+  const archetype = contactArchetype || followerArchetype;
+  if (!archetype) return;
+
+  // Contact Levels house rule: gang/tribe members are capped at 3 for skills and attributes.
+  const isGangTribeMember =
+    contactLevelsEnabled &&
+    !usesContactArchetype &&
+    ["gangMember", "tribesman"].includes(archetypeKey);
+  const gangTribeCap = 3;
+
+  const updates = {};
+
+  for (const [attributeKey, value] of Object.entries(archetype.attributes || {})) {
+    const raw = Number(value) || 0;
+    updates[`system.attributes.${attributeKey}.value`] = isGangTribeMember
+      ? Math.min(gangTribeCap, raw)
+      : raw;
+  }
+
+  if (archetype.metatype) {
+    updates["system.details.metatype"] = archetype.metatype;
+  }
+
+  if (archetype.magic) {
+    updates["system.magic.awakened"] = Boolean(archetype.magic.awakened);
+    updates["system.magic.physicalAdept"] = Boolean(archetype.magic.physicalAdept);
+    updates["system.magic.tradition"] = archetype.magic.tradition || "";
+
+    const hasExplicitMagicValue = typeof archetype.attributes?.magic === "number";
+    if ((archetype.magic.awakened || archetype.magic.physicalAdept) && !hasExplicitMagicValue) {
+      updates["system.attributes.magic.value"] = Math.max(
+        actor.system.attributes.magic.value || 0,
+        6,
+      );
     }
+  }
+
+  // Standardize follower name on create (Archetype Follower - Leader)
+  const leaderId = actor.system?.details?.leaderId;
+  const leaderName = leaderId ? game.actors.get(leaderId)?.name || "" : "";
+  const archetypeLabel = archetype.label || "Follower";
+  updates["name"] = leaderName
+    ? `${archetypeLabel} Follower - ${leaderName}`
+    : `${archetypeLabel} Follower`;
+
+  if (Object.keys(updates).length) {
+    await actor.update(updates, { render: false });
+  }
+
+  const normalizedSkillKey = (baseSkill, concentration, specialization) =>
+    `${sr2NormalizeCatalogName(baseSkill)}|${sr2NormalizeCatalogName(concentration)}|${sr2NormalizeCatalogName(specialization)}`;
+
+  const existingSkillKeys = new Set(
+    actor.items
+      .filter((i) => i.type === "skill")
+      .map((i) =>
+        normalizedSkillKey(
+          i.system?.baseSkill || i.name,
+          i.system?.concentration,
+          i.system?.specialization,
+        ),
+      ),
+  );
+
+  const skillsToCreate = [];
+  for (const skill of archetype.skills || []) {
+    const key = normalizedSkillKey(skill.baseSkill, skill.concentration, skill.specialization);
+    if (existingSkillKeys.has(key)) continue;
+    const rawAllocated = Number(skill.allocatedRating ?? skill.baseRating) || 0;
+    const rawBase = Number(skill.baseRating) || 0;
+    const allocatedRating = isGangTribeMember ? Math.min(gangTribeCap, rawAllocated) : rawAllocated;
+    const baseRating = isGangTribeMember ? Math.min(gangTribeCap, rawBase) : rawBase;
+    const concentrationRatingRaw = Number(skill.concentrationRating) || 0;
+    const specializationRatingRaw = Number(skill.specializationRating) || 0;
+    const concentrationRating = isGangTribeMember
+      ? Math.min(gangTribeCap, concentrationRatingRaw)
+      : concentrationRatingRaw;
+    const specializationRating = isGangTribeMember
+      ? Math.min(gangTribeCap, specializationRatingRaw)
+      : specializationRatingRaw;
+    skillsToCreate.push({
+      name: skill.baseSkill,
+      type: "skill",
+      system: {
+        baseSkill: skill.baseSkill,
+        allocatedRating,
+        baseRating,
+        concentrationRating,
+        specializationRating,
+        concentration: skill.concentration ?? "",
+        specialization: skill.specialization ?? "",
+        category: skill.category ?? "active",
+        requiresConcentration: false,
+      },
+    });
+  }
+
+  if (skillsToCreate.length) {
+    await actor.createEmbeddedDocuments("Item", skillsToCreate, { sr2SkipBudget: true });
+  }
+
+  const existingCyberwareNames = new Set(
+    actor.items.filter((i) => i.type === "cyberware").map((i) => sr2NormalizeCatalogName(i.name)),
+  );
+  const cyberwareToCreate = [];
+  for (const cyberwareName of archetype.cyberware || []) {
+    const key = sr2NormalizeCatalogName(cyberwareName);
+    if (!key || existingCyberwareNames.has(key)) continue;
+    cyberwareToCreate.push(await sr2BuildCyberwareItemData(cyberwareName, { installed: true }));
+  }
+
+  if (cyberwareToCreate.length) {
+    await actor.createEmbeddedDocuments("Item", cyberwareToCreate, { sr2SkipBudget: true });
+  }
+
+  const existingSpellNames = new Set(
+    actor.items.filter((i) => i.type === "spell").map((i) => sr2NormalizeCatalogName(i.name)),
+  );
+  const spellsToCreate = [];
+  const isSpellcaster =
+    Boolean(archetype.magic?.awakened) && !Boolean(archetype.magic?.physicalAdept);
+  if (isSpellcaster) {
+    for (const spell of archetype.spells || []) {
+      const spellName = String(spell?.name || "").trim();
+      if (!spellName) continue;
+      const key = sr2NormalizeCatalogName(spellName);
+      if (existingSpellNames.has(key)) continue;
+      spellsToCreate.push(await sr2BuildSpellItemData(spellName, { force: spell.force ?? 1 }));
+    }
+  }
+
+  if (spellsToCreate.length) {
+    await actor.createEmbeddedDocuments("Item", spellsToCreate, { sr2SkipBudget: true });
+  }
+
+  await sr2SyncFreeLanguageSkills(actor);
+  await sr2RepairLegacySkillAllocatedRatings(actor);
+  await actor.setFlag("shadowrun2e", "followerBootstrapApplied", true);
+
+  const shouldOfferGearPurchase = !usesContactArchetype;
+  if (shouldOfferGearPurchase && !actor.getFlag("shadowrun2e", "gearPurchaseOffered")) {
+    try {
+      new SR2GearPurchaseApp(actor, { archetypeKey }).render(true);
+      await actor.setFlag("shadowrun2e", "gearPurchaseOffered", true);
+    } catch (error) {
+      console.error("SR2E | Failed to open gear purchase panel:", error);
+    }
+  }
 });
 
 /* -------------------------------------------- */
@@ -2840,197 +411,209 @@ Hooks.on("createActor", async function (actor, options, userId) {
 /* -------------------------------------------- */
 
 Hooks.on("createActor", async function (actor, options, userId) {
-    await sr2ApplyCharacterPrioritiesOnCreate(actor, {
-        userId,
-        currentUserId: game?.user?.id,
-        getAllowedMetatypesForPriority: sr2GetAllowedMetatypesForPriority,
-        syncFreeLanguageSkills: sr2SyncFreeLanguageSkills
-    });
+  await sr2ApplyCharacterPrioritiesOnCreate(actor, {
+    userId,
+    currentUserId: game?.user?.id,
+    getAllowedMetatypesForPriority: sr2GetAllowedMetatypesForPriority,
+    syncFreeLanguageSkills: sr2SyncFreeLanguageSkills,
+  });
 });
 
 Hooks.on("createActor", async function (actor, options, userId) {
-    if (typeof userId === "string" && userId !== game.user.id) return;
-    if (!["character", "contact", "follower"].includes(actor.type)) return;
-    if (actor.getFlag("shadowrun2e", "metatypeBaselineApplied")) return;
+  if (typeof userId === "string" && userId !== game.user.id) return;
+  if (!["character", "contact", "follower"].includes(actor.type)) return;
+  if (actor.getFlag("shadowrun2e", "metatypeBaselineApplied")) return;
 
-    // If this actor is being created from a follower archetype, let the archetype bootstrap set values.
-    if (actor.type === "follower" && actor.system?.details?.archetype) return;
+  // If this actor is being created from a follower archetype, let the archetype bootstrap set values.
+  if (actor.type === "follower" && actor.system?.details?.archetype) return;
 
-    const metatype = actor.system?.details?.metatype || "human";
-    const bounds = sr2GetRacialAttributeBounds(metatype);
-    const traits = sr2GetRacialTraits(metatype);
+  const metatype = actor.system?.details?.metatype || "human";
+  const bounds = sr2GetRacialAttributeBounds(metatype);
+  const traits = sr2GetRacialTraits(metatype);
 
-    const attrKeys = ["body", "quickness", "strength", "charisma", "intelligence", "willpower"];
+  const attrKeys = ["body", "quickness", "strength", "charisma", "intelligence", "willpower"];
 
-    // Auto-apply baselines if the actor still looks unallocated (template defaults).
-    const looksUnallocated = attrKeys.every(key => {
-        const value = Number(actor.system?.attributes?.[key]?.value);
-        return !Number.isFinite(value) || value === 0 || value === 1;
-    });
+  // Auto-apply baselines if the actor still looks unallocated (template defaults).
+  const looksUnallocated = attrKeys.every((key) => {
+    const value = Number(actor.system?.attributes?.[key]?.value);
+    return !Number.isFinite(value) || value === 0 || value === 1;
+  });
 
-    const updates = {};
+  const updates = {};
 
-    // Keep derived traits and caps consistent with the chosen metatype.
-    if (!actor.system?.details?.traits || typeof actor.system.details.traits !== "object") {
-        updates["system.details.traits"] = traits;
-    }
+  // Keep derived traits and caps consistent with the chosen metatype.
+  if (!actor.system?.details?.traits || typeof actor.system.details.traits !== "object") {
+    updates["system.details.traits"] = traits;
+  }
 
-    for (const key of attrKeys) {
-        const b = bounds[key];
-        if (!b) continue;
+  for (const key of attrKeys) {
+    const b = bounds[key];
+    if (!b) continue;
 
-        const currentMin = actor.system?.attributes?.[key]?.min;
-        const currentMax = actor.system?.attributes?.[key]?.max;
-        if (currentMin !== b.min) updates[`system.attributes.${key}.min`] = b.min;
-        if (currentMax !== b.max) updates[`system.attributes.${key}.max`] = b.max;
+    const currentMin = actor.system?.attributes?.[key]?.min;
+    const currentMax = actor.system?.attributes?.[key]?.max;
+    if (currentMin !== b.min) updates[`system.attributes.${key}.min`] = b.min;
+    if (currentMax !== b.max) updates[`system.attributes.${key}.max`] = b.max;
 
-        const currentValue = Number(actor.system?.attributes?.[key]?.value);
-        const shouldApplyBaseline =
-            looksUnallocated ||
-            !Number.isFinite(currentValue) ||
-            currentValue < b.min;
-        if (shouldApplyBaseline) updates[`system.attributes.${key}.value`] = b.min;
-    }
+    const currentValue = Number(actor.system?.attributes?.[key]?.value);
+    const shouldApplyBaseline =
+      looksUnallocated || !Number.isFinite(currentValue) || currentValue < b.min;
+    if (shouldApplyBaseline) updates[`system.attributes.${key}.value`] = b.min;
+  }
 
-    if (Object.keys(updates).length) {
-        await actor.update(updates, { render: false });
-    }
+  if (Object.keys(updates).length) {
+    await actor.update(updates, { render: false });
+  }
 
-    await actor.setFlag("shadowrun2e", "metatypeBaselineApplied", true);
+  await actor.setFlag("shadowrun2e", "metatypeBaselineApplied", true);
 });
 
 Hooks.on("createActor", async function (actor, options, userId) {
-    if (typeof userId === "string" && userId !== game.user.id) return;
-    if (actor.type !== "contact") return;
+  if (typeof userId === "string" && userId !== game.user.id) return;
+  if (actor.type !== "contact") return;
 
-    if (actor.getFlag("shadowrun2e", "contactBootstrapApplied")) {
-        await sr2RepairLegacySkillAllocatedRatings(actor);
-        await sr2SyncFreeLanguageSkills(actor);
-        return;
-    }
-
-    const archetypeKey = actor.system?.details?.archetype;
-    const archetype = archetypeKey ? SR2_CONTACT_ARCHETYPES[archetypeKey] : null;
-    if (!archetype) {
-        await sr2SyncFreeLanguageSkills(actor);
-        return;
-    }
-
-    // Apply metatype first so the metatype-change hook doesn't overwrite template attribute values.
-    if (archetype.metatype && actor.system?.details?.metatype !== archetype.metatype) {
-        await actor.update({ "system.details.metatype": archetype.metatype }, { render: false });
-    }
-
-    const updates = {};
-
-    for (const [attributeKey, value] of Object.entries(archetype.attributes || {})) {
-        updates[`system.attributes.${attributeKey}.value`] = value;
-    }
-
-    if (archetype.magic) {
-        updates["system.magic.awakened"] = Boolean(archetype.magic.awakened);
-        updates["system.magic.physicalAdept"] = Boolean(archetype.magic.physicalAdept);
-        updates["system.magic.tradition"] = archetype.magic.tradition || "";
-
-        const hasExplicitMagicValue = typeof archetype.attributes?.magic === "number";
-        if ((archetype.magic.awakened || archetype.magic.physicalAdept) && !hasExplicitMagicValue) {
-            updates["system.attributes.magic.value"] = Math.max(actor.system.attributes.magic.value || 0, 6);
-        }
-    }
-
-    // Standardize contact name on create (Archetype - Leader).
-    const leaderId = actor.system?.details?.leaderId;
-    const leaderName = leaderId ? (game.actors.get(leaderId)?.name || "") : "";
-    const archetypeLabel = archetype.label || "Contact";
-    updates["name"] = leaderName ? `${archetypeLabel} - ${leaderName}` : `${archetypeLabel}`;
-
-    const existingBio = actor.system?.biography;
-    const shouldSetBiography = !String(existingBio || "").trim();
-
-    if (Object.keys(updates).length) {
-        await actor.update(updates);
-        try {
-            globalThis.ui?.actors?.render?.();
-        } catch (err) {
-            // Ignore.
-        }
-    }
-
-    if (shouldSetBiography) {
-        const biography = await sr2BuildContactBiography({ archetype, leaderName });
-        const currentBio = actor.system?.biography;
-        if (biography && !String(currentBio || "").trim()) {
-            await actor.update({ "system.biography": biography });
-        }
-    }
-
-    const normalizedSkillKey = (baseSkill, concentration, specialization) =>
-        `${sr2NormalizeCatalogName(baseSkill)}|${sr2NormalizeCatalogName(concentration)}|${sr2NormalizeCatalogName(specialization)}`;
-
-    const existingSkillKeys = new Set(
-        actor.items
-            .filter(i => i.type === "skill")
-            .map(i => normalizedSkillKey(i.system?.baseSkill || i.name, i.system?.concentration, i.system?.specialization))
-    );
-
-    const skillsToCreate = [];
-    for (const skill of (archetype.skills || [])) {
-        const key = normalizedSkillKey(skill.baseSkill, skill.concentration, skill.specialization);
-        if (existingSkillKeys.has(key)) continue;
-        const allocatedRating = Number(skill.allocatedRating ?? skill.baseRating) || 0;
-        skillsToCreate.push({
-            name: skill.baseSkill,
-            type: "skill",
-            system: {
-                baseSkill: skill.baseSkill,
-                allocatedRating,
-                baseRating: skill.baseRating ?? 0,
-                concentrationRating: skill.concentrationRating ?? 0,
-                specializationRating: skill.specializationRating ?? 0,
-                concentration: skill.concentration ?? "",
-                specialization: skill.specialization ?? "",
-                category: skill.category ?? "active",
-                requiresConcentration: false
-            }
-        });
-    }
-
-    if (skillsToCreate.length) {
-        await actor.createEmbeddedDocuments("Item", skillsToCreate, { sr2SkipBudget: true });
-    }
-
-    const existingCyberwareNames = new Set(actor.items.filter(i => i.type === "cyberware").map(i => sr2NormalizeCatalogName(i.name)));
-    const cyberwareToCreate = [];
-    for (const cyberwareName of (archetype.cyberware || [])) {
-        const key = sr2NormalizeCatalogName(cyberwareName);
-        if (!key || existingCyberwareNames.has(key)) continue;
-        cyberwareToCreate.push(await sr2BuildCyberwareItemData(cyberwareName, { installed: true }));
-    }
-
-    if (cyberwareToCreate.length) {
-        await actor.createEmbeddedDocuments("Item", cyberwareToCreate, { sr2SkipBudget: true });
-    }
-
-    const existingSpellNames = new Set(actor.items.filter(i => i.type === "spell").map(i => sr2NormalizeCatalogName(i.name)));
-    const spellsToCreate = [];
-    const isSpellcaster = Boolean(archetype.magic?.awakened) && !Boolean(archetype.magic?.physicalAdept);
-    if (isSpellcaster) {
-        for (const spell of (archetype.spells || [])) {
-            const spellName = String(spell?.name || "").trim();
-            if (!spellName) continue;
-            const key = sr2NormalizeCatalogName(spellName);
-            if (existingSpellNames.has(key)) continue;
-            spellsToCreate.push(await sr2BuildSpellItemData(spellName, { force: spell.force ?? 1 }));
-        }
-    }
-
-    if (spellsToCreate.length) {
-        await actor.createEmbeddedDocuments("Item", spellsToCreate, { sr2SkipBudget: true });
-    }
-
-    await sr2SyncFreeLanguageSkills(actor);
+  if (actor.getFlag("shadowrun2e", "contactBootstrapApplied")) {
     await sr2RepairLegacySkillAllocatedRatings(actor);
-    await actor.setFlag("shadowrun2e", "contactBootstrapApplied", true);
+    await sr2SyncFreeLanguageSkills(actor);
+    return;
+  }
+
+  const archetypeKey = actor.system?.details?.archetype;
+  const archetype = archetypeKey ? SR2_CONTACT_ARCHETYPES[archetypeKey] : null;
+  if (!archetype) {
+    await sr2SyncFreeLanguageSkills(actor);
+    return;
+  }
+
+  // Apply metatype first so the metatype-change hook doesn't overwrite template attribute values.
+  if (archetype.metatype && actor.system?.details?.metatype !== archetype.metatype) {
+    await actor.update({ "system.details.metatype": archetype.metatype }, { render: false });
+  }
+
+  const updates = {};
+
+  for (const [attributeKey, value] of Object.entries(archetype.attributes || {})) {
+    updates[`system.attributes.${attributeKey}.value`] = value;
+  }
+
+  if (archetype.magic) {
+    updates["system.magic.awakened"] = Boolean(archetype.magic.awakened);
+    updates["system.magic.physicalAdept"] = Boolean(archetype.magic.physicalAdept);
+    updates["system.magic.tradition"] = archetype.magic.tradition || "";
+
+    const hasExplicitMagicValue = typeof archetype.attributes?.magic === "number";
+    if ((archetype.magic.awakened || archetype.magic.physicalAdept) && !hasExplicitMagicValue) {
+      updates["system.attributes.magic.value"] = Math.max(
+        actor.system.attributes.magic.value || 0,
+        6,
+      );
+    }
+  }
+
+  // Standardize contact name on create (Archetype - Leader).
+  const leaderId = actor.system?.details?.leaderId;
+  const leaderName = leaderId ? game.actors.get(leaderId)?.name || "" : "";
+  const archetypeLabel = archetype.label || "Contact";
+  updates["name"] = leaderName ? `${archetypeLabel} - ${leaderName}` : `${archetypeLabel}`;
+
+  const existingBio = actor.system?.biography;
+  const shouldSetBiography = !String(existingBio || "").trim();
+
+  if (Object.keys(updates).length) {
+    await actor.update(updates);
+    try {
+      globalThis.ui?.actors?.render?.();
+    } catch (err) {
+      // Ignore.
+    }
+  }
+
+  if (shouldSetBiography) {
+    const biography = await sr2BuildContactBiography({ archetype, leaderName });
+    const currentBio = actor.system?.biography;
+    if (biography && !String(currentBio || "").trim()) {
+      await actor.update({ "system.biography": biography });
+    }
+  }
+
+  const normalizedSkillKey = (baseSkill, concentration, specialization) =>
+    `${sr2NormalizeCatalogName(baseSkill)}|${sr2NormalizeCatalogName(concentration)}|${sr2NormalizeCatalogName(specialization)}`;
+
+  const existingSkillKeys = new Set(
+    actor.items
+      .filter((i) => i.type === "skill")
+      .map((i) =>
+        normalizedSkillKey(
+          i.system?.baseSkill || i.name,
+          i.system?.concentration,
+          i.system?.specialization,
+        ),
+      ),
+  );
+
+  const skillsToCreate = [];
+  for (const skill of archetype.skills || []) {
+    const key = normalizedSkillKey(skill.baseSkill, skill.concentration, skill.specialization);
+    if (existingSkillKeys.has(key)) continue;
+    const allocatedRating = Number(skill.allocatedRating ?? skill.baseRating) || 0;
+    skillsToCreate.push({
+      name: skill.baseSkill,
+      type: "skill",
+      system: {
+        baseSkill: skill.baseSkill,
+        allocatedRating,
+        baseRating: skill.baseRating ?? 0,
+        concentrationRating: skill.concentrationRating ?? 0,
+        specializationRating: skill.specializationRating ?? 0,
+        concentration: skill.concentration ?? "",
+        specialization: skill.specialization ?? "",
+        category: skill.category ?? "active",
+        requiresConcentration: false,
+      },
+    });
+  }
+
+  if (skillsToCreate.length) {
+    await actor.createEmbeddedDocuments("Item", skillsToCreate, { sr2SkipBudget: true });
+  }
+
+  const existingCyberwareNames = new Set(
+    actor.items.filter((i) => i.type === "cyberware").map((i) => sr2NormalizeCatalogName(i.name)),
+  );
+  const cyberwareToCreate = [];
+  for (const cyberwareName of archetype.cyberware || []) {
+    const key = sr2NormalizeCatalogName(cyberwareName);
+    if (!key || existingCyberwareNames.has(key)) continue;
+    cyberwareToCreate.push(await sr2BuildCyberwareItemData(cyberwareName, { installed: true }));
+  }
+
+  if (cyberwareToCreate.length) {
+    await actor.createEmbeddedDocuments("Item", cyberwareToCreate, { sr2SkipBudget: true });
+  }
+
+  const existingSpellNames = new Set(
+    actor.items.filter((i) => i.type === "spell").map((i) => sr2NormalizeCatalogName(i.name)),
+  );
+  const spellsToCreate = [];
+  const isSpellcaster =
+    Boolean(archetype.magic?.awakened) && !Boolean(archetype.magic?.physicalAdept);
+  if (isSpellcaster) {
+    for (const spell of archetype.spells || []) {
+      const spellName = String(spell?.name || "").trim();
+      if (!spellName) continue;
+      const key = sr2NormalizeCatalogName(spellName);
+      if (existingSpellNames.has(key)) continue;
+      spellsToCreate.push(await sr2BuildSpellItemData(spellName, { force: spell.force ?? 1 }));
+    }
+  }
+
+  if (spellsToCreate.length) {
+    await actor.createEmbeddedDocuments("Item", spellsToCreate, { sr2SkipBudget: true });
+  }
+
+  await sr2SyncFreeLanguageSkills(actor);
+  await sr2RepairLegacySkillAllocatedRatings(actor);
+  await actor.setFlag("shadowrun2e", "contactBootstrapApplied", true);
 });
 
 /* -------------------------------------------- */
@@ -3043,9 +626,9 @@ registerConnectionFolderHooks({ getSystemSetting: sr2GetSystemSetting });
 /* -------------------------------------------- */
 
 registerCreationRuleHooks({
-    areContactLevelsEnabled: sr2AreContactLevelsEnabled,
-    areBuddiesDisabled: sr2AreBuddiesDisabled,
-    getContactLevelsSummaryForLeader: sr2GetContactLevelsSummaryForLeader
+  areContactLevelsEnabled: sr2AreContactLevelsEnabled,
+  areBuddiesDisabled: sr2AreBuddiesDisabled,
+  getContactLevelsSummaryForLeader: sr2GetContactLevelsSummaryForLeader,
 });
 
 /* -------------------------------------------- */
@@ -3053,147 +636,147 @@ registerCreationRuleHooks({
 /* -------------------------------------------- */
 
 function registerSystemSettings() {
-    // Core system toggle: roll mechanic.
-    game.settings.register("shadowrun2e", "useTargetNumbers", {
-        name: "Use Target Numbers",
-        hint: "Use target numbers for dice rolls instead of open-ended rolling",
-        scope: "world",
-        config: true,
-        type: Boolean,
-        default: true
-    });
+  // Core system toggle: roll mechanic.
+  game.settings.register("shadowrun2e", "useTargetNumbers", {
+    name: "Use Target Numbers",
+    hint: "Use target numbers for dice rolls instead of open-ended rolling",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
 
-    // SR2 core rule support: pools refresh at the start of a character's action.
-    game.settings.register("shadowrun2e", "autoRefreshPools", {
-        name: "Auto-Refresh Dice Pools",
-        hint: "Automatically refresh Combat/Magic/etc. pools to full at the start of the acting combatant's turn (Foundry Combat and SR2 Initiative Tracker).",
-        scope: "world",
-        config: true,
-        type: Boolean,
-        default: true
-    });
+  // SR2 core rule support: pools refresh at the start of a character's action.
+  game.settings.register("shadowrun2e", "autoRefreshPools", {
+    name: "Auto-Refresh Dice Pools",
+    hint: "Automatically refresh Combat/Magic/etc. pools to full at the start of the acting combatant's turn in Foundry Combat.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
 
-    // UI convenience: token selection quick actions popup (client-side).
-    game.settings.register("shadowrun2e", "tokenQuickActions", {
-        name: "Token Quick Actions",
-        hint: "Show a small quick-actions popup when you select a token you control.",
-        scope: "client",
-        config: true,
-        type: Boolean,
-        default: true
-    });
+  // UI convenience: token selection quick actions popup (client-side).
+  game.settings.register("shadowrun2e", "tokenQuickActions", {
+    name: "Token Quick Actions",
+    hint: "Show a small quick-actions popup when you select a token you control.",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
 
-    // Client-only: persist per-user size for the Token Quick Actions popup.
-    game.settings.register("shadowrun2e", "quickActionsWidth", {
-        name: "Token Quick Actions Width",
-        scope: "client",
-        config: false,
-        type: Number,
-        default: 300
-    });
+  // Client-only: persist per-user size for the Token Quick Actions popup.
+  game.settings.register("shadowrun2e", "quickActionsWidth", {
+    name: "Token Quick Actions Width",
+    scope: "client",
+    config: false,
+    type: Number,
+    default: 300,
+  });
 
-    game.settings.register("shadowrun2e", "quickActionsHeight", {
-        name: "Token Quick Actions Height",
-        scope: "client",
-        config: false,
-        type: Number,
-        default: 360
-    });
+  game.settings.register("shadowrun2e", "quickActionsHeight", {
+    name: "Token Quick Actions Height",
+    scope: "client",
+    config: false,
+    type: Number,
+    default: 360,
+  });
 
-    game.settings.register("shadowrun2e", "debugLogging", {
-        name: "Debug Logging",
-        hint: "Enable verbose Shadowrun 2E debug logging in the browser console.",
-        scope: "client",
-        config: true,
-        type: Boolean,
-        default: false
-    });
+  game.settings.register("shadowrun2e", "debugLogging", {
+    name: "Debug Logging",
+    hint: "Enable verbose Shadowrun 2E debug logging in the browser console.",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: false,
+  });
 
-    // House rule: Metatype priority restrictions.
-    // - Default: Metahumans require Metatype priority A.
-    // - Enabled: Allow metahumans at priorities A–C.
-    game.settings.register("shadowrun2e", "moreMetahumans", {
-        name: "More Metahumans",
-        hint: "Allow selecting Elf/Dwarf/Ork/Troll at Metatype priorities A–C (default is A only).",
-        scope: "world",
-        config: true,
-        type: Boolean,
-        default: false,
-        restricted: true
-    });
+  // House rule: Metatype priority restrictions.
+  // - Default: Metahumans require Metatype priority A.
+  // - Enabled: Allow metahumans at priorities A–C.
+  game.settings.register("shadowrun2e", "moreMetahumans", {
+    name: "More Metahumans",
+    hint: "Allow selecting Elf/Dwarf/Ork/Troll at Metatype priorities A–C (default is A only).",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+    restricted: true,
+  });
 
-    // House rule: Contact Levels (SR2-style contacts with upgrade tiers).
-    // - Contacts are Level 1–3.
-    // - Two free Level 1 contacts.
-    // - Extra contacts: ¥5,000 each (max 3× Charisma, excluding the two free).
-    // - Upgrades: +¥3,000 to Level 2 (max extra 2× Charisma), +¥7,000 to Level 3 (max extra 1× Charisma).
-    // - No Buddies (this setting implies Disable Buddies).
-    // - Followers are selected from Contact templates; Gang/Tribe followers remain and are capped to max 3 attributes/skills.
-    // - Enforcement is creation-mode only (before Resources are finalized).
-    game.settings.register("shadowrun2e", "contactLevels", {
-        name: "Contact Levels",
-        hint: "Enable Contact Levels (L1–L3) with SR2-style costs, limits, and upgrades during creation.",
-        scope: "world",
-        config: true,
-        type: Boolean,
-        default: false,
-        restricted: true
-    });
+  // House rule: Contact Levels (SR2-style contacts with upgrade tiers).
+  // - Contacts are Level 1–3.
+  // - Two free Level 1 contacts.
+  // - Extra contacts: ¥5,000 each (max 3× Charisma, excluding the two free).
+  // - Upgrades: +¥3,000 to Level 2 (max extra 2× Charisma), +¥7,000 to Level 3 (max extra 1× Charisma).
+  // - No Buddies (this setting implies Disable Buddies).
+  // - Followers are selected from Contact templates; Gang/Tribe followers remain and are capped to max 3 attributes/skills.
+  // - Enforcement is creation-mode only (before Resources are finalized).
+  game.settings.register("shadowrun2e", "contactLevels", {
+    name: "Contact Levels",
+    hint: "Enable Contact Levels (L1–L3) with SR2-style costs, limits, and upgrades during creation.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+    restricted: true,
+  });
 
-    // House rule: remove Buddies from character creation entirely.
-    game.settings.register("shadowrun2e", "disableBuddies", {
-        name: "Disable Buddies",
-        hint: "Remove the Buddy creation extra (no purchase button, no cost, no budget impact).",
-        scope: "world",
-        config: true,
-        type: Boolean,
-        default: false,
-        restricted: true
-    });
+  // House rule: remove Buddies from character creation entirely.
+  game.settings.register("shadowrun2e", "disableBuddies", {
+    name: "Disable Buddies",
+    hint: "Remove the Buddy creation extra (no purchase button, no cost, no budget impact).",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+    restricted: true,
+  });
 
-    game.settings.register("shadowrun2e", "nestedConnectionFolders", {
-        name: "Nested Connection Folders",
-        hint: "Control how Connections are organized into nested folders.",
-        scope: "world",
-        config: true,
-        type: String,
-        choices: {
-            disabled: "Disabled",
-            perType: "Per Type",
-            perPlayer: "Per Player",
-            perTypePerPlayer: "Per Type Per Player",
-            perPlayerPerType: "Per Player Per Type"
-        },
-        default: "disabled",
-        restricted: true
-    });
+  game.settings.register("shadowrun2e", "nestedConnectionFolders", {
+    name: "Nested Connection Folders",
+    hint: "Control how Connections are organized into nested folders.",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      disabled: "Disabled",
+      perType: "Per Type",
+      perPlayer: "Per Player",
+      perTypePerPlayer: "Per Type Per Player",
+      perPlayerPerType: "Per Player Per Type",
+    },
+    default: "disabled",
+    restricted: true,
+  });
 
-    game.settings.register("shadowrun2e", "dataImported", {
-        name: "Data Imported",
-        hint: "Whether the system data has been imported into compendiums",
-        scope: "world",
-        config: false,
-        type: Boolean,
-        default: false
-    });
+  game.settings.register("shadowrun2e", "dataImported", {
+    name: "Data Imported",
+    hint: "Whether the system data has been imported into compendiums",
+    scope: "world",
+    config: false,
+    type: Boolean,
+    default: false,
+  });
 
-    game.settings.registerMenu("shadowrun2e", "dataImport", {
-        name: "Import System Data",
-        label: "Import Data",
-        hint: "Import cyberware, bioware, spells, and other items into compendiums",
-        icon: "fas fa-download",
-        type: DataImportConfig,
-        restricted: true
-    });
+  game.settings.registerMenu("shadowrun2e", "dataImport", {
+    name: "Import System Data",
+    label: "Import Data",
+    hint: "Import cyberware, bioware, spells, and other items into compendiums",
+    icon: "fas fa-download",
+    type: DataImportConfig,
+    restricted: true,
+  });
 
-    game.settings.registerMenu("shadowrun2e", "characterImport", {
-        name: "Import Character",
-        label: "Import Character",
-        hint: "Import a character from JSON file",
-        icon: "fas fa-user-plus",
-        type: CharacterImportConfig,
-        restricted: false
-    });
+  game.settings.registerMenu("shadowrun2e", "characterImport", {
+    name: "Import Character",
+    label: "Import Character",
+    hint: "Import a character from JSON file",
+    icon: "fas fa-user-plus",
+    type: CharacterImportConfig,
+    restricted: false,
+  });
 }
 
 /* -------------------------------------------- */
@@ -3201,23 +784,22 @@ function registerSystemSettings() {
 /* -------------------------------------------- */
 
 function preloadHandlebarsTemplates() {
-    const templatePaths = [
-        "systems/shadowrun2e/templates/actor/character-sheet.html",
-        "systems/shadowrun2e/templates/actor/cyberdeck-sheet.html",
-        "systems/shadowrun2e/templates/actor/vehicle-sheet.html",
-        "systems/shadowrun2e/templates/actor/spirit-sheet.html",
-        "systems/shadowrun2e/templates/actor/ic-sheet.html",
-        "systems/shadowrun2e/templates/item/item-sheet.html",
-        "systems/shadowrun2e/templates/apps/initiative-tracker.html",
-        "systems/shadowrun2e/templates/apps/quick-actions.html",
-        "systems/shadowrun2e/templates/apps/item-browser.html",
-        "systems/shadowrun2e/templates/apps/gear-purchase.html",
-        "systems/shadowrun2e/templates/apps/data-import.html",
-        "systems/shadowrun2e/templates/apps/character-import.html",
-        "systems/shadowrun2e/templates/chat/dice-roll.html"
-    ];
+  const templatePaths = [
+    "systems/shadowrun2e/templates/actor/character-sheet.html",
+    "systems/shadowrun2e/templates/actor/cyberdeck-sheet.html",
+    "systems/shadowrun2e/templates/actor/vehicle-sheet.html",
+    "systems/shadowrun2e/templates/actor/spirit-sheet.html",
+    "systems/shadowrun2e/templates/actor/ic-sheet.html",
+    "systems/shadowrun2e/templates/item/item-sheet.html",
+    "systems/shadowrun2e/templates/apps/quick-actions.html",
+    "systems/shadowrun2e/templates/apps/item-browser.html",
+    "systems/shadowrun2e/templates/apps/gear-purchase.html",
+    "systems/shadowrun2e/templates/apps/data-import.html",
+    "systems/shadowrun2e/templates/apps/character-import.html",
+    "systems/shadowrun2e/templates/chat/dice-roll.html",
+  ];
 
-    return loadTemplates(templatePaths);
+  return loadTemplates(templatePaths);
 }
 
 /* -------------------------------------------- */
@@ -3225,85 +807,69 @@ function preloadHandlebarsTemplates() {
 /* -------------------------------------------- */
 
 function registerHandlebarsHelpers() {
-    // Helper to calculate initiative phases
-    Handlebars.registerHelper('phases', function (initiative) {
-        const phases = [];
-        let currentInit = initiative;
-        while (currentInit > 0) {
-            phases.push(currentInit);
-            currentInit -= 10;
-        }
-        return phases;
-    });
+  // Helper for greater than comparison
+  Handlebars.registerHelper("gt", function (a, b) {
+    return a > b;
+  });
 
-    // Helper for greater than comparison
-    Handlebars.registerHelper('gt', function (a, b) {
-        return a > b;
-    });
+  // Helper for equality comparison
+  Handlebars.registerHelper("eq", function (a, b) {
+    return a === b;
+  });
 
-    // Helper for equality comparison
-    Handlebars.registerHelper('eq', function (a, b) {
-        return a === b;
-    });
+  // Helper for string capitalization
+  Handlebars.registerHelper("capitalize", function (str) {
+    if (typeof str !== "string") return "";
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  });
 
-    // Helper to get array element by index
-    Handlebars.registerHelper('lookup', function (array, index) {
-        return array[index];
-    });
+  // Helper for mathematical operations
+  Handlebars.registerHelper("math", function (lvalue, operator, rvalue, options) {
+    lvalue = parseFloat(lvalue);
+    rvalue = parseFloat(rvalue);
 
-    // Helper for string capitalization
-    Handlebars.registerHelper('capitalize', function (str) {
-        if (typeof str !== 'string') return '';
-        return str.charAt(0).toUpperCase() + str.slice(1);
-    });
+    return {
+      "+": lvalue + rvalue,
+      "-": lvalue - rvalue,
+      "*": lvalue * rvalue,
+      "/": lvalue / rvalue,
+      "%": lvalue % rvalue,
+    }[operator];
+  });
 
-    // Helper for mathematical operations
-    Handlebars.registerHelper('math', function (lvalue, operator, rvalue, options) {
-        lvalue = parseFloat(lvalue);
-        rvalue = parseFloat(rvalue);
+  // Helper for less than or equal comparison
+  Handlebars.registerHelper("lte", function (a, b) {
+    return a <= b;
+  });
 
-        return {
-            "+": lvalue + rvalue,
-            "-": lvalue - rvalue,
-            "*": lvalue * rvalue,
-            "/": lvalue / rvalue,
-            "%": lvalue % rvalue
-        }[operator];
-    });
+  // Helper for less than comparison
+  Handlebars.registerHelper("lt", function (a, b) {
+    return a < b;
+  });
 
-    // Helper for less than or equal comparison
-    Handlebars.registerHelper('lte', function (a, b) {
-        return a <= b;
-    });
+  // Helper for creating repeated elements (like damage boxes)
+  Handlebars.registerHelper("times", function (n, block) {
+    let accum = "";
+    for (let i = 0; i < n; ++i) {
+      accum += block.fn({ index: i });
+    }
+    return accum;
+  });
 
-    // Helper for less than comparison
-    Handlebars.registerHelper('lt', function (a, b) {
-        return a < b;
-    });
+  // Helper for addition
+  Handlebars.registerHelper("add", function (a, b) {
+    return a + b;
+  });
 
-    // Helper for creating repeated elements (like damage boxes)
-    Handlebars.registerHelper('times', function (n, block) {
-        let accum = '';
-        for (let i = 0; i < n; ++i) {
-            accum += block.fn({ index: i });
-        }
-        return accum;
-    });
+  // Helper for safe number display (handles NaN and undefined)
+  Handlebars.registerHelper("safeNumber", function (value, defaultValue = 0) {
+    if (typeof value === "number" && !isNaN(value)) {
+      return value;
+    }
+    return defaultValue;
+  });
 
-    // Helper for addition
-    Handlebars.registerHelper('add', function (a, b) {
-        return a + b;
-    });
-
-    // Helper for safe number display (handles NaN and undefined)
-    Handlebars.registerHelper('safeNumber', function (value, defaultValue = 0) {
-        if (typeof value === 'number' && !isNaN(value)) {
-            return value;
-        }
-        return defaultValue;
-    });
-
-    console.log('SR2E | Registered safeNumber Handlebars helper');
+  console.log("SR2E | Registered safeNumber Handlebars helper");
 }
 
 /* -------------------------------------------- */
@@ -3311,83 +877,99 @@ function registerHandlebarsHelpers() {
 /* -------------------------------------------- */
 
 class DataImportConfig extends FormApplication {
-    static get defaultOptions() {
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "sr2-data-import",
-            title: "Import Shadowrun 2E Data",
-            template: "systems/shadowrun2e/templates/apps/data-import.html",
-            width: 400,
-            height: 300,
-            classes: ["shadowrun2e", "data-import"]
-        });
+  static get defaultOptions() {
+    return foundry.utils.mergeObject(super.defaultOptions, {
+      id: "sr2-data-import",
+      title: "Import Shadowrun 2E Data",
+      template: "systems/shadowrun2e/templates/apps/data-import.html",
+      width: 400,
+      height: 300,
+      classes: ["shadowrun2e", "data-import"],
+    });
+  }
+
+  getData() {
+    return {
+      dataImported: game.settings.get("shadowrun2e", "dataImported"),
+    };
+  }
+
+  activateListeners(html) {
+    super.activateListeners(html);
+    html.find(".import-data").click(this._onImportData.bind(this));
+    html.find(".clear-data").click(this._onClearData.bind(this));
+  }
+
+  async _onImportData(event) {
+    event.preventDefault();
+    ui.notifications.info("Starting data import...");
+
+    try {
+      await SR2DataImporter.importAllData();
+      await game.settings.set("shadowrun2e", "dataImported", true);
+      this.render();
+    } catch (error) {
+      console.error("Data import failed:", error);
+      ui.notifications.error("Data import failed. Check console for details.");
+    }
+  }
+
+  async _onClearData(event) {
+    event.preventDefault();
+
+    const confirmed = await Dialog.confirm({
+      title: "Clear All Data",
+      content: "Are you sure you want to clear all imported data? This cannot be undone.",
+      yes: () => true,
+      no: () => false,
+    });
+
+    if (confirmed) {
+      await this._clearAllPacks();
+      await game.settings.set("shadowrun2e", "dataImported", false);
+      ui.notifications.info("All data cleared.");
+      this.render();
+    }
+  }
+
+  async _clearAllPacks() {
+    const itemPackNames = [
+      "cyberware",
+      "bioware",
+      "spells",
+      "adeptpowers",
+      "skills",
+      "programs",
+      "vrprograms",
+      "gear",
+      "totems",
+    ];
+    const actorPackNames = ["cyberdecks", "vehicles", "drones"];
+
+    // Clear item packs
+    for (const packName of itemPackNames) {
+      const pack = game.packs.get(`shadowrun2e.${packName}`);
+      if (pack) {
+        const documents = await pack.getDocuments();
+        await Item.deleteDocuments(
+          documents.map((d) => d.id),
+          { pack: pack.collection },
+        );
+      }
     }
 
-    getData() {
-        return {
-            dataImported: game.settings.get("shadowrun2e", "dataImported")
-        };
+    // Clear actor packs
+    for (const packName of actorPackNames) {
+      const pack = game.packs.get(`shadowrun2e.${packName}`);
+      if (pack) {
+        const documents = await pack.getDocuments();
+        await Actor.deleteDocuments(
+          documents.map((d) => d.id),
+          { pack: pack.collection },
+        );
+      }
     }
-
-    activateListeners(html) {
-        super.activateListeners(html);
-        html.find('.import-data').click(this._onImportData.bind(this));
-        html.find('.clear-data').click(this._onClearData.bind(this));
-    }
-
-    async _onImportData(event) {
-        event.preventDefault();
-        ui.notifications.info("Starting data import...");
-
-        try {
-            await SR2DataImporter.importAllData();
-            await game.settings.set("shadowrun2e", "dataImported", true);
-            this.render();
-        } catch (error) {
-            console.error("Data import failed:", error);
-            ui.notifications.error("Data import failed. Check console for details.");
-        }
-    }
-
-    async _onClearData(event) {
-        event.preventDefault();
-
-        const confirmed = await Dialog.confirm({
-            title: "Clear All Data",
-            content: "Are you sure you want to clear all imported data? This cannot be undone.",
-            yes: () => true,
-            no: () => false
-        });
-
-        if (confirmed) {
-            await this._clearAllPacks();
-            await game.settings.set("shadowrun2e", "dataImported", false);
-            ui.notifications.info("All data cleared.");
-            this.render();
-        }
-    }
-
-    async _clearAllPacks() {
-        const itemPackNames = ["cyberware", "bioware", "spells", "adeptpowers", "skills", "programs", "vrprograms", "gear", "totems"];
-        const actorPackNames = ["cyberdecks", "vehicles", "drones"];
-
-        // Clear item packs
-        for (const packName of itemPackNames) {
-            const pack = game.packs.get(`shadowrun2e.${packName}`);
-            if (pack) {
-                const documents = await pack.getDocuments();
-                await Item.deleteDocuments(documents.map(d => d.id), { pack: pack.collection });
-            }
-        }
-
-        // Clear actor packs
-        for (const packName of actorPackNames) {
-            const pack = game.packs.get(`shadowrun2e.${packName}`);
-            if (pack) {
-                const documents = await pack.getDocuments();
-                await Actor.deleteDocuments(documents.map(d => d.id), { pack: pack.collection });
-            }
-        }
-    }
+  }
 }
 
 /* -------------------------------------------- */
@@ -3395,31 +977,31 @@ class DataImportConfig extends FormApplication {
 /* -------------------------------------------- */
 
 class CharacterImportConfig extends FormApplication {
-    static get defaultOptions() {
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "sr2-character-import",
-            title: "Import Shadowrun 2E Character",
-            template: "systems/shadowrun2e/templates/apps/character-import.html",
-            width: 400,
-            height: 250,
-            classes: ["shadowrun2e", "character-import"]
-        });
-    }
+  static get defaultOptions() {
+    return foundry.utils.mergeObject(super.defaultOptions, {
+      id: "sr2-character-import",
+      title: "Import Shadowrun 2E Character",
+      template: "systems/shadowrun2e/templates/apps/character-import.html",
+      width: 400,
+      height: 250,
+      classes: ["shadowrun2e", "character-import"],
+    });
+  }
 
-    getData() {
-        return {};
-    }
+  getData() {
+    return {};
+  }
 
-    activateListeners(html) {
-        super.activateListeners(html);
-        html.find('.import-character').click(this._onImportCharacter.bind(this));
-    }
+  activateListeners(html) {
+    super.activateListeners(html);
+    html.find(".import-character").click(this._onImportCharacter.bind(this));
+  }
 
-    async _onImportCharacter(event) {
-        event.preventDefault();
-        this.close();
-        SR2CharacterImporter.showImportDialog();
-    }
+  async _onImportCharacter(event) {
+    event.preventDefault();
+    this.close();
+    SR2CharacterImporter.showImportDialog();
+  }
 }
 
 /* -------------------------------------------- */
@@ -3427,40 +1009,42 @@ class CharacterImportConfig extends FormApplication {
 /* -------------------------------------------- */
 
 Hooks.once("ready", async function () {
-    // Make sure Create Actor dialog enhancements work reliably across Foundry versions.
-    try {
-        installActorCreateDialogObserver(sr2EnhanceActorCreateDialog);
-    } catch (err) {
-        console.warn("SR2E | Failed to install Create Actor dialog observer:", err);
-    }
+  // Make sure Create Actor dialog enhancements work reliably across Foundry versions.
+  try {
+    installActorCreateDialogObserver(sr2EnhanceActorCreateDialog);
+  } catch (err) {
+    console.warn("SR2E | Failed to install Create Actor dialog observer:", err);
+  }
 
-    // Auto-import data on first world load
-    if (game.user.isGM && !game.settings.get("shadowrun2e", "dataImported")) {
-        const shouldImport = await Dialog.confirm({
-            title: "Import Shadowrun 2E Data",
-            content: `<p>This appears to be the first time loading Shadowrun 2E in this world.</p>
+  // Auto-import data on first world load
+  if (game.user.isGM && !game.settings.get("shadowrun2e", "dataImported")) {
+    const shouldImport = await Dialog.confirm({
+      title: "Import Shadowrun 2E Data",
+      content: `<p>This appears to be the first time loading Shadowrun 2E in this world.</p>
                      <p>Would you like to automatically import all system data (cyberware, bioware, spells, etc.) into compendiums?</p>
                      <p><em>This may take a few moments...</em></p>`,
-            yes: () => true,
-            no: () => false,
-            defaultYes: true
-        });
+      yes: () => true,
+      no: () => false,
+      defaultYes: true,
+    });
 
-        if (shouldImport) {
-            ui.notifications.info("Importing Shadowrun 2E data...");
-            try {
-                await SR2DataImporter.importAllData();
-                await game.settings.set("shadowrun2e", "dataImported", true);
-            } catch (error) {
-                console.error("Auto-import failed:", error);
-                ui.notifications.warn("Auto-import failed. You can manually import data from System Settings.");
-            }
-        }
+    if (shouldImport) {
+      ui.notifications.info("Importing Shadowrun 2E data...");
+      try {
+        await SR2DataImporter.importAllData();
+        await game.settings.set("shadowrun2e", "dataImported", true);
+      } catch (error) {
+        console.error("Auto-import failed:", error);
+        ui.notifications.warn(
+          "Auto-import failed. You can manually import data from System Settings.",
+        );
+      }
     }
+  }
 
-    try {
-        await sr2RepairExistingConnectionActors();
-    } catch (err) {
-        console.warn("SR2E | Failed to repair existing connection actors:", err);
-    }
+  try {
+    await sr2RepairExistingConnectionActors();
+  } catch (err) {
+    console.warn("SR2E | Failed to repair existing connection actors:", err);
+  }
 });

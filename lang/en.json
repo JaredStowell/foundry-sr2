@@ -16,7 +16,7 @@
     },
     "Item": {
       "skill": "Skill",
-      "weapon": "Weapon", 
+      "weapon": "Weapon",
       "armor": "Armor",
       "gear": "Gear",
       "cyberware": "Cyberware",
@@ -29,7 +29,7 @@
 
   "SR2E.Attributes": {
     "Body": "Body",
-    "Quickness": "Quickness", 
+    "Quickness": "Quickness",
     "Strength": "Strength",
     "Charisma": "Charisma",
     "Intelligence": "Intelligence",
@@ -41,7 +41,7 @@
 
   "SR2E.Pools": {
     "Combat": "Combat Pool",
-    "Spell": "Spell Pool", 
+    "Spell": "Spell Pool",
     "Karma": "Karma Pool",
     "Hacking": "Hacking Pool",
     "Control": "Control Pool",
@@ -63,7 +63,7 @@
   "SR2E.Metatypes": {
     "Human": "Human",
     "Elf": "Elf",
-    "Dwarf": "Dwarf", 
+    "Dwarf": "Dwarf",
     "Ork": "Ork",
     "Troll": "Troll"
   },

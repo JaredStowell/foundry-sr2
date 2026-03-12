@@ -6,7 +6,6 @@ import { sr2InferFocusBondCostForGearItem } from "./sr2-rules.js";
 import { sr2LogDebug } from "./utils/logger.js";
 
 export class SR2DataImporter {
-
   /**
    * Import all data from JSON files into compendiums
    */
@@ -43,7 +42,7 @@ export class SR2DataImporter {
 
     try {
       const existing = await pack.getDocuments();
-      const existingIds = existing.map(doc => doc.id).filter(Boolean);
+      const existingIds = existing.map((doc) => doc.id).filter(Boolean);
       if (existingIds.length) {
         if (documentType === "Actor") {
           await Actor.deleteDocuments(existingIds, { pack: pack.collection });
@@ -77,8 +76,7 @@ export class SR2DataImporter {
     sr2LogDebug("Importing cyberware...");
 
     try {
-
-      const response = await fetch('/systems/shadowrun2e/data/cyberware.json');
+      const response = await fetch("/systems/shadowrun2e/data/cyberware.json");
       const data = await response.json();
 
       const items = [];
@@ -100,8 +98,8 @@ export class SR2DataImporter {
               bodyLocation: category.toLowerCase(),
               quantity: 1,
               weight: 0,
-              price: item.Cost
-            }
+              price: item.Cost,
+            },
           };
           items.push(itemData);
         }
@@ -116,7 +114,6 @@ export class SR2DataImporter {
       // Verify items were added to pack
       const packContents = await pack.getDocuments();
       sr2LogDebug(`Pack now contains ${packContents.length} items`);
-
     } catch (error) {
       console.error("SR2E | Failed to import cyberware:", error);
     }
@@ -135,8 +132,7 @@ export class SR2DataImporter {
     sr2LogDebug("Importing bioware...");
 
     try {
-
-      const response = await fetch('/systems/shadowrun2e/data/bioware.json');
+      const response = await fetch("/systems/shadowrun2e/data/bioware.json");
       const data = await response.json();
 
       const items = [];
@@ -158,8 +154,8 @@ export class SR2DataImporter {
               bodyLocation: category.toLowerCase(),
               quantity: 1,
               weight: 0,
-              price: item.Cost
-            }
+              price: item.Cost,
+            },
           };
           items.push(itemData);
         }
@@ -167,7 +163,6 @@ export class SR2DataImporter {
 
       await this._replaceCompendiumDocuments(pack, items, "Item");
       sr2LogDebug(`Imported ${items.length} bioware items`);
-
     } catch (error) {
       console.error("SR2E | Failed to import bioware:", error);
     }
@@ -186,8 +181,7 @@ export class SR2DataImporter {
     sr2LogDebug("Importing spells...");
 
     try {
-
-      const response = await fetch('/systems/shadowrun2e/data/spells.json');
+      const response = await fetch("/systems/shadowrun2e/data/spells.json");
       const data = await response.json();
 
       const items = [];
@@ -209,15 +203,14 @@ export class SR2DataImporter {
             damage: "M",
             quantity: 1,
             weight: 0,
-            price: 0
-          }
+            price: 0,
+          },
         };
         items.push(itemData);
       }
 
       await this._replaceCompendiumDocuments(pack, items, "Item");
       sr2LogDebug(`Imported ${items.length} spells`);
-
     } catch (error) {
       console.error("SR2E | Failed to import spells:", error);
     }
@@ -236,8 +229,7 @@ export class SR2DataImporter {
     sr2LogDebug("Importing adept powers...");
 
     try {
-
-      const response = await fetch('/systems/shadowrun2e/data/AdeptPowers.json');
+      const response = await fetch("/systems/shadowrun2e/data/AdeptPowers.json");
       const data = await response.json();
 
       const items = [];
@@ -258,15 +250,14 @@ export class SR2DataImporter {
             bookPage: power.BookPage,
             quantity: 1,
             weight: 0,
-            price: 0
-          }
+            price: 0,
+          },
         };
         items.push(itemData);
       }
 
       await this._replaceCompendiumDocuments(pack, items, "Item");
       sr2LogDebug(`Imported ${items.length} adept powers`);
-
     } catch (error) {
       console.error("SR2E | Failed to import adept powers:", error);
     }
@@ -285,8 +276,7 @@ export class SR2DataImporter {
     sr2LogDebug("Importing skills...");
 
     try {
-
-      const response = await fetch('/systems/shadowrun2e/data/skills.json');
+      const response = await fetch("/systems/shadowrun2e/data/skills.json");
       const data = await response.json();
 
       const items = [];
@@ -298,7 +288,7 @@ export class SR2DataImporter {
           type: "skill",
           img: "systems/shadowrun2e/icons/skill.svg",
           system: {
-            description: `Base Skill: ${skillData.name}\nConcentrations: ${skillData.Concentrations.map(c => c.name).join(', ')}`,
+            description: `Base Skill: ${skillData.name}\nConcentrations: ${skillData.Concentrations.map((c) => c.name).join(", ")}`,
             baseSkill: skillData.name,
             concentration: "",
             specialization: "",
@@ -308,8 +298,8 @@ export class SR2DataImporter {
             requiresConcentration: skillData.requiresConcentration || false,
             quantity: 1,
             weight: 0,
-            price: 0
-          }
+            price: 0,
+          },
         };
         items.push(itemData);
 
@@ -321,7 +311,7 @@ export class SR2DataImporter {
               type: "skill",
               img: "systems/shadowrun2e/icons/skill.svg",
               system: {
-                description: `${skillData.name} → ${concentration.name}\nSpecializations: ${concentration.Specializations.join(', ')}`,
+                description: `${skillData.name} → ${concentration.name}\nSpecializations: ${concentration.Specializations.join(", ")}`,
                 baseSkill: skillData.name,
                 concentration: concentration.name,
                 specialization: "",
@@ -331,8 +321,8 @@ export class SR2DataImporter {
                 requiresConcentration: skillData.requiresConcentration || false,
                 quantity: 1,
                 weight: 0,
-                price: 0
-              }
+                price: 0,
+              },
             };
             items.push(concItemData);
           }
@@ -341,7 +331,6 @@ export class SR2DataImporter {
 
       await this._replaceCompendiumDocuments(pack, items, "Item");
       sr2LogDebug(`Imported ${items.length} skill items`);
-
     } catch (error) {
       console.error("SR2E | Failed to import skills:", error);
     }
@@ -360,8 +349,7 @@ export class SR2DataImporter {
     sr2LogDebug("Importing cyberdecks...");
 
     try {
-
-      const response = await fetch('/systems/shadowrun2e/data/cyberdeck.json');
+      const response = await fetch("/systems/shadowrun2e/data/cyberdeck.json");
       const data = await response.json();
 
       const actors = [];
@@ -377,11 +365,11 @@ export class SR2DataImporter {
             hardening: deck.Hardening,
             memory: {
               total: deck.Memory,
-              used: 0
+              used: 0,
             },
             storage: {
               total: deck.Storage,
-              used: 0
+              used: 0,
             },
             load: deck.Load,
             ioSpeed: deck["I/O Speed"],
@@ -389,22 +377,21 @@ export class SR2DataImporter {
             damage: {
               icon: {
                 value: 0,
-                max: 10
-              }
+                max: 10,
+              },
             },
             cost: deck.Cost,
             streetIndex: parseFloat(deck["Street Index"]),
             availability: deck.Availability,
             bookPage: deck.BookPage,
-            biography: `Model: ${deck.Name}\nPersona: ${deck.Persona}\nHardening: ${deck.Hardening}\nMemory: ${deck.Memory} MP\nStorage: ${deck.Storage} MP\nLoad: ${deck.Load}\nI/O Speed: ${deck["I/O Speed"]}\nResponse Increase: ${deck["Response Increase"]}\nCost: ¥${deck.Cost}\nAvailability: ${deck.Availability}\nSource: ${deck.BookPage}`
-          }
+            biography: `Model: ${deck.Name}\nPersona: ${deck.Persona}\nHardening: ${deck.Hardening}\nMemory: ${deck.Memory} MP\nStorage: ${deck.Storage} MP\nLoad: ${deck.Load}\nI/O Speed: ${deck["I/O Speed"]}\nResponse Increase: ${deck["Response Increase"]}\nCost: ¥${deck.Cost}\nAvailability: ${deck.Availability}\nSource: ${deck.BookPage}`,
+          },
         };
         actors.push(actorData);
       }
 
       await this._replaceCompendiumDocuments(pack, actors, "Actor");
       sr2LogDebug(`Imported ${actors.length} cyberdeck actors`);
-
     } catch (error) {
       console.error("SR2E | Failed to import cyberdecks:", error);
     }
@@ -423,57 +410,62 @@ export class SR2DataImporter {
     sr2LogDebug("Importing vehicles...");
 
     try {
-
-      const response = await fetch('/systems/shadowrun2e/data/vehicles.json');
+      const response = await fetch("/systems/shadowrun2e/data/vehicles.json");
       const data = await response.json();
 
       const actors = [];
 
       for (const vehicle of data) {
         // Parse handling (format: "3/4" or "3")
-        let handlingOn = 0, handlingOff = 0;
+        let handlingOn = 0,
+          handlingOff = 0;
         if (vehicle.Handling) {
-          const handlingParts = vehicle.Handling.toString().split('/');
+          const handlingParts = vehicle.Handling.toString().split("/");
           handlingOn = parseInt(handlingParts[0]) || 0;
           handlingOff = parseInt(handlingParts[1]) || handlingOn;
         }
 
         // Parse speed/accel (format: "120/8")
-        let speed = 0, accel = 0;
+        let speed = 0,
+          accel = 0;
         if (vehicle["Speed/Accel"]) {
-          const speedParts = vehicle["Speed/Accel"].toString().split('/');
+          const speedParts = vehicle["Speed/Accel"].toString().split("/");
           speed = parseInt(speedParts[0]) || 0;
           accel = parseInt(speedParts[1]) || 0;
         }
 
         // Parse body/armor (format: "3/2")
-        let body = 0, armor = 0;
+        let body = 0,
+          armor = 0;
         if (vehicle["Body/Armor"]) {
-          const bodyParts = vehicle["Body/Armor"].toString().split('/');
+          const bodyParts = vehicle["Body/Armor"].toString().split("/");
           body = parseInt(bodyParts[0]) || 0;
           armor = parseInt(bodyParts[1]) || 0;
         }
 
         // Parse sig/autonav (format: "2/3" or "2/-")
-        let sig = 0, autonav = 0;
+        let sig = 0,
+          autonav = 0;
         if (vehicle["Sig/Autonav"]) {
-          const sigParts = vehicle["Sig/Autonav"].toString().split('/');
+          const sigParts = vehicle["Sig/Autonav"].toString().split("/");
           sig = parseInt(sigParts[0]) || 0;
-          autonav = sigParts[1] === '-' ? 0 : parseInt(sigParts[1]) || 0;
+          autonav = sigParts[1] === "-" ? 0 : parseInt(sigParts[1]) || 0;
         }
 
         // Parse pilot/sensor (format: "2/1" or "-/1")
-        let pilot = 0, sensor = 0;
+        let pilot = 0,
+          sensor = 0;
         if (vehicle["Pilot/Sensor"]) {
-          const pilotParts = vehicle["Pilot/Sensor"].toString().split('/');
-          pilot = pilotParts[0] === '-' ? 0 : parseInt(pilotParts[0]) || 0;
+          const pilotParts = vehicle["Pilot/Sensor"].toString().split("/");
+          pilot = pilotParts[0] === "-" ? 0 : parseInt(pilotParts[0]) || 0;
           sensor = parseInt(pilotParts[1]) || 0;
         }
 
         // Parse cargo/load (format: "12/110")
-        let cargo = 0, load = 0;
+        let cargo = 0,
+          load = 0;
         if (vehicle["Cargo/Load"]) {
-          const cargoParts = vehicle["Cargo/Load"].toString().split('/');
+          const cargoParts = vehicle["Cargo/Load"].toString().split("/");
           cargo = parseInt(cargoParts[0]) || 0;
           load = parseInt(cargoParts[1]) || 0;
         }
@@ -481,9 +473,19 @@ export class SR2DataImporter {
         // Determine vehicle type based on name and characteristics
         let vehicleType = "ground";
         const name = vehicle.name.toLowerCase();
-        if (name.includes('aircraft') || name.includes('helicopter') || name.includes('plane') || name.includes('vtol')) {
+        if (
+          name.includes("aircraft") ||
+          name.includes("helicopter") ||
+          name.includes("plane") ||
+          name.includes("vtol")
+        ) {
           vehicleType = "air";
-        } else if (name.includes('boat') || name.includes('ship') || name.includes('marine') || name.includes('hydrofoil')) {
+        } else if (
+          name.includes("boat") ||
+          name.includes("ship") ||
+          name.includes("marine") ||
+          name.includes("hydrofoil")
+        ) {
           vehicleType = "water";
         }
 
@@ -496,7 +498,7 @@ export class SR2DataImporter {
             vehicleType: vehicleType,
             handling: {
               on: handlingOn,
-              off: handlingOff
+              off: handlingOff,
             },
             speed: speed,
             accel: accel,
@@ -509,24 +511,23 @@ export class SR2DataImporter {
             cargo: cargo,
             load: load,
             seating: vehicle.Seating || "",
-            cost: parseInt(vehicle["$Cost"]?.toString().replace(/[^\d]/g, '')) || 0,
+            cost: parseInt(vehicle["$Cost"]?.toString().replace(/[^\d]/g, "")) || 0,
             availability: vehicle.Availability || "",
             streetIndex: parseFloat(vehicle["Street Index"]) || 1.0,
             notes: vehicle.Notes || "",
             bookPage: vehicle["Book.Page"] || "",
             health: {
               value: 0,
-              max: 10
+              max: 10,
             },
-            biography: `Model: ${vehicle.name}\nHandling: ${vehicle.Handling}\nSpeed/Accel: ${vehicle["Speed/Accel"]}\nBody/Armor: ${vehicle["Body/Armor"]}\nSig/Autonav: ${vehicle["Sig/Autonav"]}\nPilot/Sensor: ${vehicle["Pilot/Sensor"]}\nCargo/Load: ${vehicle["Cargo/Load"]}\nSeating: ${vehicle.Seating}\nCost: ${vehicle["$Cost"]}\nAvailability: ${vehicle.Availability}\nStreet Index: ${vehicle["Street Index"]}\nNotes: ${vehicle.Notes}\nSource: ${vehicle["Book.Page"]}`
-          }
+            biography: `Model: ${vehicle.name}\nHandling: ${vehicle.Handling}\nSpeed/Accel: ${vehicle["Speed/Accel"]}\nBody/Armor: ${vehicle["Body/Armor"]}\nSig/Autonav: ${vehicle["Sig/Autonav"]}\nPilot/Sensor: ${vehicle["Pilot/Sensor"]}\nCargo/Load: ${vehicle["Cargo/Load"]}\nSeating: ${vehicle.Seating}\nCost: ${vehicle["$Cost"]}\nAvailability: ${vehicle.Availability}\nStreet Index: ${vehicle["Street Index"]}\nNotes: ${vehicle.Notes}\nSource: ${vehicle["Book.Page"]}`,
+          },
         };
         actors.push(actorData);
       }
 
       await this._replaceCompendiumDocuments(pack, actors, "Actor");
       sr2LogDebug(`Imported ${actors.length} vehicle actors`);
-
     } catch (error) {
       console.error("SR2E | Failed to import vehicles:", error);
     }
@@ -545,57 +546,62 @@ export class SR2DataImporter {
     sr2LogDebug("Importing drones...");
 
     try {
-
-      const response = await fetch('/systems/shadowrun2e/data/drones.json');
+      const response = await fetch("/systems/shadowrun2e/data/drones.json");
       const data = await response.json();
 
       const actors = [];
 
       for (const drone of data) {
         // Parse handling (format: "3/4" or "3")
-        let handlingOn = 0, handlingOff = 0;
+        let handlingOn = 0,
+          handlingOff = 0;
         if (drone.Handling) {
-          const handlingParts = drone.Handling.toString().split('/');
+          const handlingParts = drone.Handling.toString().split("/");
           handlingOn = parseInt(handlingParts[0]) || 0;
           handlingOff = parseInt(handlingParts[1]) || handlingOn;
         }
 
         // Parse speed/accel (format: "120/8")
-        let speed = 0, accel = 0;
+        let speed = 0,
+          accel = 0;
         if (drone["Speed/Accel"]) {
-          const speedParts = drone["Speed/Accel"].toString().split('/');
+          const speedParts = drone["Speed/Accel"].toString().split("/");
           speed = parseInt(speedParts[0]) || 0;
           accel = parseInt(speedParts[1]) || 0;
         }
 
         // Parse body/armor (format: "3/2")
-        let body = 0, armor = 0;
+        let body = 0,
+          armor = 0;
         if (drone["Body/Armor"]) {
-          const bodyParts = drone["Body/Armor"].toString().split('/');
+          const bodyParts = drone["Body/Armor"].toString().split("/");
           body = parseInt(bodyParts[0]) || 0;
           armor = parseInt(bodyParts[1]) || 0;
         }
 
         // Parse sig/autonav (format: "2/3" or "2/-")
-        let sig = 0, autonav = 0;
+        let sig = 0,
+          autonav = 0;
         if (drone["Sig/Autonav"]) {
-          const sigParts = drone["Sig/Autonav"].toString().split('/');
+          const sigParts = drone["Sig/Autonav"].toString().split("/");
           sig = parseInt(sigParts[0]) || 0;
-          autonav = sigParts[1] === '-' ? 0 : parseInt(sigParts[1]) || 0;
+          autonav = sigParts[1] === "-" ? 0 : parseInt(sigParts[1]) || 0;
         }
 
         // Parse pilot/sensor (format: "2/1" or "-/1")
-        let pilot = 0, sensor = 0;
+        let pilot = 0,
+          sensor = 0;
         if (drone["Pilot/Sensor"]) {
-          const pilotParts = drone["Pilot/Sensor"].toString().split('/');
-          pilot = pilotParts[0] === '-' ? 0 : parseInt(pilotParts[0]) || 0;
+          const pilotParts = drone["Pilot/Sensor"].toString().split("/");
+          pilot = pilotParts[0] === "-" ? 0 : parseInt(pilotParts[0]) || 0;
           sensor = parseInt(pilotParts[1]) || 0;
         }
 
         // Parse cargo/load (format: "12/110")
-        let cargo = 0, load = 0;
+        let cargo = 0,
+          load = 0;
         if (drone["Cargo/Load"]) {
-          const cargoParts = drone["Cargo/Load"].toString().split('/');
+          const cargoParts = drone["Cargo/Load"].toString().split("/");
           cargo = parseInt(cargoParts[0]) || 0;
           load = parseInt(cargoParts[1]) || 0;
         }
@@ -609,7 +615,7 @@ export class SR2DataImporter {
             vehicleType: "drone",
             handling: {
               on: handlingOn,
-              off: handlingOff
+              off: handlingOff,
             },
             speed: speed,
             accel: accel,
@@ -622,24 +628,23 @@ export class SR2DataImporter {
             cargo: cargo,
             load: load,
             seating: drone.Seating || "-",
-            cost: parseInt(drone["$Cost"]?.toString().replace(/[^\d]/g, '')) || 0,
+            cost: parseInt(drone["$Cost"]?.toString().replace(/[^\d]/g, "")) || 0,
             availability: drone.Availability || "",
             streetIndex: parseFloat(drone["Street Index"]) || 1.0,
             notes: drone.Notes || "",
             bookPage: drone["Book.Page"] || "",
             health: {
               value: 0,
-              max: 10
+              max: 10,
             },
-            biography: `Model: ${drone.name}\nHandling: ${drone.Handling}\nSpeed/Accel: ${drone["Speed/Accel"]}\nBody/Armor: ${drone["Body/Armor"]}\nSig/Autonav: ${drone["Sig/Autonav"]}\nPilot/Sensor: ${drone["Pilot/Sensor"]}\nCargo/Load: ${drone["Cargo/Load"]}\nSeating: ${drone.Seating}\nCost: ${drone["$Cost"]}\nAvailability: ${drone.Availability}\nStreet Index: ${drone["Street Index"]}\nNotes: ${drone.Notes}\nSource: ${drone["Book.Page"]}`
-          }
+            biography: `Model: ${drone.name}\nHandling: ${drone.Handling}\nSpeed/Accel: ${drone["Speed/Accel"]}\nBody/Armor: ${drone["Body/Armor"]}\nSig/Autonav: ${drone["Sig/Autonav"]}\nPilot/Sensor: ${drone["Pilot/Sensor"]}\nCargo/Load: ${drone["Cargo/Load"]}\nSeating: ${drone.Seating}\nCost: ${drone["$Cost"]}\nAvailability: ${drone.Availability}\nStreet Index: ${drone["Street Index"]}\nNotes: ${drone.Notes}\nSource: ${drone["Book.Page"]}`,
+          },
         };
         actors.push(actorData);
       }
 
       await this._replaceCompendiumDocuments(pack, actors, "Actor");
       sr2LogDebug(`Imported ${actors.length} drone actors`);
-
     } catch (error) {
       console.error("SR2E | Failed to import drones:", error);
     }
@@ -658,8 +663,7 @@ export class SR2DataImporter {
     sr2LogDebug("Importing programs...");
 
     try {
-
-      const response = await fetch('/systems/shadowrun2e/data/programs.json');
+      const response = await fetch("/systems/shadowrun2e/data/programs.json");
       const data = await response.json();
 
       const items = [];
@@ -682,15 +686,14 @@ export class SR2DataImporter {
             streetIndex: 1.0,
             quantity: 1,
             weight: 0,
-            price: 0
-          }
+            price: 0,
+          },
         };
         items.push(itemData);
       }
 
       await this._replaceCompendiumDocuments(pack, items, "Item");
       sr2LogDebug(`Imported ${items.length} programs`);
-
     } catch (error) {
       console.error("SR2E | Failed to import programs:", error);
     }
@@ -709,8 +712,7 @@ export class SR2DataImporter {
     sr2LogDebug("Importing VR programs...");
 
     try {
-
-      const response = await fetch('/systems/shadowrun2e/data/VirtualRealityPrograms.json');
+      const response = await fetch("/systems/shadowrun2e/data/VirtualRealityPrograms.json");
       const data = await response.json();
 
       const items = [];
@@ -733,15 +735,14 @@ export class SR2DataImporter {
             streetIndex: 1.0,
             quantity: 1,
             weight: 0,
-            price: 0
-          }
+            price: 0,
+          },
         };
         items.push(itemData);
       }
 
       await this._replaceCompendiumDocuments(pack, items, "Item");
       sr2LogDebug(`Imported ${items.length} VR programs`);
-
     } catch (error) {
       console.error("SR2E | Failed to import VR programs:", error);
     }
@@ -760,8 +761,7 @@ export class SR2DataImporter {
     sr2LogDebug("Importing gear...");
 
     try {
-
-      const response = await fetch('/systems/shadowrun2e/data/gear.json');
+      const response = await fetch("/systems/shadowrun2e/data/gear.json");
       const data = await response.json();
 
       const items = [];
@@ -782,29 +782,31 @@ export class SR2DataImporter {
             type: itemType,
             img: this._getItemIcon(categoryName, itemType),
             system: {
-              description: `Category: ${categoryName}\nSource: ${item.BookPage || 'Unknown'}`,
+              description: `Category: ${categoryName}\nSource: ${item.BookPage || "Unknown"}`,
               category: categoryName,
               quantity: 1,
               weight: parseFloat(item.Weight) || 0,
               price: parseInt(item.Cost) || 0,
-              bondCost: itemType === "gear"
-                ? sr2InferFocusBondCostForGearItem({
-                  category: categoryName,
-                  name: item.Name,
-                  price: item.Cost
-                })
-                : 0,
+              bondCost:
+                itemType === "gear"
+                  ? sr2InferFocusBondCostForGearItem({
+                      category: categoryName,
+                      name: item.Name,
+                      price: item.Cost,
+                    })
+                  : 0,
               // Add category-specific fields
-              ...this._getCategorySpecificFields(categoryName, item)
-            }
+              ...this._getCategorySpecificFields(categoryName, item),
+            },
           };
           items.push(itemData);
         }
       }
 
       await this._replaceCompendiumDocuments(pack, items, "Item");
-      sr2LogDebug(`Imported ${items.length} gear items across ${Object.keys(data).length} categories`);
-
+      sr2LogDebug(
+        `Imported ${items.length} gear items across ${Object.keys(data).length} categories`,
+      );
     } catch (error) {
       console.error("SR2E | Failed to import gear:", error);
     }
@@ -815,41 +817,41 @@ export class SR2DataImporter {
    */
   static _determineItemType(categoryName) {
     const categoryMap = {
-      'Edged weapon': 'weapon',
-      'Bow and crossbow': 'weapon',
-      'Firearms': 'weapon',
-      'Rockets and Missiles': 'weapon',
-      'Grenades': 'weapon',
-      'Clothing and Armor': 'armor',
-      'Ammunition': 'gear',
-      'Firearms Accessories': 'gear',
-      'Explosives': 'gear',
-      'S+S Vision Enhancers': 'gear',
-      'Surveillance and Security': 'gear',
-      'Cyberdecks': 'gear',
-      'Cyberdeck Other': 'gear',
-      'Biotech': 'gear',
-      'Lifestyle Extras': 'gear',
-      'Lifestyle': 'gear',
-      'Magical Equipment': 'gear',
-      'Vehiclegear': 'gear',
-      'VehicleFire': 'weapon',
-      'Chips': 'gear',
-      'Stuff With Ratings': 'gear',
-      'Drugs': 'gear',
-      'Vehicle modifications': 'gear'
+      "Edged weapon": "weapon",
+      "Bow and crossbow": "weapon",
+      Firearms: "weapon",
+      "Rockets and Missiles": "weapon",
+      Grenades: "weapon",
+      "Clothing and Armor": "armor",
+      Ammunition: "gear",
+      "Firearms Accessories": "gear",
+      Explosives: "gear",
+      "S+S Vision Enhancers": "gear",
+      "Surveillance and Security": "gear",
+      Cyberdecks: "gear",
+      "Cyberdeck Other": "gear",
+      Biotech: "gear",
+      "Lifestyle Extras": "gear",
+      Lifestyle: "gear",
+      "Magical Equipment": "gear",
+      Vehiclegear: "gear",
+      VehicleFire: "weapon",
+      Chips: "gear",
+      "Stuff With Ratings": "gear",
+      Drugs: "gear",
+      "Vehicle modifications": "gear",
     };
 
-    return categoryMap[categoryName] || 'gear';
+    return categoryMap[categoryName] || "gear";
   }
 
   /**
    * Get appropriate icon for item based on category and type
    */
   static _getItemIcon(categoryName, itemType) {
-    if (itemType === 'weapon') {
+    if (itemType === "weapon") {
       return "icons/svg/sword.svg";
-    } else if (itemType === 'armor') {
+    } else if (itemType === "armor") {
       return "icons/svg/armor.svg";
     } else {
       return "icons/svg/item-bag.svg";
@@ -863,8 +865,22 @@ export class SR2DataImporter {
     const fields = {};
 
     // Weapon-specific fields
-    if (['Edged weapon', 'Bow and crossbow', 'Firearms', 'Rockets and Missiles', 'Grenades', 'VehicleFire'].includes(categoryName)) {
-      fields.weaponType = categoryName.includes('Firearms') || categoryName.includes('Bow') || categoryName.includes('Rockets') ? 'ranged' : 'melee';
+    if (
+      [
+        "Edged weapon",
+        "Bow and crossbow",
+        "Firearms",
+        "Rockets and Missiles",
+        "Grenades",
+        "VehicleFire",
+      ].includes(categoryName)
+    ) {
+      fields.weaponType =
+        categoryName.includes("Firearms") ||
+        categoryName.includes("Bow") ||
+        categoryName.includes("Rockets")
+          ? "ranged"
+          : "melee";
       fields.concealability = parseInt(item.Concealability) || 0;
       fields.damage = item.Damage || "1L";
       fields.reach = parseInt(item.Reach) || 0;
@@ -872,19 +888,19 @@ export class SR2DataImporter {
       fields.ammo = {
         current: 0,
         max: parseInt(item.Ammo) || 0,
-        type: item.AmmoType || ""
+        type: item.AmmoType || "",
       };
       fields.recoil = parseInt(item.Recoil) || 0;
       fields.equipped = false;
 
       // Assign range type for ranged weapons
-      if (fields.weaponType === 'ranged') {
+      if (fields.weaponType === "ranged") {
         fields.rangeType = this._determineRangeType(item.Name, categoryName);
       }
     }
 
     // Armor-specific fields
-    if (categoryName === 'Clothing and Armor') {
+    if (categoryName === "Clothing and Armor") {
       fields.rating = parseInt(item.Ballistic) || parseInt(item.Impact) || 0;
       fields.concealability = parseInt(item.Concealability) || 0;
       fields.equipped = false;
@@ -908,62 +924,62 @@ export class SR2DataImporter {
     const name = weaponName.toLowerCase();
 
     // Pistol categories
-    if (name.includes('hold-out') && name.includes('light')) return '(LHOP)';
-    if (name.includes('hold-out')) return '(HOPist)';
-    if (name.includes('light pistol')) return '(LPist)';
-    if (name.includes('machine pistol')) return '(MaPist):';
-    if (name.includes('heavy pistol')) return '(HPist)';
-    if (name.includes('very heavy pistol')) return '(VHP)';
-    if (name.includes('medium pistol') || name.includes('pistol')) return '(MPist)';
+    if (name.includes("hold-out") && name.includes("light")) return "(LHOP)";
+    if (name.includes("hold-out")) return "(HOPist)";
+    if (name.includes("light pistol")) return "(LPist)";
+    if (name.includes("machine pistol")) return "(MaPist):";
+    if (name.includes("heavy pistol")) return "(HPist)";
+    if (name.includes("very heavy pistol")) return "(VHP)";
+    if (name.includes("medium pistol") || name.includes("pistol")) return "(MPist)";
 
     // Long guns
-    if (name.includes('assault rifle')) return '(AsRf)';
-    if (name.includes('sniper rifle')) return '(SptR)';
-    if (name.includes('heavy sniper')) return '(HSR)';
-    if (name.includes('sniper')) return '(Snip)';
-    if (name.includes('light carbine')) return 'LCarb';
-    if (name.includes('carbine')) return '(Carb)';
-    if (name.includes('shotgun')) return '(ShtG)';
-    if (name.includes('submachine') || name.includes('smg')) return '(SMG)';
+    if (name.includes("assault rifle")) return "(AsRf)";
+    if (name.includes("sniper rifle")) return "(SptR)";
+    if (name.includes("heavy sniper")) return "(HSR)";
+    if (name.includes("sniper")) return "(Snip)";
+    if (name.includes("light carbine")) return "LCarb";
+    if (name.includes("carbine")) return "(Carb)";
+    if (name.includes("shotgun")) return "(ShtG)";
+    if (name.includes("submachine") || name.includes("smg")) return "(SMG)";
 
     // Machine guns
-    if (name.includes('heavy machine gun') || name.includes('hmg')) return '(HMG)';
-    if (name.includes('medium machine gun') || name.includes('mmg')) return '(MMG)';
-    if (name.includes('light machine gun') || name.includes('lmg')) return '(LMG)';
-    if (name.includes('minigun')) return '(MinG)';
+    if (name.includes("heavy machine gun") || name.includes("hmg")) return "(HMG)";
+    if (name.includes("medium machine gun") || name.includes("mmg")) return "(MMG)";
+    if (name.includes("light machine gun") || name.includes("lmg")) return "(LMG)";
+    if (name.includes("minigun")) return "(MinG)";
 
     // Heavy weapons
-    if (name.includes('assault cannon')) return '(ACan)';
-    if (name.includes('grenade launcher')) return '(GrLn)';
-    if (name.includes('missile launcher')) return '(MisLn)';
-    if (name.includes('mortar')) return '(Mrtr)';
-    if (name.includes('flamethrower')) return '(FlThr)';
+    if (name.includes("assault cannon")) return "(ACan)";
+    if (name.includes("grenade launcher")) return "(GrLn)";
+    if (name.includes("missile launcher")) return "(MisLn)";
+    if (name.includes("mortar")) return "(Mrtr)";
+    if (name.includes("flamethrower")) return "(FlThr)";
 
     // Bows and crossbows
-    if (name.includes('heavy crossbow')) return '(HCB)';
-    if (name.includes('medium crossbow')) return '(MCB)';
-    if (name.includes('light crossbow')) return '(LCB)';
-    if (name.includes('crossbow')) return '(MCB)';
-    if (name.includes('bow')) return '(Bow)';
+    if (name.includes("heavy crossbow")) return "(HCB)";
+    if (name.includes("medium crossbow")) return "(MCB)";
+    if (name.includes("light crossbow")) return "(LCB)";
+    if (name.includes("crossbow")) return "(MCB)";
+    if (name.includes("bow")) return "(Bow)";
 
     // Thrown weapons
-    if (name.includes('shuriken')) return '(SH)';
-    if (name.includes('throwing knife') || name.includes('thrown knife')) return '(TK)';
-    if (name.includes('net')) return '(Net)';
+    if (name.includes("shuriken")) return "(SH)";
+    if (name.includes("throwing knife") || name.includes("thrown knife")) return "(TK)";
+    if (name.includes("net")) return "(Net)";
 
     // Special weapons
-    if (name.includes('taser')) return '(Tasr)';
-    if (name.includes('spear gun')) return '(SpGn)';
-    if (name.includes('blowgun')) return '(BG)';
-    if (name.includes('slingshot')) return '(SS)';
-    if (name.includes('sling')) return '(SL)';
+    if (name.includes("taser")) return "(Tasr)";
+    if (name.includes("spear gun")) return "(SpGn)";
+    if (name.includes("blowgun")) return "(BG)";
+    if (name.includes("slingshot")) return "(SS)";
+    if (name.includes("sling")) return "(SL)";
 
     // Default based on category
-    if (categoryName === 'Firearms') return '(MPist)'; // Default to medium pistol
-    if (categoryName === 'Bow and crossbow') return '(Bow)';
-    if (categoryName === 'Rockets and Missiles') return '(MisLn)';
+    if (categoryName === "Firearms") return "(MPist)"; // Default to medium pistol
+    if (categoryName === "Bow and crossbow") return "(Bow)";
+    if (categoryName === "Rockets and Missiles") return "(MisLn)";
 
-    return '(MPist)'; // Default fallback
+    return "(MPist)"; // Default fallback
   }
 
   /**
@@ -979,8 +995,7 @@ export class SR2DataImporter {
     sr2LogDebug("Importing totems...");
 
     try {
-
-      const response = await fetch('/systems/shadowrun2e/data/totems.json');
+      const response = await fetch("/systems/shadowrun2e/data/totems.json");
       const data = await response.json();
 
       const items = [];
@@ -1001,15 +1016,14 @@ export class SR2DataImporter {
             isSelected: false,
             quantity: 1,
             weight: 0,
-            price: 0
-          }
+            price: 0,
+          },
         };
         items.push(itemData);
       }
 
       await this._replaceCompendiumDocuments(pack, items, "Item");
       sr2LogDebug(`Imported ${items.length} totems`);
-
     } catch (error) {
       console.error("SR2E | Failed to import totems:", error);
     }

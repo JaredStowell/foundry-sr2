@@ -63,11 +63,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Eye Thermographic",
-        "Smartlink I",
-        "Wired Reflexes 2"
-      ]
+      "cyberware": ["Eye Thermographic", "Smartlink I", "Wired Reflexes 2"]
     },
     "bartender": {
       "label": "Bartender",
@@ -150,10 +146,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Skillwires 5",
-        "Wired Reflexes 1"
-      ]
+      "cyberware": ["Skillwires 5", "Wired Reflexes 1"]
     },
     "cityOfficial": {
       "label": "City Official",
@@ -225,9 +218,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack"
-      ]
+      "cyberware": ["Datajack"]
     },
     "corporateSecurityGuard": {
       "label": "Corporate Security Guard",
@@ -315,9 +306,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack"
-      ]
+      "cyberware": ["Datajack"]
     },
     "elvenHitman": {
       "label": "Elven Hitman",
@@ -372,10 +361,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Smartlink I",
-        "Wired Reflexes 2"
-      ]
+      "cyberware": ["Smartlink I", "Wired Reflexes 2"]
     },
     "gangBoss": {
       "label": "Gang Boss",
@@ -466,9 +452,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack"
-      ]
+      "cyberware": ["Datajack"]
     },
     "humanisPoliclubMember": {
       "label": "Humanis Policlub Member",
@@ -698,9 +682,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack"
-      ]
+      "cyberware": ["Datajack"]
     },
     "squatter": {
       "label": "Squatter",
@@ -767,9 +749,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack"
-      ]
+      "cyberware": ["Datajack"]
     },
     "streetCop": {
       "label": "Street Cop",
@@ -993,10 +973,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack",
-        "Wired Reflexes 1"
-      ]
+      "cyberware": ["Datajack", "Wired Reflexes 1"]
     },
     "armorer": {
       "label": "Armorer",
@@ -1063,11 +1040,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack",
-        "Display Link",
-        "Headware Memory (100 Mp)"
-      ]
+      "cyberware": ["Datajack", "Display Link", "Headware Memory (100 Mp)"]
     },
     "clubHabitue": {
       "label": "Club Habitué",
@@ -1171,9 +1144,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack"
-      ]
+      "cyberware": ["Datajack"]
     },
     "corporateOfficial": {
       "label": "Corporate Official",
@@ -1208,10 +1179,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack",
-        "Headware Memory (100 Mp)"
-      ]
+      "cyberware": ["Datajack", "Headware Memory (100 Mp)"]
     },
     "corporateRigger": {
       "label": "Corporate Rigger",
@@ -1308,11 +1276,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack",
-        "Display Link",
-        "Headware Memory (500 Mp)"
-      ]
+      "cyberware": ["Datajack", "Display Link", "Headware Memory (500 Mp)"]
     },
     "corporateWageSlave": {
       "label": "Corporate Wage Slave",
@@ -1527,9 +1491,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack"
-      ]
+      "cyberware": ["Datajack"]
     },
     "fireFighter": {
       "label": "Fire Fighter",
@@ -1623,12 +1585,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack",
-        "Headware Memory (50 Mp)",
-        "Smartlink I",
-        "Wired Reflexes 1"
-      ]
+      "cyberware": ["Datajack", "Headware Memory (50 Mp)", "Smartlink I", "Wired Reflexes 1"]
     },
     "governmentOfficial": {
       "label": "Government Official",
@@ -1677,10 +1634,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack",
-        "Headware Memory (20 Mp)"
-      ]
+      "cyberware": ["Datajack", "Headware Memory (20 Mp)"]
     },
     "mafiaDon": {
       "label": "Mafia Don",
@@ -2140,11 +2094,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack",
-        "Display Link",
-        "Headware Memory (100 Mp)"
-      ]
+      "cyberware": ["Datajack", "Display Link", "Headware Memory (100 Mp)"]
     },
     "sasquatchEntertainer": {
       "label": "Sasquatch Entertainer",
@@ -2226,11 +2176,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Custom Simsense Rig",
-        "Senselink",
-        "Internal Transmitter"
-      ]
+      "cyberware": ["Custom Simsense Rig", "Senselink", "Internal Transmitter"]
     },
     "snitch": {
       "label": "Snitch",
@@ -2395,10 +2341,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack",
-        "Display Link"
-      ]
+      "cyberware": ["Datajack", "Display Link"]
     },
     "technician": {
       "label": "Technician",
@@ -2449,9 +2392,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Datajack"
-      ]
+      "cyberware": ["Datajack"]
     },
     "terrorist": {
       "label": "Terrorist",
@@ -2502,10 +2443,7 @@
         "physicalAdept": false,
         "tradition": ""
       },
-      "cyberware": [
-        "Smartlink I",
-        "Wired Reflexes 1"
-      ]
+      "cyberware": ["Smartlink I", "Wired Reflexes 1"]
     },
     "wizKidMage": {
       "label": "Wiz Kid Mage",

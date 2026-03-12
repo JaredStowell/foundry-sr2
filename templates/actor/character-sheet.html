@@ -31,19 +31,18 @@
 		            <div class="resource sr2-initiative-resource">
 		              <label class="resource-label">Initiative</label>
 		              <div class="sr2-inline-controls sr2-initiative-inline">
-	                <button type="button"
-	                        class="initiative-roll-btn sr2-small-action"
-	                        title="Roll {{system.initiative.dice}}d6+{{system.initiative.base}}">
-	                  <i class="fas fa-dice-d6"></i>
-	                </button>
-	                <span class="sr2-inline-formula">{{system.initiative.dice}}d6+{{system.initiative.base}}</span>
-	              </div>
-	            </div>
-	          {{/if}}
-	
-	          {{#if system.health}}
-	            <div class="resource sr2-damage-resource">
-	              <label class="resource-label">Physical</label>
+		                <button type="button"
+		                        class="initiative-roll-btn sr2-small-action"
+		                        title="Roll {{system.initiative.dice}}d6+{{system.initiative.base}}">
+		                  <i class="fas fa-dice-d6"></i>
+		                </button>
+		                <span class="sr2-inline-formula">{{system.initiative.dice}}d6+{{system.initiative.base}}</span>
+		              </div>
+		            </div>
+		          {{/if}}
+		          {{#if system.health}}
+		            <div class="resource sr2-damage-resource">
+		              <label class="resource-label">Physical</label>
 	              <div class="sr2-inline-controls">
 	                <button type="button" class="sr2-damage-adjust sr2-small-action" data-damage-type="physical" data-adjust="-1" title="Decrease Physical Damage">-</button>
 	                <input class="sr2-damage-input" type="number" name="system.health.physical.value" value="{{system.health.physical.value}}" data-dtype="Number" min="0" max="{{system.health.physical.max}}" data-damage-type="physical"/>

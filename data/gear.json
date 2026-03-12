@@ -5026,15 +5026,7 @@
   },
   "Rockets and Missiles": {
     "Name": "Rockets and Missiles",
-    "attributes": [
-      "Intelligence",
-      "Damage",
-      "Weight",
-      "Availability",
-      "Cost",
-      "Street Index",
-      ""
-    ],
+    "attributes": ["Intelligence", "Damage", "Weight", "Availability", "Cost", "Street Index", ""],
     "entries": [
       {
         "Name": "Anti-Personnel Rocket",
@@ -5238,14 +5230,7 @@
   },
   "Grenades": {
     "Name": "Grenades",
-    "attributes": [
-      "Concealability",
-      "Damage",
-      "Weight",
-      "Availability",
-      "Cost",
-      "Street Index"
-    ],
+    "attributes": ["Concealability", "Damage", "Weight", "Availability", "Cost", "Street Index"],
     "entries": [
       {
         "Name": "Concussion Grenade",
@@ -5491,14 +5476,7 @@
   },
   "Ammunition": {
     "Name": "Ammunition",
-    "attributes": [
-      "Concealability",
-      "Damage",
-      "Weight",
-      "Availability",
-      "Cost",
-      "Street Index"
-    ],
+    "attributes": ["Concealability", "Damage", "Weight", "Availability", "Cost", "Street Index"],
     "entries": [
       {
         "Name": "4-Rnd Clip (APDS)",
@@ -14223,13 +14201,7 @@
   },
   "Surveillance and Security": {
     "Name": "Surveillance and Security",
-    "attributes": [
-      "Concealability",
-      "Weight",
-      "Availability",
-      "Cost",
-      "Street Index"
-    ],
+    "attributes": ["Concealability", "Weight", "Availability", "Cost", "Street Index"],
     "entries": [
       {
         "Name": "Micro-Camcorder",
@@ -15792,12 +15764,7 @@
   },
   "Cyberdeck Other": {
     "Name": "Cyberdeck Other",
-    "attributes": [
-      "Availability",
-      "Cost",
-      "Street Index",
-      ""
-    ],
+    "attributes": ["Availability", "Cost", "Street Index", ""],
     "entries": [
       {
         "Name": "Off-line Store 100 Mp",
@@ -17603,14 +17570,7 @@
   },
   "Biotech": {
     "Name": "Biotech",
-    "attributes": [
-      "Rating",
-      "Availability",
-      "Weight",
-      "Cost",
-      "Street Index",
-      ""
-    ],
+    "attributes": ["Rating", "Availability", "Weight", "Cost", "Street Index", ""],
     "entries": [
       {
         "Name": "Archaesthetic",
@@ -18324,14 +18284,7 @@
   },
   "Lifestyle Extras": {
     "Name": "Lifestyle Extras",
-    "attributes": [
-      "Concealability",
-      "Weight",
-      "Availability",
-      "Cost",
-      "Street Index",
-      ""
-    ],
+    "attributes": ["Concealability", "Weight", "Availability", "Cost", "Street Index", ""],
     "entries": [
       {
         "Name": "Armament Briefcase (armor 0",
@@ -21609,14 +21562,7 @@
   },
   "Lifestyle": {
     "Name": "Lifestyle",
-    "attributes": [
-      "Concealability",
-      "Weight",
-      "Availability",
-      "Cost",
-      "Street Index",
-      ""
-    ],
+    "attributes": ["Concealability", "Weight", "Availability", "Cost", "Street Index", ""],
     "entries": [
       {
         "Name": "Street Lifestyle",
@@ -21646,12 +21592,7 @@
   },
   "Magical Equipment": {
     "Name": "Magical Equipment",
-    "attributes": [
-      "Availability",
-      "Cost",
-      "Street Index",
-      ""
-    ],
+    "attributes": ["Availability", "Cost", "Street Index", ""],
     "entries": [
       {
         "Name": "Specific Spell Focus 1",
@@ -22425,12 +22366,7 @@
   },
   "Vehiclegear": {
     "Name": "Vehiclegear",
-    "attributes": [
-      "Availability",
-      "Cost",
-      "Street Index",
-      ""
-    ],
+    "attributes": ["Availability", "Cost", "Street Index", ""],
     "entries": [
       {
         "Name": "Anti-Theft System Level 1",
@@ -22944,15 +22880,7 @@
   },
   "Chips": {
     "Name": "Chips",
-    "attributes": [
-      "Type",
-      "Rating",
-      "Memory",
-      "Availability",
-      "Cost",
-      "Street Index",
-      ""
-    ],
+    "attributes": ["Type", "Rating", "Memory", "Availability", "Cost", "Street Index", ""],
     "entries": [
       {
         "Name": "Active General Skill Chip Rating 1",
@@ -27053,12 +26981,7 @@
   },
   "Vehicle modifications": {
     "Name": "Vehicle modifications",
-    "attributes": [
-      "Cost",
-      "Equipment",
-      "CF",
-      ""
-    ],
+    "attributes": ["Cost", "Equipment", "CF", ""],
     "entries": [
       {
         "Name": "APPS (per seat)",

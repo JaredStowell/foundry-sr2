@@ -3,12 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "fmt": "pnpm exec oxfmt package.json system.json module.json template.json vitest.config.js \"data/**/*.json\" \"lang/**/*.json\" \"scripts/**/*.js\" \"tests/**/*.js\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "node scripts/dev/typecheck.mjs"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.9",
+    "oxfmt": "^0.38.0",
     "vitest": "^2.1.8"
   }
 }

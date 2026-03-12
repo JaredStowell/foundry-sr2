@@ -5,13 +5,12 @@
 import {
   sr2ComputeContactLevelSummary,
   sr2ComputeCreationNuyenBudgetBreakdown,
-  sr2InferFocusBondCostForGearItem
+  sr2InferFocusBondCostForGearItem,
 } from "./sr2-rules.js";
 
 export class SR2ItemBrowser extends Application {
-
   static _itemsCache = new Map();
-  
+
   constructor(actor, itemType, options = {}) {
     super(options);
     this.actor = actor;
@@ -32,7 +31,7 @@ export class SR2ItemBrowser extends Application {
       width: 800,
       height: 600,
       resizable: true,
-      classes: ["shadowrun2e", "item-browser"]
+      classes: ["shadowrun2e", "item-browser"],
     });
   }
 
@@ -40,7 +39,7 @@ export class SR2ItemBrowser extends Application {
   get title() {
     const typeNames = {
       cyberware: "Cyberware Browser",
-      bioware: "Bioware Browser", 
+      bioware: "Bioware Browser",
       spell: "Spell Browser",
       adeptpower: "Adept Power Browser",
       totem: "Totem Browser",
@@ -48,7 +47,7 @@ export class SR2ItemBrowser extends Application {
       vrprogram: "VR Program Browser",
       weapon: "Weapon Browser",
       armor: "Armor Browser",
-      gear: "Equipment Browser"
+      gear: "Equipment Browser",
     };
     return typeNames[this.itemType] || "Item Browser";
   }
@@ -56,12 +55,12 @@ export class SR2ItemBrowser extends Application {
   /** @override */
   async getData() {
     const data = super.getData();
-    
+
     // Load items if not already loaded
     if (this.items.length === 0) {
       await this._loadItems();
     }
-    
+
     // Filter items based on search
     this._filterItems();
 
@@ -81,13 +80,13 @@ export class SR2ItemBrowser extends Application {
       item.buyButtonClass = item.canBuy ? "can-buy" : "cant-buy";
       item.buyTitle = this._getBuyTitle({ buyer, purchaseFunds, buyerNuyen, cost, item });
     }
-    
+
     return {
       ...data,
       itemType: this.itemType,
       items: this.filteredItems,
       searchTerm: this.searchTerm,
-      hasItems: this.filteredItems.length > 0
+      hasItems: this.filteredItems.length > 0,
     };
   }
 
@@ -96,13 +95,13 @@ export class SR2ItemBrowser extends Application {
     super.activateListeners(html);
 
     // Search functionality
-    html.find('.item-search').on('input', this._onSearch.bind(this));
-    
+    html.find(".item-search").on("input", this._onSearch.bind(this));
+
     // Add item to character
-    html.find('.add-item').click(this._onAddItem.bind(this));
+    html.find(".add-item").click(this._onAddItem.bind(this));
 
     // Buy item (add + subtract nuyen)
-    html.find('.buy-item').click(this._onBuyItem.bind(this));
+    html.find(".buy-item").click(this._onBuyItem.bind(this));
 
     this._restorePendingSearchFocus(html);
   }
@@ -114,70 +113,70 @@ export class SR2ItemBrowser extends Application {
     try {
       const cached = SR2ItemBrowser._itemsCache.get(this.itemType);
       if (cached) {
-        this.items = cached.items.map(item => ({ ...item }));
+        this.items = cached.items.map((item) => ({ ...item }));
         return;
       }
 
       let response;
       let data;
-      
+
       switch (this.itemType) {
-        case 'cyberware':
-          response = await fetch('systems/shadowrun2e/data/cyberware.json');
+        case "cyberware":
+          response = await fetch("systems/shadowrun2e/data/cyberware.json");
           data = await response.json();
           this.items = this._processCyberwareData(data);
           break;
-          
-        case 'bioware':
-          response = await fetch('systems/shadowrun2e/data/bioware.json');
+
+        case "bioware":
+          response = await fetch("systems/shadowrun2e/data/bioware.json");
           data = await response.json();
           this.items = this._processBiowareData(data);
           break;
-          
-        case 'spell':
-          response = await fetch('systems/shadowrun2e/data/spells.json');
+
+        case "spell":
+          response = await fetch("systems/shadowrun2e/data/spells.json");
           data = await response.json();
           this.items = this._processSpellData(data);
           break;
-          
-        case 'adeptpower':
-          response = await fetch('systems/shadowrun2e/data/AdeptPowers.json');
+
+        case "adeptpower":
+          response = await fetch("systems/shadowrun2e/data/AdeptPowers.json");
           data = await response.json();
           this.items = this._processAdeptPowerData(data);
           break;
-          
-        case 'totem':
-          response = await fetch('systems/shadowrun2e/data/totems.json');
+
+        case "totem":
+          response = await fetch("systems/shadowrun2e/data/totems.json");
           data = await response.json();
           this.items = this._processTotemData(data);
           break;
 
-        case 'program':
-          response = await fetch('systems/shadowrun2e/data/programs.json');
+        case "program":
+          response = await fetch("systems/shadowrun2e/data/programs.json");
           data = await response.json();
           this.items = this._processProgramData(data, { isVr: false });
           break;
 
-        case 'vrprogram':
-          response = await fetch('systems/shadowrun2e/data/VirtualRealityPrograms.json');
+        case "vrprogram":
+          response = await fetch("systems/shadowrun2e/data/VirtualRealityPrograms.json");
           data = await response.json();
           this.items = this._processProgramData(data, { isVr: true });
           break;
-          
-        case 'weapon':
-          response = await fetch('systems/shadowrun2e/data/gear.json');
+
+        case "weapon":
+          response = await fetch("systems/shadowrun2e/data/gear.json");
           data = await response.json();
           this.items = this._processWeaponData(data);
           break;
-          
-        case 'armor':
-          response = await fetch('systems/shadowrun2e/data/gear.json');
+
+        case "armor":
+          response = await fetch("systems/shadowrun2e/data/gear.json");
           data = await response.json();
           this.items = this._processArmorData(data);
           break;
-          
-        case 'gear':
-          response = await fetch('systems/shadowrun2e/data/gear.json');
+
+        case "gear":
+          response = await fetch("systems/shadowrun2e/data/gear.json");
           data = await response.json();
           this.items = this._processGearData(data);
           break;
@@ -185,7 +184,7 @@ export class SR2ItemBrowser extends Application {
 
       this._prepareBrowserItems();
       SR2ItemBrowser._itemsCache.set(this.itemType, {
-        items: this.items.map(item => ({ ...item }))
+        items: this.items.map((item) => ({ ...item })),
       });
     } catch (error) {
       console.error(`Failed to load ${this.itemType} data:`, error);
@@ -210,7 +209,7 @@ export class SR2ItemBrowser extends Application {
    */
   _processCyberwareData(data) {
     const items = [];
-    
+
     for (const [category, categoryItems] of Object.entries(data)) {
       for (const item of categoryItems) {
         items.push({
@@ -221,11 +220,11 @@ export class SR2ItemBrowser extends Application {
           streetIndex: item.StreetIndex,
           mods: item.Mods || "",
           bookPage: item.BookPage,
-          type: 'cyberware'
+          type: "cyberware",
         });
       }
     }
-    
+
     return items;
   }
 
@@ -234,7 +233,7 @@ export class SR2ItemBrowser extends Application {
    */
   _processBiowareData(data) {
     const items = [];
-    
+
     for (const [category, categoryItems] of Object.entries(data)) {
       for (const item of categoryItems) {
         items.push({
@@ -245,11 +244,11 @@ export class SR2ItemBrowser extends Application {
           streetIndex: item.StreetIndex,
           mods: item.Mods || "",
           bookPage: item.BookPage,
-          type: 'bioware'
+          type: "bioware",
         });
       }
     }
-    
+
     return items;
   }
 
@@ -270,7 +269,7 @@ export class SR2ItemBrowser extends Application {
         memorySize: multiplier,
         mods: "",
         type: "program",
-        description: `${descriptionPrefix}\nSize Multiplier: ${multiplier}`
+        description: `${descriptionPrefix}\nSize Multiplier: ${multiplier}`,
       });
     }
 
@@ -282,7 +281,7 @@ export class SR2ItemBrowser extends Application {
    */
   _processSpellData(data) {
     const items = [];
-    
+
     for (const spell of data) {
       const name = spell.Name.trim();
       const spellType = spell.Type;
@@ -301,7 +300,7 @@ export class SR2ItemBrowser extends Application {
         bookPage: spell.BookPage,
       });
     }
-    
+
     return items;
   }
 
@@ -324,7 +323,9 @@ export class SR2ItemBrowser extends Application {
   }
 
   _inferSpellDamageLevelFromDrain(rawDrain) {
-    const drain = String(rawDrain || "").trim().toUpperCase();
+    const drain = String(rawDrain || "")
+      .trim()
+      .toUpperCase();
     const match = drain.match(/([LMSD])\s*$/);
     return match ? match[1] : "";
   }
@@ -349,7 +350,7 @@ export class SR2ItemBrowser extends Application {
    */
   _processAdeptPowerData(data) {
     const items = [];
-    
+
     for (const power of data) {
       items.push({
         name: power.Name.trim(),
@@ -359,10 +360,10 @@ export class SR2ItemBrowser extends Application {
         mods: power.Mods || "",
         notes: power.Notes || "",
         bookPage: power.BookPage,
-        type: 'adeptpower'
+        type: "adeptpower",
       });
     }
-    
+
     return items;
   }
 
@@ -371,7 +372,7 @@ export class SR2ItemBrowser extends Application {
    */
   _processTotemData(data) {
     const items = [];
-    
+
     // Process all totems from the TOTEMS array
     if (data.TOTEMS && Array.isArray(data.TOTEMS)) {
       for (const totem of data.TOTEMS) {
@@ -382,11 +383,11 @@ export class SR2ItemBrowser extends Application {
           advantages: totem.advantages,
           disadvantages: totem.disadvantages,
           bookPage: "SR2E Core",
-          type: 'totem'
+          type: "totem",
         });
       }
     }
-    
+
     return items;
   }
 
@@ -396,22 +397,26 @@ export class SR2ItemBrowser extends Application {
   _getTotemCategory(totem) {
     const name = totem.name.toLowerCase();
     const env = totem.environment.toLowerCase();
-    
+
     // Elemental totems
-    if (['moon', 'mountain', 'oak', 'sea', 'stream', 'sun', 'wind'].includes(name)) {
+    if (["moon", "mountain", "oak", "sea", "stream", "sun", "wind"].includes(name)) {
       return "Elemental Totems";
     }
-    
+
     // Urban totems
-    if (env.includes('urban') || ['cat', 'dog', 'rat', 'gator'].includes(name)) {
+    if (env.includes("urban") || ["cat", "dog", "rat", "gator"].includes(name)) {
       return "Urban Totems";
     }
-    
+
     // Voodoo totems
-    if (['azaca', 'damballah', 'erzulie', 'ghede', 'legba', 'obatala', 'ogoun', 'shango'].includes(name)) {
+    if (
+      ["azaca", "damballah", "erzulie", "ghede", "legba", "obatala", "ogoun", "shango"].includes(
+        name,
+      )
+    ) {
       return "Voodoo Totems";
     }
-    
+
     // Default to Animal Totems
     return "Animal Totems";
   }
@@ -420,13 +425,13 @@ export class SR2ItemBrowser extends Application {
    * Filter items based on search term
    */
   _filterItems() {
-    this.filteredItems = this.items.filter(item => {
+    this.filteredItems = this.items.filter((item) => {
       // Search filter
       if (this.searchTerm) {
         const searchLower = this.searchTerm.toLowerCase();
         return (item._searchText || "").includes(searchLower);
       }
-      
+
       return true;
     });
   }
@@ -439,7 +444,7 @@ export class SR2ItemBrowser extends Application {
     this.searchTerm = input.value;
     this._pendingSearchFocus = {
       selectionStart: input.selectionStart,
-      selectionEnd: input.selectionEnd
+      selectionEnd: input.selectionEnd,
     };
     this._scheduleRender();
   }
@@ -451,7 +456,7 @@ export class SR2ItemBrowser extends Application {
     event.preventDefault();
     const itemIndex = parseInt(event.currentTarget.dataset.itemIndex);
     const itemData = this.filteredItems[itemIndex];
-    
+
     if (!itemData) return;
 
     await this.addItem(itemData);
@@ -467,7 +472,7 @@ export class SR2ItemBrowser extends Application {
     const newItemData = {
       name: itemData.name,
       type: documentType,
-      system: this._createSystemData(itemData)
+      system: this._createSystemData(itemData),
     };
 
     try {
@@ -531,7 +536,9 @@ export class SR2ItemBrowser extends Application {
     }
 
     if (purchaseFunds.mode === "creation") {
-      ui.notifications.info(`Added ${itemData.name} to purchases (¥${cost.value} from resource budget).`);
+      ui.notifications.info(
+        `Added ${itemData.name} to purchases (¥${cost.value} from resource budget).`,
+      );
     } else {
       ui.notifications.info(`Bought ${itemData.name} for ¥${cost.value}.`);
     }
@@ -546,45 +553,46 @@ export class SR2ItemBrowser extends Application {
     const cost = this._parseNuyenCost(itemData.cost);
     const descriptionParts = [];
     if (itemData.bookPage) descriptionParts.push(`Source: ${itemData.bookPage}`);
-    if (cost.value === null && cost.display && cost.display !== "?") descriptionParts.push(`Cost: ${cost.display}`);
+    if (cost.value === null && cost.display && cost.display !== "?")
+      descriptionParts.push(`Cost: ${cost.display}`);
 
     const baseData = {
       description: descriptionParts.join("\n"),
-      price: cost.value ?? 0
+      price: cost.value ?? 0,
     };
 
     switch (this.itemType) {
-      case 'cyberware':
+      case "cyberware":
         return {
           ...baseData,
           essence: itemData.essence,
           streetIndex: itemData.streetIndex,
           mods: itemData.mods,
           installed: false,
-          rating: 0
+          rating: 0,
         };
-        
-      case 'bioware':
+
+      case "bioware":
         return {
           ...baseData,
           bioIndex: itemData.bioIndex,
           streetIndex: itemData.streetIndex,
           mods: itemData.mods,
           installed: false,
-          rating: 0
+          rating: 0,
         };
-        
-      case 'spell':
+
+      case "spell":
         return {
           ...baseData,
           drain: itemData.drain,
           type: itemData.spellType,
           duration: itemData.duration,
           class: itemData.category,
-          force: 1
+          force: 1,
         };
-        
-      case 'adeptpower':
+
+      case "adeptpower":
         return {
           ...baseData,
           cost: itemData.cost,
@@ -592,10 +600,10 @@ export class SR2ItemBrowser extends Application {
           currentLevel: 1,
           maxLevel: 6,
           mods: itemData.mods,
-          notes: itemData.notes
+          notes: itemData.notes,
         };
-        
-      case 'totem':
+
+      case "totem":
         return {
           ...baseData,
           environment: itemData.environment,
@@ -603,10 +611,10 @@ export class SR2ItemBrowser extends Application {
           disadvantages: itemData.disadvantages,
           isSelected: false,
           quantity: 1,
-          weight: 0
+          weight: 0,
         };
-        
-      case 'armor':
+
+      case "armor":
         return {
           ...baseData,
           rating: parseInt(itemData.ballistic) || parseInt(itemData.impact) || 0,
@@ -617,10 +625,10 @@ export class SR2ItemBrowser extends Application {
           quantity: 1,
           weight: parseFloat(itemData.weight) || 0,
           availability: itemData.availability || "",
-          streetIndex: parseFloat(itemData.streetIndex) || 1.0
+          streetIndex: parseFloat(itemData.streetIndex) || 1.0,
         };
-        
-      case 'weapon':
+
+      case "weapon":
         return {
           ...baseData,
           weaponType: this._determineWeaponType(itemData.category),
@@ -631,7 +639,7 @@ export class SR2ItemBrowser extends Application {
           ammo: {
             current: 0,
             max: parseInt(itemData.ammo) || 0,
-            type: ""
+            type: "",
           },
           recoil: parseInt(itemData.recoil) || 0,
           rangeType: this._determineRangeType(itemData.name, itemData.category),
@@ -639,10 +647,10 @@ export class SR2ItemBrowser extends Application {
           quantity: 1,
           weight: parseFloat(itemData.weight) || 0,
           availability: itemData.availability || "",
-          streetIndex: parseFloat(itemData.streetIndex) || 1.0
+          streetIndex: parseFloat(itemData.streetIndex) || 1.0,
         };
-        
-      case 'gear':
+
+      case "gear":
         return {
           ...baseData,
           category: itemData.category || "",
@@ -650,17 +658,17 @@ export class SR2ItemBrowser extends Application {
           bondCost: sr2InferFocusBondCostForGearItem({
             category: itemData.category,
             name: itemData.name,
-            price: itemData.cost
+            price: itemData.cost,
           }),
           equipped: false,
           quantity: 1,
           weight: parseFloat(itemData.weight) || 0,
           availability: itemData.availability || "",
-          streetIndex: parseFloat(itemData.streetIndex) || 1.0
+          streetIndex: parseFloat(itemData.streetIndex) || 1.0,
         };
 
-      case 'program':
-      case 'vrprogram':
+      case "program":
+      case "vrprogram":
         return {
           ...baseData,
           description: itemData.description || baseData.description,
@@ -669,7 +677,7 @@ export class SR2ItemBrowser extends Application {
           multiplier: Number(itemData.multiplier) || 1,
           memorySize: Number.isFinite(Number(itemData.memorySize))
             ? Number(itemData.memorySize)
-            : (Number(itemData.multiplier) || 1),
+            : Number(itemData.multiplier) || 1,
           loadTime: 1,
           isActive: false,
           isLoaded: false,
@@ -677,10 +685,10 @@ export class SR2ItemBrowser extends Application {
           streetIndex: parseFloat(itemData.streetIndex) || 1.0,
           quantity: 1,
           weight: parseFloat(itemData.weight) || 0,
-          price: 0
+          price: 0,
         };
     }
-    
+
     return baseData;
   }
 
@@ -723,7 +731,7 @@ export class SR2ItemBrowser extends Application {
       creationMode = Boolean(
         (creation?.attributePoints || 0) > 0 ||
         (creation?.skillPoints || 0) > 0 ||
-        (creation?.forcePoints || 0) > 0
+        (creation?.forcePoints || 0) > 0,
       );
     }
     if (!creationMode) return false;
@@ -736,22 +744,32 @@ export class SR2ItemBrowser extends Application {
 
   _getCreationBudgetRemaining(actor) {
     const contactLevelsEnabled = Boolean(this._getSystemSetting("contactLevels", false));
-    const disableBuddies = contactLevelsEnabled || Boolean(this._getSystemSetting("disableBuddies", false));
+    const disableBuddies =
+      contactLevelsEnabled || Boolean(this._getSystemSetting("disableBuddies", false));
     const budgetOptions = { disableBuddies };
 
     if (contactLevelsEnabled && actor?.type === "character") {
       const charisma = Number(actor.system?.attributes?.charisma?.value) || 0;
-      const linkedContacts = game?.actors?.filter(a =>
-        a.type === "contact" && a.system?.details?.leaderId === actor.id
-      ) ?? [];
+      const linkedContacts =
+        game?.actors?.filter(
+          (a) => a.type === "contact" && a.system?.details?.leaderId === actor.id,
+        ) ?? [];
 
       budgetOptions.contactLevelsSummary = sr2ComputeContactLevelSummary(
-        linkedContacts.map(a => ({ id: a.id, sort: Number(a.sort) || 0, contactLevel: a.system?.details?.contactLevel })),
-        charisma
+        linkedContacts.map((a) => ({
+          id: a.id,
+          sort: Number(a.sort) || 0,
+          contactLevel: a.system?.details?.contactLevel,
+        })),
+        charisma,
       );
     }
 
-    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(actor.system, actor.items, budgetOptions);
+    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(
+      actor.system,
+      actor.items,
+      budgetOptions,
+    );
     return Number(breakdown?.remainingNuyen) || 0;
   }
 
@@ -783,7 +801,8 @@ export class SR2ItemBrowser extends Application {
       const label = purchaseFunds.mode === "creation" ? "resource budget" : "nuyen";
       return `Can't buy: need ¥${cost.value} (${label})`;
     }
-    if (purchaseFunds.mode === "creation") return `Add to purchases for ¥${cost.value} (resource budget)`;
+    if (purchaseFunds.mode === "creation")
+      return `Add to purchases for ¥${cost.value} (resource budget)`;
     if (buyer === this.actor) return `Buy for ${cost.value}¥`;
     return `Buy for ${cost.value}¥ (paid by ${buyer.name})`;
   }
@@ -806,7 +825,7 @@ export class SR2ItemBrowser extends Application {
     const pending = this._pendingSearchFocus;
     if (!pending) return;
 
-    const input = html.find('.item-search')[0];
+    const input = html.find(".item-search")[0];
     if (!input) {
       this._pendingSearchFocus = null;
       return;
@@ -814,7 +833,9 @@ export class SR2ItemBrowser extends Application {
 
     input.focus();
     try {
-      const start = Number.isFinite(pending.selectionStart) ? pending.selectionStart : input.value.length;
+      const start = Number.isFinite(pending.selectionStart)
+        ? pending.selectionStart
+        : input.value.length;
       const end = Number.isFinite(pending.selectionEnd) ? pending.selectionEnd : start;
       input.setSelectionRange(start, end);
     } catch (_) {
@@ -833,8 +854,8 @@ export class SR2ItemBrowser extends Application {
    * Determine weapon type based on category
    */
   _determineWeaponType(categoryName) {
-    const rangedCategories = ['Firearms', 'Bow and crossbow', 'Rockets and Missiles'];
-    return rangedCategories.includes(categoryName) ? 'ranged' : 'melee';
+    const rangedCategories = ["Firearms", "Bow and crossbow", "Rockets and Missiles"];
+    return rangedCategories.includes(categoryName) ? "ranged" : "melee";
   }
 
   /**
@@ -844,62 +865,62 @@ export class SR2ItemBrowser extends Application {
     const name = weaponName.toLowerCase();
 
     // Pistol categories
-    if (name.includes('hold-out') && name.includes('light')) return '(LHOP)';
-    if (name.includes('hold-out')) return '(HOPist)';
-    if (name.includes('light pistol')) return '(LPist)';
-    if (name.includes('machine pistol')) return '(MaPist)';
-    if (name.includes('heavy pistol')) return '(HPist)';
-    if (name.includes('very heavy pistol')) return '(VHP)';
-    if (name.includes('medium pistol') || name.includes('pistol')) return '(MPist)';
+    if (name.includes("hold-out") && name.includes("light")) return "(LHOP)";
+    if (name.includes("hold-out")) return "(HOPist)";
+    if (name.includes("light pistol")) return "(LPist)";
+    if (name.includes("machine pistol")) return "(MaPist)";
+    if (name.includes("heavy pistol")) return "(HPist)";
+    if (name.includes("very heavy pistol")) return "(VHP)";
+    if (name.includes("medium pistol") || name.includes("pistol")) return "(MPist)";
 
     // Long guns
-    if (name.includes('assault rifle')) return '(AsRf)';
-    if (name.includes('sniper rifle')) return '(SptR)';
-    if (name.includes('heavy sniper')) return '(HSR)';
-    if (name.includes('sniper')) return '(Snip)';
-    if (name.includes('light carbine')) return 'LCarb';
-    if (name.includes('carbine')) return '(Carb)';
-    if (name.includes('shotgun')) return '(ShtG)';
-    if (name.includes('submachine') || name.includes('smg')) return '(SMG)';
+    if (name.includes("assault rifle")) return "(AsRf)";
+    if (name.includes("sniper rifle")) return "(SptR)";
+    if (name.includes("heavy sniper")) return "(HSR)";
+    if (name.includes("sniper")) return "(Snip)";
+    if (name.includes("light carbine")) return "LCarb";
+    if (name.includes("carbine")) return "(Carb)";
+    if (name.includes("shotgun")) return "(ShtG)";
+    if (name.includes("submachine") || name.includes("smg")) return "(SMG)";
 
     // Machine guns
-    if (name.includes('heavy machine gun') || name.includes('hmg')) return '(HMG)';
-    if (name.includes('medium machine gun') || name.includes('mmg')) return '(MMG)';
-    if (name.includes('light machine gun') || name.includes('lmg')) return '(LMG)';
-    if (name.includes('minigun')) return '(MinG)';
+    if (name.includes("heavy machine gun") || name.includes("hmg")) return "(HMG)";
+    if (name.includes("medium machine gun") || name.includes("mmg")) return "(MMG)";
+    if (name.includes("light machine gun") || name.includes("lmg")) return "(LMG)";
+    if (name.includes("minigun")) return "(MinG)";
 
     // Heavy weapons
-    if (name.includes('assault cannon')) return '(ACan)';
-    if (name.includes('grenade launcher')) return '(GrLn)';
-    if (name.includes('missile launcher')) return '(MisLn)';
-    if (name.includes('mortar')) return '(Mrtr)';
-    if (name.includes('flamethrower')) return '(FlThr)';
+    if (name.includes("assault cannon")) return "(ACan)";
+    if (name.includes("grenade launcher")) return "(GrLn)";
+    if (name.includes("missile launcher")) return "(MisLn)";
+    if (name.includes("mortar")) return "(Mrtr)";
+    if (name.includes("flamethrower")) return "(FlThr)";
 
     // Bows and crossbows
-    if (name.includes('heavy crossbow')) return '(HCB)';
-    if (name.includes('medium crossbow')) return '(MCB)';
-    if (name.includes('light crossbow')) return '(LCB)';
-    if (name.includes('crossbow')) return '(MCB)';
-    if (name.includes('bow')) return '(Bow)';
+    if (name.includes("heavy crossbow")) return "(HCB)";
+    if (name.includes("medium crossbow")) return "(MCB)";
+    if (name.includes("light crossbow")) return "(LCB)";
+    if (name.includes("crossbow")) return "(MCB)";
+    if (name.includes("bow")) return "(Bow)";
 
     // Thrown weapons
-    if (name.includes('shuriken')) return '(SH)';
-    if (name.includes('throwing knife') || name.includes('thrown knife')) return '(TK)';
-    if (name.includes('net')) return '(Net)';
+    if (name.includes("shuriken")) return "(SH)";
+    if (name.includes("throwing knife") || name.includes("thrown knife")) return "(TK)";
+    if (name.includes("net")) return "(Net)";
 
     // Special weapons
-    if (name.includes('taser')) return '(Tasr)';
-    if (name.includes('spear gun')) return '(SpGn)';
-    if (name.includes('blowgun')) return '(BG)';
-    if (name.includes('slingshot')) return '(SS)';
-    if (name.includes('sling')) return '(SL)';
+    if (name.includes("taser")) return "(Tasr)";
+    if (name.includes("spear gun")) return "(SpGn)";
+    if (name.includes("blowgun")) return "(BG)";
+    if (name.includes("slingshot")) return "(SS)";
+    if (name.includes("sling")) return "(SL)";
 
     // Default based on category
-    if (categoryName === 'Firearms') return '(MPist)'; // Default to medium pistol
-    if (categoryName === 'Bow and crossbow') return '(Bow)';
-    if (categoryName === 'Rockets and Missiles') return '(MisLn)';
+    if (categoryName === "Firearms") return "(MPist)"; // Default to medium pistol
+    if (categoryName === "Bow and crossbow") return "(Bow)";
+    if (categoryName === "Rockets and Missiles") return "(MisLn)";
 
-    return '(MPist)'; // Default fallback
+    return "(MPist)"; // Default fallback
   }
 
   /**
@@ -907,8 +928,15 @@ export class SR2ItemBrowser extends Application {
    */
   _processWeaponData(data) {
     const items = [];
-    const weaponCategories = ['Edged weapon', 'Bow and crossbow', 'Firearms', 'Rockets and Missiles', 'Grenades', 'VehicleFire'];
-    
+    const weaponCategories = [
+      "Edged weapon",
+      "Bow and crossbow",
+      "Firearms",
+      "Rockets and Missiles",
+      "Grenades",
+      "VehicleFire",
+    ];
+
     for (const categoryName of weaponCategories) {
       if (data[categoryName] && data[categoryName].entries) {
         for (const item of data[categoryName].entries) {
@@ -926,12 +954,12 @@ export class SR2ItemBrowser extends Application {
             cost: item.Cost || "",
             streetIndex: item["Street Index"] || "",
             bookPage: item.BookPage || "",
-            type: 'weapon'
+            type: "weapon",
           });
         }
       }
     }
-    
+
     return items;
   }
 
@@ -940,8 +968,8 @@ export class SR2ItemBrowser extends Application {
    */
   _processArmorData(data) {
     const items = [];
-    const armorCategories = ['Clothing and Armor'];
-    
+    const armorCategories = ["Clothing and Armor"];
+
     for (const categoryName of armorCategories) {
       if (data[categoryName] && data[categoryName].entries) {
         for (const item of data[categoryName].entries) {
@@ -956,12 +984,12 @@ export class SR2ItemBrowser extends Application {
             cost: item.Cost || "",
             streetIndex: item["Street Index"] || "",
             bookPage: item.BookPage || "",
-            type: 'armor'
+            type: "armor",
           });
         }
       }
     }
-    
+
     return items;
   }
 
@@ -970,10 +998,19 @@ export class SR2ItemBrowser extends Application {
    */
   _processGearData(data) {
     const items = [];
-    const gearCategories = Object.keys(data).filter(cat => 
-      !['Edged weapon', 'Bow and crossbow', 'Firearms', 'Rockets and Missiles', 'Grenades', 'VehicleFire', 'Clothing and Armor'].includes(cat)
+    const gearCategories = Object.keys(data).filter(
+      (cat) =>
+        ![
+          "Edged weapon",
+          "Bow and crossbow",
+          "Firearms",
+          "Rockets and Missiles",
+          "Grenades",
+          "VehicleFire",
+          "Clothing and Armor",
+        ].includes(cat),
     );
-    
+
     for (const categoryName of gearCategories) {
       if (data[categoryName] && data[categoryName].entries) {
         for (const item of data[categoryName].entries) {
@@ -986,12 +1023,12 @@ export class SR2ItemBrowser extends Application {
             cost: item.Cost || "",
             streetIndex: item["Street Index"] || "",
             bookPage: item.BookPage || "",
-            type: 'gear'
+            type: "gear",
           });
         }
       }
     }
-    
+
     return items;
   }
 }

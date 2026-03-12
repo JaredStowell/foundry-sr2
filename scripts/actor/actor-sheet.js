@@ -1,320 +1,48 @@
 import {
-    sr2ComputeCreationNuyenBudgetBreakdown,
-    sr2ComputeAttributePointsSpent,
-    sr2ComputeContactLevelSummary,
-    sr2ComputeForcePointsSpent,
-    sr2ComputeSkillPointsSpent,
-    sr2ComputeSkillRatingsFromAllocated,
-    sr2Clamp,
-    sr2FormatSignedModifier,
-    sr2GetRacialAttributeBounds,
-    sr2GetRacialModifiers,
-    sr2GetRacialTraits,
-    sr2ParseFocusName,
-    sr2InferFocusBondCostForGearItem,
-    sr2NormalizeContactLevel,
-    sr2SkillInferAllocatedRating
+  sr2ComputeCreationNuyenBudgetBreakdown,
+  sr2ComputeAttributePointsSpent,
+  sr2ComputeContactLevelSummary,
+  sr2ComputeForcePointsSpent,
+  sr2ComputeSkillPointsSpent,
+  sr2ComputeSkillRatingsFromAllocated,
+  sr2Clamp,
+  sr2FormatSignedModifier,
+  sr2GetRacialAttributeBounds,
+  sr2GetRacialModifiers,
+  sr2GetRacialTraits,
+  sr2ParseFocusName,
+  sr2InferFocusBondCostForGearItem,
+  sr2NormalizeContactLevel,
+  sr2SkillInferAllocatedRating,
 } from "../sr2-rules.js";
-import { sr2GetInitiativeTracker } from "../initiative-tracker.js";
 import { sr2LogDebug } from "../utils/logger.js";
-
-let skillsDataCache = null;
-let skillsDataCachePromise = null;
-
-async function loadSkillsData() {
-    if (skillsDataCache) return skillsDataCache;
-
-    if (!skillsDataCachePromise) {
-        skillsDataCachePromise = fetch('/systems/shadowrun2e/data/skills.json')
-            .then(response => response.json())
-            .then(skillsData => {
-                skillsDataCache = skillsData;
-                return skillsData;
-            })
-            .catch(error => {
-                skillsDataCachePromise = null;
-                throw error;
-            });
-    }
-
-    return skillsDataCachePromise;
-}
-
-function sr2InferSpellRangeFromName(spellName) {
-    const name = String(spellName || "").toLowerCase();
-    if (!name) return "";
-    if (name.includes("touch")) return "Touch";
-    return "LOS";
-}
-
-function sr2InferSpellResistFromType(spellType) {
-    switch (String(spellType || "").toUpperCase()) {
-        case "M":
-            return "Willpower";
-        case "P":
-            return "Body";
-        default:
-            return "";
-    }
-}
-
-function sr2InferSpellDamageLevelFromDrain(rawDrain) {
-    const drain = String(rawDrain || "").trim().toUpperCase();
-    const match = drain.match(/([LMSD])\s*$/);
-    return match ? match[1] : "";
-}
-
-function sr2FormatSpellDrain(rawDrain) {
-    const drain = String(rawDrain || "").trim();
-    if (!drain) return "";
-
-    const levelMatch = drain.toUpperCase().match(/([LMSD])\s*$/);
-    if (!levelMatch) return drain;
-
-    const level = levelMatch[1];
-    let formula = drain.replace(/([LMSD])\s*$/i, "").trim();
-    formula = formula.replace(/^\[(.*)\]$/, "$1").trim();
-    if (!formula) return drain;
-
-    return `${formula} ${level}`;
-}
-
-const SR2_SPELL_CLASS_LABELS = {
-    C: "Combat",
-    D: "Detection",
-    H: "Health",
-    I: "Illusion",
-    M: "Manipulation"
-};
-
-function sr2NormalizeSpellClass(value) {
-    const raw = String(value || "").trim();
-    if (!raw) return "";
-
-    const upper = raw.toUpperCase();
-    if (Object.prototype.hasOwnProperty.call(SR2_SPELL_CLASS_LABELS, upper)) return upper;
-
-    const lower = raw.toLowerCase();
-    const map = {
-        combat: "C",
-        detection: "D",
-        health: "H",
-        illusion: "I",
-        manipulation: "M"
-    };
-    return map[lower] || "";
-}
-
-function sr2GetSystemSetting(key, fallback) {
-    try {
-        return game?.settings?.get("shadowrun2e", key) ?? fallback;
-    } catch (err) {
-        return fallback;
-    }
-}
-
-const SR2_DAMAGE_LEVELS = ["L", "M", "S", "D"];
-const SR2_DAMAGE_BOXES_BY_LEVEL = { L: 1, M: 3, S: 6, D: 10 };
-
-function sr2GetAugmentationModifiers(actor) {
-    if (!actor) return {};
-    return actor._sr2AugmentationModifiers ?? actor._calculateAugmentationModifiers?.() ?? {};
-}
-
-function sr2GetModifiedAttribute(actor, attributeName) {
-    const base = Number(actor?.system?.attributes?.[attributeName]?.value) || 0;
-    const modifiers = sr2GetAugmentationModifiers(actor);
-
-    const map = {
-        body: "BOD",
-        quickness: "QCK",
-        strength: "STR",
-        charisma: "CHA",
-        intelligence: "INT",
-        willpower: "WIL"
-    };
-    const key = map[String(attributeName || "")] || "";
-    if (!key) return base;
-    return base + (Number(modifiers?.[key]) || 0);
-}
-
-function sr2SafeEvalArithmetic(expression) {
-    const expr = String(expression || "").replace(/\s+/g, "");
-    if (!expr) return null;
-    if (!/^[0-9+\-*/().]+$/.test(expr)) return null;
-    try {
-        const value = Function(`"use strict";return (${expr});`)();
-        if (!Number.isFinite(value)) return null;
-        return value;
-    } catch (err) {
-        return null;
-    }
-}
-
-function sr2ParseDamageCode(rawDamageCode, context = {}) {
-    const raw = String(rawDamageCode || "").trim();
-    if (!raw) return null;
-
-    const isStun = /\bSTUN\b/i.test(raw);
-    let cleaned = raw.replace(/\bSTUN\b/ig, "").trim();
-
-    const levelMatch = cleaned.match(/([LMSD])\s*$/i);
-    if (!levelMatch) return null;
-    const level = levelMatch[1].toUpperCase();
-
-    cleaned = cleaned.replace(/([LMSD])\s*$/i, "").trim();
-    cleaned = cleaned.replace(/^\((.*)\)$/, "$1").trim();
-
-    const strength = Number(context?.strength) || 0;
-    const strengthMin = Number(context?.strengthMin) || strength;
-
-    let powerExpr = cleaned.toUpperCase();
-    powerExpr = powerExpr.replace(/STR\s*MIN\.?/g, String(strengthMin));
-    powerExpr = powerExpr.replace(/\bSTR\b/g, String(strength));
-    powerExpr = powerExpr.replace(/(\d+)\s*[X×]\s*/g, "$1*");
-    powerExpr = powerExpr.replace(/[^0-9+\-*/().]/g, "");
-
-    const power = sr2SafeEvalArithmetic(powerExpr);
-    if (!Number.isFinite(power)) return null;
-
-    return {
-        power: Math.floor(power),
-        level,
-        damageType: isStun ? "stun" : "physical",
-        raw
-    };
-}
-
-function sr2StageDamageLevel(baseLevel, stageDelta) {
-    const level = String(baseLevel || "").toUpperCase();
-    const baseIndex = SR2_DAMAGE_LEVELS.indexOf(level);
-    if (baseIndex < 0) return null;
-
-    const delta = Number(stageDelta) || 0;
-    const finalIndex = baseIndex + delta;
-    if (finalIndex < 0) return null;
-    if (finalIndex >= SR2_DAMAGE_LEVELS.length) return "D";
-    return SR2_DAMAGE_LEVELS[finalIndex];
-}
-
-function sr2GetArmorRatings(actor) {
-    const equippedArmor = actor?.items?.filter(i => i.type === "armor" && i.system?.equipped) || [];
-    const ballistic = equippedArmor.reduce((sum, a) => sum + (Number(a.system?.ballistic) || 0), 0);
-    const impact = equippedArmor.reduce((sum, a) => sum + (Number(a.system?.impact) || 0), 0);
-    const dermalArmor = Number(actor?.system?.details?.traits?.dermalArmor) || 0;
-    return {
-        ballistic: ballistic + dermalArmor,
-        impact: impact + dermalArmor
-    };
-}
-
-async function sr2ApplyDamageToActor(actor, damageType, boxes) {
-    const type = String(damageType || "physical");
-    const amount = Number(boxes) || 0;
-    if (!actor || amount <= 0) return false;
-
-    const hasTwoTracks = actor?.system?.health?.physical && actor?.system?.health?.stun;
-    if (!hasTwoTracks) return false;
-
-    const primary = type === "stun" ? "stun" : "physical";
-    const other = primary === "stun" ? "physical" : "stun";
-
-    const currentPrimary = Number(actor.system.health?.[primary]?.value) || 0;
-    const currentOther = Number(actor.system.health?.[other]?.value) || 0;
-    const maxPrimary = Number(actor.system.health?.[primary]?.max) || 10;
-    const maxOther = Number(actor.system.health?.[other]?.max) || 10;
-
-    let nextPrimary = currentPrimary + amount;
-    let carry = 0;
-
-    if (primary === "stun" && nextPrimary > maxPrimary) {
-        carry = nextPrimary - maxPrimary;
-        nextPrimary = maxPrimary;
-    }
-
-    const updateData = { [`system.health.${primary}.value`]: Math.max(0, Math.min(maxPrimary, nextPrimary)) };
-    if (carry > 0) {
-        const nextOther = Math.max(0, Math.min(maxOther, currentOther + carry));
-        updateData[`system.health.${other}.value`] = nextOther;
-    }
-
-    await actor.update(updateData);
-    return true;
-}
-
-function sr2GetWeaponSkillData(actor, weapon, options = {}) {
-    const notify = Boolean(options?.notify);
-    const weaponType = String(weapon?.system?.weaponType || "");
-    const isRanged = weaponType === "ranged";
-
-    const fallbackSkillNames = isRanged
-        ? ["Firearms", "Projectile Weapons", "Throwing Weapons", "Gunnery"]
-        : ["Armed Combat", "Unarmed Combat"];
-
-    let skillRating = 0;
-    let skillName = "Defaulting";
-    let rollDescription = "";
-
-    const linkedSkillId = weapon?.system?.linkedSkill?.skillId;
-    if (linkedSkillId) {
-        const linkedSkill = actor?.items?.get?.(linkedSkillId);
-        if (linkedSkill) {
-            const rollType = String(weapon?.system?.linkedSkill?.rollType || "base");
-            switch (rollType) {
-                case "concentration": {
-                    skillRating = Number(linkedSkill.system?.concentrationRating) || 0;
-                    if (linkedSkill.system?.concentration) {
-                        skillName = `${linkedSkill.name || linkedSkill.system?.baseSkill} (${linkedSkill.system.concentration})`;
-                        rollDescription = "Concentration";
-                    } else {
-                        rollDescription = "No Concentration";
-                        if (notify) ui.notifications.warn(`${weapon.name} is linked to a skill with no concentration selected.`);
-                    }
-                    break;
-                }
-                case "specialization": {
-                    skillRating = Number(linkedSkill.system?.specializationRating) || 0;
-                    if (linkedSkill.system?.specialization) {
-                        skillName = `${linkedSkill.name || linkedSkill.system?.baseSkill} [${linkedSkill.system.specialization}]`;
-                        rollDescription = "Specialization";
-                    } else {
-                        rollDescription = "No Specialization";
-                        if (notify) ui.notifications.warn(`${weapon.name} is linked to a skill with no specialization entered.`);
-                    }
-                    break;
-                }
-                case "base":
-                default:
-                    skillRating = Number(linkedSkill.system?.baseRating) || 0;
-                    skillName = linkedSkill.name || linkedSkill.system?.baseSkill || "Unknown Skill";
-                    rollDescription = "Base Skill";
-                    break;
-            }
-        } else if (notify) {
-            ui.notifications.warn(`${weapon.name} is linked to a skill that no longer exists.`);
-        }
-    } else {
-        const skills = actor?.items?.filter?.(i => i.type === "skill" && fallbackSkillNames.includes(i.system?.baseSkill)) || [];
-        if (skills.length > 0) {
-            const bestSkill = skills.reduce((best, current) => {
-                const currentRating = Number(current.system?.baseRating) || 0;
-                const bestRating = Number(best.system?.baseRating) || 0;
-                return currentRating > bestRating ? current : best;
-            });
-            skillRating = Number(bestSkill.system?.baseRating) || 0;
-            skillName = bestSkill.name || bestSkill.system?.baseSkill || "Unknown Skill";
-            rollDescription = "Auto-detected";
-        }
-    }
-
-    return { skillRating, skillName, rollDescription };
-}
+import { sr2RollInitiativeToChat } from "../actions/initiative.js";
+import { sr2PrepareSkillRoll } from "../actions/skill-roll.js";
+import {
+  loadSkillsData,
+  SR2_DAMAGE_BOXES_BY_LEVEL,
+  SR2_SPELL_CLASS_LABELS,
+  sr2ApplyDamageToActor,
+  sr2FindWeaponSkill,
+  sr2FormatSpellDrain,
+  sr2GetArmorRatings,
+  sr2GetEffectiveSkillRating,
+  sr2GetHighestSkillRatingByBaseSkill,
+  sr2GetModifiedAttribute,
+  sr2GetSystemSetting,
+  sr2GetWeaponSkillData,
+  sr2InferSpellDamageLevelFromDrain,
+  sr2InferSpellRangeFromName,
+  sr2InferSpellResistFromType,
+  sr2NormalizeSpellClass,
+  sr2ParseDamageCode,
+  sr2StageDamageLevel,
+} from "./actor-sheet-helpers.js";
 
 /**
  * Extend the basic ActorSheet with Shadowrun 2E specific functionality
  */
 export class SR2ActorSheet extends ActorSheet {
-
   constructor(...args) {
     super(...args);
 
@@ -329,15 +57,15 @@ export class SR2ActorSheet extends ActorSheet {
   }
 
   /** @override */
-	  static get defaultOptions() {
-	    return foundry.utils.mergeObject(super.defaultOptions, {
-	      classes: ["shadowrun2e", "sheet", "actor"],
-	      template: "systems/shadowrun2e/templates/actor/character-sheet.html",
-	      width: 960,
-	      height: 680,
-	      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "main" }]
-	    });
-	  }
+  static get defaultOptions() {
+    return foundry.utils.mergeObject(super.defaultOptions, {
+      classes: ["shadowrun2e", "sheet", "actor"],
+      template: "systems/shadowrun2e/templates/actor/character-sheet.html",
+      width: 960,
+      height: 680,
+      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "main" }],
+    });
+  }
 
   /** @override */
   get template() {
@@ -361,28 +89,28 @@ export class SR2ActorSheet extends ActorSheet {
     context.sr2Settings = {
       moreMetahumans,
       contactLevels,
-      disableBuddies
+      disableBuddies,
     };
 
-	    // Ensure shadowrun2e flags container exists for template bindings
-	    if (!context.flags.shadowrun2e) context.flags.shadowrun2e = {};
+    // Ensure shadowrun2e flags container exists for template bindings
+    if (!context.flags.shadowrun2e) context.flags.shadowrun2e = {};
 
-	    // Default: creation mode is enabled for characters created via priorities
-	    if (context.flags.shadowrun2e.creationCompleted === true) {
-	      context.flags.shadowrun2e.creationMode = false;
-	    } else if (typeof context.flags.shadowrun2e.creationMode !== "boolean") {
-	      const hasCreationPoints =
-	        (context.system.creation?.attributePoints || 0) > 0 ||
-	        (context.system.creation?.skillPoints || 0) > 0 ||
-	        (context.system.creation?.forcePoints || 0) > 0;
-	      context.flags.shadowrun2e.creationMode = hasCreationPoints;
-	    }
+    // Default: creation mode is enabled for characters created via priorities
+    if (context.flags.shadowrun2e.creationCompleted === true) {
+      context.flags.shadowrun2e.creationMode = false;
+    } else if (typeof context.flags.shadowrun2e.creationMode !== "boolean") {
+      const hasCreationPoints =
+        (context.system.creation?.attributePoints || 0) > 0 ||
+        (context.system.creation?.skillPoints || 0) > 0 ||
+        (context.system.creation?.forcePoints || 0) > 0;
+      context.flags.shadowrun2e.creationMode = hasCreationPoints;
+    }
 
     // Ensure health data structure exists with defaults
     if (!context.system.health) {
       context.system.health = {
         physical: { value: 0, max: 10 },
-        stun: { value: 0, max: 10 }
+        stun: { value: 0, max: 10 },
       };
     } else {
       // Ensure physical health exists
@@ -393,8 +121,10 @@ export class SR2ActorSheet extends ActorSheet {
         const physValue = context.system.health.physical.value;
         const physMax = context.system.health.physical.max;
 
-        context.system.health.physical.value = (typeof physValue === 'number' && !isNaN(physValue)) ? physValue : 0;
-        context.system.health.physical.max = (typeof physMax === 'number' && !isNaN(physMax)) ? physMax : 10;
+        context.system.health.physical.value =
+          typeof physValue === "number" && !isNaN(physValue) ? physValue : 0;
+        context.system.health.physical.max =
+          typeof physMax === "number" && !isNaN(physMax) ? physMax : 10;
       }
 
       // Ensure stun health exists
@@ -405,13 +135,15 @@ export class SR2ActorSheet extends ActorSheet {
         const stunValue = context.system.health.stun.value;
         const stunMax = context.system.health.stun.max;
 
-        context.system.health.stun.value = (typeof stunValue === 'number' && !isNaN(stunValue)) ? stunValue : 0;
-        context.system.health.stun.max = (typeof stunMax === 'number' && !isNaN(stunMax)) ? stunMax : 10;
+        context.system.health.stun.value =
+          typeof stunValue === "number" && !isNaN(stunValue) ? stunValue : 0;
+        context.system.health.stun.max =
+          typeof stunMax === "number" && !isNaN(stunMax) ? stunMax : 10;
       }
     }
 
     // Normalize lifestyles list (supports multiple lifestyles)
-    if (['character', 'contact', 'follower'].includes(actorData.type)) {
+    if (["character", "contact", "follower"].includes(actorData.type)) {
       if (!context.system.resources) context.system.resources = {};
 
       const legacyLifestyle = context.system.resources.lifestyle || "street";
@@ -419,20 +151,22 @@ export class SR2ActorSheet extends ActorSheet {
 
       const rawLifestyles = context.system.resources.lifestyles;
       if (!Array.isArray(rawLifestyles) || rawLifestyles.length === 0) {
-        context.system.resources.lifestyles = [{
-          type: legacyLifestyle,
-          months: Math.max(1, parseInt(legacyMonths, 10) || 1)
-        }];
+        context.system.resources.lifestyles = [
+          {
+            type: legacyLifestyle,
+            months: Math.max(1, parseInt(legacyMonths, 10) || 1),
+          },
+        ];
       } else {
-        context.system.resources.lifestyles = rawLifestyles.map(l => ({
+        context.system.resources.lifestyles = rawLifestyles.map((l) => ({
           type: l?.type || legacyLifestyle,
-          months: Math.max(1, parseInt(l?.months, 10) || 1)
+          months: Math.max(1, parseInt(l?.months, 10) || 1),
         }));
       }
     }
 
     // Prepare character data and items
-    if (['character', 'contact', 'follower'].includes(actorData.type)) {
+    if (["character", "contact", "follower"].includes(actorData.type)) {
       this._prepareItems(context);
       this._prepareCharacterData(context);
       await this._prepareSkillsData(context);
@@ -440,11 +174,13 @@ export class SR2ActorSheet extends ActorSheet {
 
     if (actorData.type === "contact" && context.sr2Settings.contactLevels) {
       if (!context.system.details) context.system.details = {};
-      context.system.details.contactLevel = sr2NormalizeContactLevel(context.system.details.contactLevel);
+      context.system.details.contactLevel = sr2NormalizeContactLevel(
+        context.system.details.contactLevel,
+      );
     }
 
     // Racial modifiers/caps and creation point tracking
-    if (['character', 'contact', 'follower'].includes(actorData.type)) {
+    if (["character", "contact", "follower"].includes(actorData.type)) {
       const metatype = context.system?.details?.metatype || "human";
       const bounds = sr2GetRacialAttributeBounds(metatype);
 
@@ -465,86 +201,94 @@ export class SR2ActorSheet extends ActorSheet {
 
       // Followers list (leaders)
       if (actorData.type === "character" && game?.actors) {
-        const linkedActors = game.actors.filter(a => a.system?.details?.leaderId === this.actor.id);
+        const linkedActors = game.actors.filter(
+          (a) => a.system?.details?.leaderId === this.actor.id,
+        );
 
         context.leaderContacts = linkedActors
-          .filter(a => a.type === "contact")
-          .map(a => ({
+          .filter((a) => a.type === "contact")
+          .map((a) => ({
             id: a.id,
             name: a.name,
             contactLevel: sr2NormalizeContactLevel(a.system?.details?.contactLevel),
-            sort: Number(a.sort) || 0
+            sort: Number(a.sort) || 0,
           }))
           .sort((a, b) => a.name.localeCompare(b.name));
 
         const linkedFollowers = linkedActors
-          .filter(a => a.type === "follower")
-          .map(a => ({
+          .filter((a) => a.type === "follower")
+          .map((a) => ({
             id: a.id,
             name: a.name,
-            archetype: a.system?.details?.archetype || ""
+            archetype: a.system?.details?.archetype || "",
           }))
           .sort((a, b) => a.name.localeCompare(b.name));
 
         const gangArchetypes = new Set(["gangMember", "tribesman"]);
-        context.leaderGangMembers = linkedFollowers.filter(f => gangArchetypes.has(f.archetype));
-        context.leaderFollowers = linkedFollowers.filter(f => !gangArchetypes.has(f.archetype));
+        context.leaderGangMembers = linkedFollowers.filter((f) => gangArchetypes.has(f.archetype));
+        context.leaderFollowers = linkedFollowers.filter((f) => !gangArchetypes.has(f.archetype));
       }
-	      if (!Array.isArray(context.leaderContacts)) context.leaderContacts = [];
-	      if (!Array.isArray(context.leaderGangMembers)) context.leaderGangMembers = [];
-	      if (!Array.isArray(context.leaderFollowers)) context.leaderFollowers = [];
+      if (!Array.isArray(context.leaderContacts)) context.leaderContacts = [];
+      if (!Array.isArray(context.leaderGangMembers)) context.leaderGangMembers = [];
+      if (!Array.isArray(context.leaderFollowers)) context.leaderFollowers = [];
 
-	      // Connection counts and limits (creation-mode helpers)
-	      if (actorData.type === "character") {
-	        const contactLevelsEnabled = context.sr2Settings.contactLevels;
-	        const disableBuddies = context.sr2Settings.disableBuddies;
-	        const extras = context.system?.creation?.extras || {};
+      // Connection counts and limits (creation-mode helpers)
+      if (actorData.type === "character") {
+        const contactLevelsEnabled = context.sr2Settings.contactLevels;
+        const disableBuddies = context.sr2Settings.disableBuddies;
+        const extras = context.system?.creation?.extras || {};
 
-	        const followersPurchased = Math.max(0, parseInt(extras.followers, 10) || 0) > 0;
+        const followersPurchased = Math.max(0, parseInt(extras.followers, 10) || 0) > 0;
 
-	        const contactsCount = (context.leaderContacts || []).length;
-	        let contactsLimit = Math.max(2, Math.max(0, parseInt(extras.contacts, 10) || 0));
-	        let contactsOver = contactsCount > contactsLimit;
+        const contactsCount = (context.leaderContacts || []).length;
+        let contactsLimit = Math.max(2, Math.max(0, parseInt(extras.contacts, 10) || 0));
+        let contactsOver = contactsCount > contactsLimit;
 
-	        if (contactLevelsEnabled) {
-	          const charisma = Number(context.system?.attributes?.charisma?.value) || 0;
-	          context.contactLevelsSummary = sr2ComputeContactLevelSummary(context.leaderContacts, charisma);
-	          contactsLimit = context.contactLevelsSummary.counts.maxTotalContacts;
-	          contactsOver = Boolean(
-	            context.contactLevelsSummary.over.extraContacts ||
-	            context.contactLevelsSummary.over.extraLevel2 ||
-	            context.contactLevelsSummary.over.extraLevel3
-	          );
-	        }
+        if (contactLevelsEnabled) {
+          const charisma = Number(context.system?.attributes?.charisma?.value) || 0;
+          context.contactLevelsSummary = sr2ComputeContactLevelSummary(
+            context.leaderContacts,
+            charisma,
+          );
+          contactsLimit = context.contactLevelsSummary.counts.maxTotalContacts;
+          contactsOver = Boolean(
+            context.contactLevelsSummary.over.extraContacts ||
+            context.contactLevelsSummary.over.extraLevel2 ||
+            context.contactLevelsSummary.over.extraLevel3,
+          );
+        }
 
-	        context.connectionCounts = {
-	          contacts: contactsCount,
-	          followers: context.leaderFollowers.length
-	        };
+        context.connectionCounts = {
+          contacts: contactsCount,
+          followers: context.leaderFollowers.length,
+        };
 
-	        context.connectionLimits = {
-	          contacts: contactsLimit,
-	          // SR2: one Followers purchase provides five followers.
-	          followers: followersPurchased ? 5 : 0
-	        };
+        context.connectionLimits = {
+          contacts: contactsLimit,
+          // SR2: one Followers purchase provides five followers.
+          followers: followersPurchased ? 5 : 0,
+        };
 
-	        context.connectionOver = {
-	          contacts: contactsOver,
-	          followers: context.connectionCounts.followers > context.connectionLimits.followers
-	        };
+        context.connectionOver = {
+          contacts: contactsOver,
+          followers: context.connectionCounts.followers > context.connectionLimits.followers,
+        };
 
-	        context.creationExtrasPurchased = {
-	          buddy: disableBuddies ? false : (Math.max(0, parseInt(extras.buddy, 10) || 0) > 0),
-	          gang: Math.max(0, parseInt(extras.gang, 10) || 0) > 0,
-	          followers: followersPurchased
-	        };
-	      }
+        context.creationExtrasPurchased = {
+          buddy: disableBuddies ? false : Math.max(0, parseInt(extras.buddy, 10) || 0) > 0,
+          gang: Math.max(0, parseInt(extras.gang, 10) || 0) > 0,
+          followers: followersPurchased,
+        };
+      }
 
-	      const attributePointsTotal = Number(context.system.creation?.attributePoints) || 0;
-	      const skillPointsTotal = Number(context.system.creation?.skillPoints) || 0;
-	      const forcePointsTotal = Number(context.system.creation?.forcePoints) || 0;
+      const attributePointsTotal = Number(context.system.creation?.attributePoints) || 0;
+      const skillPointsTotal = Number(context.system.creation?.skillPoints) || 0;
+      const forcePointsTotal = Number(context.system.creation?.forcePoints) || 0;
 
-      const attributePointsSpent = sr2ComputeAttributePointsSpent(context.system.attributes, metatype);
+      const attributePointsSpent = sr2ComputeAttributePointsSpent(
+        context.system.attributes,
+        metatype,
+      );
       const skillPointsSpent = sr2ComputeSkillPointsSpent(context.skills || []);
       const forcePointsSpent = sr2ComputeForcePointsSpent(context.items || []);
 
@@ -552,18 +296,18 @@ export class SR2ActorSheet extends ActorSheet {
         attributes: {
           total: attributePointsTotal,
           spent: attributePointsSpent,
-          remaining: attributePointsTotal - attributePointsSpent
+          remaining: attributePointsTotal - attributePointsSpent,
         },
         skills: {
           total: skillPointsTotal,
           spent: skillPointsSpent,
-          remaining: skillPointsTotal - skillPointsSpent
+          remaining: skillPointsTotal - skillPointsSpent,
         },
         force: {
           total: forcePointsTotal,
           spent: forcePointsSpent,
-          remaining: forcePointsTotal - forcePointsSpent
-        }
+          remaining: forcePointsTotal - forcePointsSpent,
+        },
       };
 
       // Racial summary string for quick reference
@@ -575,15 +319,17 @@ export class SR2ActorSheet extends ActorSheet {
         ["Strength", mods.strength],
         ["Charisma", mods.charisma],
         ["Intelligence", mods.intelligence],
-        ["Willpower", mods.willpower]
+        ["Willpower", mods.willpower],
       ].filter(([, v]) => Number(v) !== 0);
 
       const traitParts = [];
       if (traits.lowLightVision) traitParts.push("Low-Light Vision");
       if (traits.thermographicVision) traitParts.push("Thermographic Vision");
       if (traits.reach) traitParts.push(`Reach +${traits.reach}`);
-      if (traits.dermalArmor) traitParts.push(`Dermal Armor (+${traits.dermalArmor} Body vs damage)`);
-      if (traits.diseaseResistance) traitParts.push(`Disease Resistance (+${traits.diseaseResistance} Body vs disease)`);
+      if (traits.dermalArmor)
+        traitParts.push(`Dermal Armor (+${traits.dermalArmor} Body vs damage)`);
+      if (traits.diseaseResistance)
+        traitParts.push(`Disease Resistance (+${traits.diseaseResistance} Body vs disease)`);
 
       const modsText = modParts.length
         ? `Racial Mods: ${modParts.map(([label, v]) => `${label} ${sr2FormatSignedModifier(v)}`).join(", ")}`
@@ -593,18 +339,24 @@ export class SR2ActorSheet extends ActorSheet {
 
       // Creation resources helpers (lifestyle + extras)
       const budgetOptions = {
-        disableBuddies: context.sr2Settings.disableBuddies
+        disableBuddies: context.sr2Settings.disableBuddies,
       };
-      if (actorData.type === "character" && context.sr2Settings.contactLevels && context.contactLevelsSummary) {
+      if (
+        actorData.type === "character" &&
+        context.sr2Settings.contactLevels &&
+        context.contactLevelsSummary
+      ) {
         budgetOptions.contactLevelsSummary = context.contactLevelsSummary;
       }
-      context.creationResources = sr2ComputeCreationNuyenBudgetBreakdown(context.system, context.items, budgetOptions);
+      context.creationResources = sr2ComputeCreationNuyenBudgetBreakdown(
+        context.system,
+        context.items,
+        budgetOptions,
+      );
     }
 
     return context;
   }
-
-
 
   /**
    * Organize and classify Items for Character sheets.
@@ -622,25 +374,25 @@ export class SR2ActorSheet extends ActorSheet {
     for (let i of context.items) {
       i.img = i.img || "icons/svg/item-bag.svg";
 
-      if (i.type === 'skill') {
+      if (i.type === "skill") {
         skills.push(i);
-      } else if (i.type === 'weapon') {
+      } else if (i.type === "weapon") {
         weapons.push(i);
-      } else if (i.type === 'armor') {
+      } else if (i.type === "armor") {
         armor.push(i);
-      } else if (i.type === 'cyberware') {
+      } else if (i.type === "cyberware") {
         cyberware.push(i);
-      } else if (i.type === 'bioware') {
+      } else if (i.type === "bioware") {
         bioware.push(i);
-      } else if (i.type === 'spell') {
+      } else if (i.type === "spell") {
         i.sr2Spell = {
           range: sr2InferSpellRangeFromName(i.name),
           resist: sr2InferSpellResistFromType(i.system?.type),
           damage: sr2InferSpellDamageLevelFromDrain(i.system?.drain),
-          drainDisplay: sr2FormatSpellDrain(i.system?.drain)
+          drainDisplay: sr2FormatSpellDrain(i.system?.drain),
         };
         spells.push(i);
-      } else if (i.type === 'adeptpower') {
+      } else if (i.type === "adeptpower") {
         // Calculate total cost for leveled powers
         if (i.system.hasLevels) {
           i.system.totalCost = i.system.cost * i.system.currentLevel;
@@ -648,7 +400,7 @@ export class SR2ActorSheet extends ActorSheet {
           i.system.totalCost = i.system.cost;
         }
         adeptpowers.push(i);
-      } else if (i.type === 'gear') {
+      } else if (i.type === "gear") {
         gear.push(i);
       }
     }
@@ -665,22 +417,24 @@ export class SR2ActorSheet extends ActorSheet {
     // Prepare totem data for shamanic magicians
     const totems = [];
     for (let i of context.items) {
-      if (i.type === 'totem') {
+      if (i.type === "totem") {
         totems.push(i);
       }
     }
     context.totems = totems;
 
     // Find selected totem
-    context.selectedTotem = totems.find(t => t.system.isSelected);
+    context.selectedTotem = totems.find((t) => t.system.isSelected);
 
     const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
     // Calculate essence loss from installed cyberware
-    const installedCyberware = cyberware.filter(c => c.system.installed);
-    const totalEssenceLoss = round2(installedCyberware.reduce((total, cyber) => {
-      return total + (parseFloat(cyber.system.essence) || 0);
-    }, 0));
+    const installedCyberware = cyberware.filter((c) => c.system.installed);
+    const totalEssenceLoss = round2(
+      installedCyberware.reduce((total, cyber) => {
+        return total + (parseFloat(cyber.system.essence) || 0);
+      }, 0),
+    );
 
     // Calculate current essence (base essence - cyberware essence loss)
     const baseEssence = Number(context.system?.attributes?.essence?.max) || 6;
@@ -695,24 +449,24 @@ export class SR2ActorSheet extends ActorSheet {
       base: baseEssence,
       current: currentEssence,
       loss: totalEssenceLoss,
-      available: currentEssence
+      available: currentEssence,
     };
 
-	    // Calculate total power points used for adept powers
-	    context.powerPointsUsed = adeptpowers.reduce((total, power) => {
-	      return total + (power.system.totalCost || 0);
-	    }, 0);
-	
-	    // Calculate gear summary statistics
-	    const totalWeight = context.items.reduce((total, item) => {
-	      return total + ((item.system.weight || 0) * (item.system.quantity || 1));
-	    }, 0);
-	    context.totalWeight = round2(totalWeight);
-	    context.totalWeightDisplay = context.totalWeight.toFixed(2);
-	
-	    context.totalValue = context.items.reduce((total, item) => {
-	      return total + ((item.system.price || 0) * (item.system.quantity || 1));
-	    }, 0);
+    // Calculate total power points used for adept powers
+    context.powerPointsUsed = adeptpowers.reduce((total, power) => {
+      return total + (power.system.totalCost || 0);
+    }, 0);
+
+    // Calculate gear summary statistics
+    const totalWeight = context.items.reduce((total, item) => {
+      return total + (item.system.weight || 0) * (item.system.quantity || 1);
+    }, 0);
+    context.totalWeight = round2(totalWeight);
+    context.totalWeightDisplay = context.totalWeight.toFixed(2);
+
+    context.totalValue = context.items.reduce((total, item) => {
+      return total + (item.system.price || 0) * (item.system.quantity || 1);
+    }, 0);
 
     context.totalItems = context.items.reduce((total, item) => {
       return total + (item.system.quantity || 1);
@@ -724,7 +478,8 @@ export class SR2ActorSheet extends ActorSheet {
    */
   _prepareCharacterData(context) {
     // Calculate and display augmentation modifiers
-    const modifiers = this.actor._sr2AugmentationModifiers ?? this.actor._calculateAugmentationModifiers();
+    const modifiers =
+      this.actor._sr2AugmentationModifiers ?? this.actor._calculateAugmentationModifiers();
     context.augmentationModifiers = modifiers;
 
     // Calculate total modified attributes for display
@@ -737,20 +492,20 @@ export class SR2ActorSheet extends ActorSheet {
       intelligence: attrs.intelligence.value + (modifiers.INT || 0),
       willpower: attrs.willpower.value + (modifiers.WIL || 0),
       reaction: attrs.reaction.value, // Already includes modifiers
-      initiativeDice: 1 + (modifiers.INI || 0)
+      initiativeDice: 1 + (modifiers.INI || 0),
     };
 
     // Check for cyberdeck (for Hacking Pool visibility)
-    context.system.hasCyberdeck = this.actor.items.some(item => 
-      item.type === 'cyberware' && 
-      item.name.toLowerCase().includes('cyberdeck')
+    context.system.hasCyberdeck = this.actor.items.some(
+      (item) => item.type === "cyberware" && item.name.toLowerCase().includes("cyberdeck"),
     );
 
     // Check for Vehicle Control Rig (for Control Pool visibility)
-    context.system.hasControlRig = this.actor.items.some(item => 
-      item.type === 'cyberware' && 
-      (item.name.toLowerCase().includes('control rig') || 
-       item.name.toLowerCase().includes('vehicle control rig'))
+    context.system.hasControlRig = this.actor.items.some(
+      (item) =>
+        item.type === "cyberware" &&
+        (item.name.toLowerCase().includes("control rig") ||
+          item.name.toLowerCase().includes("vehicle control rig")),
     );
   }
 
@@ -773,7 +528,7 @@ export class SR2ActorSheet extends ActorSheet {
       context.availableSkills = availableSkills;
 
       // Add concentration data for each skill
-      context.skills.forEach(skill => {
+      context.skills.forEach((skill) => {
         if (skill.system.baseSkill && skillsData[skill.system.baseSkill]) {
           skill.availableConcentrations = skillsData[skill.system.baseSkill].Concentrations || [];
         } else {
@@ -781,13 +536,15 @@ export class SR2ActorSheet extends ActorSheet {
         }
 
         // Ensure all skill system properties exist with defaults
-        if (!skill.system.baseSkill) skill.system.baseSkill = '';
-        if (!skill.system.concentration) skill.system.concentration = '';
-        if (!skill.system.specialization) skill.system.specialization = '';
-        if (typeof skill.system.baseRating !== 'number') skill.system.baseRating = 0;
-        if (typeof skill.system.concentrationRating !== 'number') skill.system.concentrationRating = 0;
-        if (typeof skill.system.specializationRating !== 'number') skill.system.specializationRating = 0;
-        if (typeof skill.system.isFree !== 'boolean') skill.system.isFree = false;
+        if (!skill.system.baseSkill) skill.system.baseSkill = "";
+        if (!skill.system.concentration) skill.system.concentration = "";
+        if (!skill.system.specialization) skill.system.specialization = "";
+        if (typeof skill.system.baseRating !== "number") skill.system.baseRating = 0;
+        if (typeof skill.system.concentrationRating !== "number")
+          skill.system.concentrationRating = 0;
+        if (typeof skill.system.specializationRating !== "number")
+          skill.system.specializationRating = 0;
+        if (typeof skill.system.isFree !== "boolean") skill.system.isFree = false;
 
         // Ensure allocated rating exists in the template context and compute SR2 conc/spec math for display
         const computed = sr2ComputeSkillRatingsFromAllocated(skill.system);
@@ -797,131 +554,141 @@ export class SR2ActorSheet extends ActorSheet {
         skill.system.specializationRating = computed.specializationRating;
       });
     } catch (error) {
-      console.error('SR2E | Failed to load skills data:', error);
+      console.error("SR2E | Failed to load skills data:", error);
       context.availableSkills = {};
     }
   }
 
   /** @override */
-	  activateListeners(html) {
-	    super.activateListeners(html);
-	
-	    // Initialize health data if needed
-	    this._initializeHealthData();
+  activateListeners(html) {
+    super.activateListeners(html);
 
-	    // Set up actor update listener for external changes (once per sheet instance)
-	    if (!this._hasActorUpdateHook && globalThis.Hooks) {
-	      Hooks.on('updateActor', this._boundOnActorUpdate);
-	      this._hasActorUpdateHook = true;
-	    }
+    // Initialize health data if needed
+    this._initializeHealthData();
 
-	    // Ensure skill selects show correct values after render
-	    this._refreshSkillSelects(html);
-	
-	    // Rollable abilities
-	    html.find('.rollable').click(this._onRoll.bind(this));
+    // Set up actor update listener for external changes (once per sheet instance)
+    if (!this._hasActorUpdateHook && globalThis.Hooks) {
+      Hooks.on("updateActor", this._boundOnActorUpdate);
+      this._hasActorUpdateHook = true;
+    }
 
-	    // Open owned item sheets by clicking the item name
-	    const openItemSheetFromRow = (rowElement) => {
-	      if (!rowElement) return;
+    // Ensure skill selects show correct values after render
+    this._refreshSkillSelects(html);
 
-	      const itemId = rowElement.getAttribute("data-item-id") || rowElement.dataset?.itemId;
-	      if (!itemId) {
-	        ui.notifications?.warn?.("No item id found for that row.");
-	        return;
-	      }
+    // Rollable abilities
+    html.find(".rollable").click(this._onRoll.bind(this));
 
-	      const item = this.actor.items.get(itemId);
-	      if (!item) {
-	        ui.notifications?.warn?.(`Couldn't find item ${itemId} on this actor.`);
-	        return;
-	      }
+    // Open owned item sheets by clicking the item name
+    const openItemSheetFromRow = (rowElement) => {
+      if (!rowElement) return;
 
-	      const sheet = item.sheet;
-	      if (!sheet) {
-	        ui.notifications?.warn?.(`No sheet is available for ${item.name}.`);
-	        return;
-	      }
+      const itemId = rowElement.getAttribute("data-item-id") || rowElement.dataset?.itemId;
+      if (!itemId) {
+        ui.notifications?.warn?.("No item id found for that row.");
+        return;
+      }
 
-	      try {
-	        // Legacy Application render signature
-	        sheet.render(true);
-	      } catch (err) {
-	        try {
-	          // ApplicationV2 render signature
-	          sheet.render({ force: true });
-	        } catch (err2) {
-	          console.error("SR2E | Failed to open item sheet", { itemId, itemName: item.name, err, err2 });
-	          ui.notifications?.error?.("Failed to open item sheet. Check the console (F12) for details.");
-	        }
-	      }
-	    };
+      const item = this.actor.items.get(itemId);
+      if (!item) {
+        ui.notifications?.warn?.(`Couldn't find item ${itemId} on this actor.`);
+        return;
+      }
 
-	    const openItemSheet = (event) => {
-	      const ev = event;
-	      ev.preventDefault();
-	      ev.stopPropagation();
+      const sheet = item.sheet;
+      if (!sheet) {
+        ui.notifications?.warn?.(`No sheet is available for ${item.name}.`);
+        return;
+      }
 
-	      const row = ev.currentTarget?.closest?.(".item-row");
-	      openItemSheetFromRow(row);
-	    };
+      try {
+        // Legacy Application render signature
+        sheet.render(true);
+      } catch (err) {
+        try {
+          // ApplicationV2 render signature
+          sheet.render({ force: true });
+        } catch (err2) {
+          console.error("SR2E | Failed to open item sheet", {
+            itemId,
+            itemName: item.name,
+            err,
+            err2,
+          });
+          ui.notifications?.error?.(
+            "Failed to open item sheet. Check the console (F12) for details.",
+          );
+        }
+      }
+    };
 
-		    html.find('.item-row .item-name span').click(openItemSheet);
+    const openItemSheet = (event) => {
+      const ev = event;
+      ev.preventDefault();
+      ev.stopPropagation();
 
-	    // Also allow double-click anywhere on the row (excluding interactive controls)
-	    html.find('.item-row').dblclick(ev => {
-	      ev.preventDefault();
-	      ev.stopPropagation();
+      const row = ev.currentTarget?.closest?.(".item-row");
+      openItemSheetFromRow(row);
+    };
 
-	      const tag = String(ev.target?.tagName || "").toLowerCase();
-	      if (["input", "select", "textarea", "button", "a", "label"].includes(tag)) return;
-	      if (ev.target?.closest?.(".item-actions")) return;
+    html.find(".item-row .item-name span").click(openItemSheet);
 
-	      openItemSheetFromRow(ev.currentTarget);
-	    });
-	
-	    // Drag events for macros
-	    if (this.actor.isOwner) {
-	      let handler = ev => this._onDragStart(ev);
-	      
-	      // Enable drag for all item types
-	      const itemSelectors = [
-	        'li.item',                        // Generic items
-	        '.item-row .item-name img',        // Item rows (drag from icon to avoid blocking clicks)
-	        '.skill-item .skill-image img',    // Skills (drag from icon)
-	        '.program-row .program-name img'   // Programs (drag from icon)
-	      ];
-	      
-	      itemSelectors.forEach(selector => {
-	        html.find(selector).each((i, element) => {
-	          // Skip headers and elements without item IDs
-	          if (element.classList.contains("inventory-header") || 
-	              element.classList.contains("header")) return;
+    // Also allow double-click anywhere on the row (excluding interactive controls)
+    html.find(".item-row").dblclick((ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
 
-	          const hasItemId = Boolean(
-	            element.dataset?.itemId ||
-	            element.getAttribute?.("data-item-id") ||
-	            element.closest?.("[data-item-id]")?.dataset?.itemId
-	          );
-	          if (!hasItemId) return;
-	              
-	          element.setAttribute("draggable", true);
-	          element.addEventListener("dragstart", handler, false);
-	          
-	          // Add visual feedback for draggable items
-	          element.style.cursor = "grab";
-	        });
-	      });
-	    }
+      const tag = String(ev.target?.tagName || "").toLowerCase();
+      if (["input", "select", "textarea", "button", "a", "label"].includes(tag)) return;
+      if (ev.target?.closest?.(".item-actions")) return;
+
+      openItemSheetFromRow(ev.currentTarget);
+    });
+
+    // Drag events for macros
+    if (this.actor.isOwner) {
+      let handler = (ev) => this._onDragStart(ev);
+
+      // Enable drag for all item types
+      const itemSelectors = [
+        "li.item", // Generic items
+        ".item-row .item-name img", // Item rows (drag from icon to avoid blocking clicks)
+        ".skill-item .skill-image img", // Skills (drag from icon)
+        ".program-row .program-name img", // Programs (drag from icon)
+      ];
+
+      itemSelectors.forEach((selector) => {
+        html.find(selector).each((i, element) => {
+          // Skip headers and elements without item IDs
+          if (
+            element.classList.contains("inventory-header") ||
+            element.classList.contains("header")
+          )
+            return;
+
+          const hasItemId = Boolean(
+            element.dataset?.itemId ||
+            element.getAttribute?.("data-item-id") ||
+            element.closest?.("[data-item-id]")?.dataset?.itemId,
+          );
+          if (!hasItemId) return;
+
+          element.setAttribute("draggable", true);
+          element.addEventListener("dragstart", handler, false);
+
+          // Add visual feedback for draggable items
+          element.style.cursor = "grab";
+        });
+      });
+    }
 
     // Everything below here is only needed if the sheet is editable
     if (!this.isEditable) return;
 
     // Add Inventory Item
-    html.find('.item-create').click(this._onItemCreate.bind(this));
+    html.find(".item-create").click(this._onItemCreate.bind(this));
 
     // Delete Inventory Item
-    html.find('.item-delete').click(async ev => {
+    html.find(".item-delete").click(async (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
 
@@ -930,7 +697,8 @@ export class SR2ActorSheet extends ActorSheet {
         const button = $(ev.currentTarget);
 
         // Try multiple ways to get the item ID
-        let itemId = button.attr("data-item-id") ||
+        let itemId =
+          button.attr("data-item-id") ||
           button.data("item-id") ||
           button.data("itemId") ||
           button.parents(".item, .skill-item, .item-row").attr("data-item-id") ||
@@ -939,7 +707,10 @@ export class SR2ActorSheet extends ActorSheet {
 
         console.log("SR2E | Delete item button clicked, itemId:", itemId);
         console.log("SR2E | Button data attributes:", button.get(0).dataset);
-        console.log("SR2E | Available items:", this.actor.items.map(i => ({ id: i.id, name: i.name, type: i.type })));
+        console.log(
+          "SR2E | Available items:",
+          this.actor.items.map((i) => ({ id: i.id, name: i.name, type: i.type })),
+        );
 
         if (!itemId) {
           console.warn("SR2E | No item ID found for delete operation");
@@ -950,8 +721,8 @@ export class SR2ActorSheet extends ActorSheet {
         const item = this.actor.items.get(itemId);
         if (item) {
           // Confirm deletion for important items
-          const confirmDelete = game.settings.get("core", "noCanvas") ||
-            confirm(`Delete ${item.name}?`);
+          const confirmDelete =
+            game.settings.get("core", "noCanvas") || confirm(`Delete ${item.name}?`);
 
           if (confirmDelete) {
             await item.delete();
@@ -961,7 +732,10 @@ export class SR2ActorSheet extends ActorSheet {
           }
         } else {
           console.warn(`SR2E | Item with ID ${itemId} not found in actor items`);
-          console.warn("SR2E | Available item IDs:", this.actor.items.map(i => i.id));
+          console.warn(
+            "SR2E | Available item IDs:",
+            this.actor.items.map((i) => i.id),
+          );
           ui.notifications.error(`Could not find item with ID: ${itemId}`);
         }
       } catch (error) {
@@ -971,78 +745,84 @@ export class SR2ActorSheet extends ActorSheet {
     });
 
     // Active Effect management
-    html.find(".effect-control").click(ev => onManageActiveEffect(ev, this.actor));
+    html.find(".effect-control").click((ev) => onManageActiveEffect(ev, this.actor));
 
     // Pool management
-    html.find('.pool-adjust').click(this._onPoolAdjust.bind(this));
-    html.find('.reset-all-pools').click(this._onResetAllPools.bind(this));
+    html.find(".pool-adjust").click(this._onPoolAdjust.bind(this));
+    html.find(".reset-all-pools").click(this._onResetAllPools.bind(this));
 
     // Skill management
-    html.find('.base-skill-select').change(this._onBaseSkillChange.bind(this));
-	    html.find('.concentration-select').change(this._onConcentrationChange.bind(this));
-	    html.find('input[name*="specialization"]:not([name*="Rating"])').on('change', this._onSpecializationChange.bind(this));
-	    html.find('input[name*="allocatedRating"]').on('change', this._onSkillAllocatedRatingChange.bind(this));
-	    html.find('input[name*="allocatedRating"]').on('blur', this._onSkillAllocatedRatingChange.bind(this));
-	    html.find('input[name*="allocatedRating"]').on('input', this._onSkillAllocatedRatingInput.bind(this));
-	    html.find('.sr2-skill-allocated-adjust').click(this._onSkillAllocatedAdjust.bind(this));
-	    html.find('.skill-roll').click(this._onSkillRoll.bind(this));
+    html.find(".base-skill-select").change(this._onBaseSkillChange.bind(this));
+    html.find(".concentration-select").change(this._onConcentrationChange.bind(this));
+    html
+      .find('input[name*="specialization"]:not([name*="Rating"])')
+      .on("change", this._onSpecializationChange.bind(this));
+    html
+      .find('input[name*="allocatedRating"]')
+      .on("change", this._onSkillAllocatedRatingChange.bind(this));
+    html
+      .find('input[name*="allocatedRating"]')
+      .on("blur", this._onSkillAllocatedRatingChange.bind(this));
+    html
+      .find('input[name*="allocatedRating"]')
+      .on("input", this._onSkillAllocatedRatingInput.bind(this));
+    html.find(".sr2-skill-allocated-adjust").click(this._onSkillAllocatedAdjust.bind(this));
+    html.find(".skill-roll").click(this._onSkillRoll.bind(this));
 
-	    // Leader quick-open (followers)
-	    html.find('.open-leader').click(this._onOpenLeader.bind(this));
-	    html.find('.open-connection').click(this._onOpenConnection.bind(this));
-	    html.find('.sr2-add-contact').click(this._onAddContact.bind(this));
-	    html.find('.sr2-add-follower, .sr2-add-gang-member').click(this._onAddFollower.bind(this));
-	    html.find('.sr2-add-spirit').click(this._onAddSpirit.bind(this));
-	    html.find('.sr2-add-critter').click(this._onAddCritter.bind(this));
-	    html.find('.sr2-add-ic').click(this._onAddIC.bind(this));
-	    html.find('.sr2-adjust-contacts').click(this._onAdjustContacts.bind(this));
-	    html.find('.sr2-toggle-extra').click(this._onToggleExtra.bind(this));
+    // Leader quick-open (followers)
+    html.find(".open-leader").click(this._onOpenLeader.bind(this));
+    html.find(".open-connection").click(this._onOpenConnection.bind(this));
+    html.find(".sr2-add-contact").click(this._onAddContact.bind(this));
+    html.find(".sr2-add-follower, .sr2-add-gang-member").click(this._onAddFollower.bind(this));
+    html.find(".sr2-add-spirit").click(this._onAddSpirit.bind(this));
+    html.find(".sr2-add-critter").click(this._onAddCritter.bind(this));
+    html.find(".sr2-add-ic").click(this._onAddIC.bind(this));
+    html.find(".sr2-adjust-contacts").click(this._onAdjustContacts.bind(this));
+    html.find(".sr2-toggle-extra").click(this._onToggleExtra.bind(this));
 
-	    // Creation resources finalization
-	    html.find('.finalize-resources').click(this._onFinalizeResources.bind(this));
-	    html.find('.unfinalize-resources').click(this._onUnfinalizeResources.bind(this));
-	    html.find('.sr2-complete-creation').click(this._onCompleteCreation.bind(this));
+    // Creation resources finalization
+    html.find(".finalize-resources").click(this._onFinalizeResources.bind(this));
+    html.find(".unfinalize-resources").click(this._onUnfinalizeResources.bind(this));
+    html.find(".sr2-complete-creation").click(this._onCompleteCreation.bind(this));
 
-	    // Lifestyle management (creation resources)
-	    if (['character', 'contact', 'follower'].includes(this.actor.type)) {
-	      html.find('.sr2-lifestyle-add').click(this._onLifestyleAdd.bind(this));
-      html.find('.sr2-lifestyle-delete').click(this._onLifestyleDelete.bind(this));
+    // Lifestyle management (creation resources)
+    if (["character", "contact", "follower"].includes(this.actor.type)) {
+      html.find(".sr2-lifestyle-add").click(this._onLifestyleAdd.bind(this));
+      html.find(".sr2-lifestyle-delete").click(this._onLifestyleDelete.bind(this));
     }
 
     // Handle form submission to ensure skill data is saved
-    html.find('form').on('submit', this._onFormSubmit.bind(this));
+    html.find("form").on("submit", this._onFormSubmit.bind(this));
 
     // Attribute rolls
-    html.find('.attribute-roll').click(this._onAttributeRoll.bind(this));
+    html.find(".attribute-roll").click(this._onAttributeRoll.bind(this));
 
     // Item browser
-    html.find('.browse-items').click(this._onBrowseItems.bind(this));
+    html.find(".browse-items").click(this._onBrowseItems.bind(this));
 
     // Spell casting
-    html.find('.spell-lock-toggle').click(this._onSpellLockToggle.bind(this));
-    html.find('.spell-cast').click(this._onSpellCast.bind(this));
+    html.find(".spell-lock-toggle").click(this._onSpellLockToggle.bind(this));
+    html.find(".spell-cast").click(this._onSpellCast.bind(this));
 
     // Weapon attacks
-    html.find('.weapon-attack').click(this._onWeaponAttack.bind(this));
+    html.find(".weapon-attack").click(this._onWeaponAttack.bind(this));
 
     // Range calculator
-    html.find('.range-weapon-select').change(this._onRangeWeaponChange.bind(this));
-    html.find('.range-distance').on('input', this._onRangeDistanceChange.bind(this));
+    html.find(".range-weapon-select").change(this._onRangeWeaponChange.bind(this));
+    html.find(".range-distance").on("input", this._onRangeDistanceChange.bind(this));
 
     // Totem management
-    html.find('.browse-totems').click(this._onBrowseTotems.bind(this));
-    html.find('.change-totem').click(this._onBrowseTotems.bind(this));
+    html.find(".browse-totems").click(this._onBrowseTotems.bind(this));
+    html.find(".change-totem").click(this._onBrowseTotems.bind(this));
 
     // Cyberware installation management
-    html.find('.cyberware-installed').change(this._onCyberwareInstall.bind(this));
-    html.find('.bioware-installed').change(this._onBiowareInstall.bind(this));
+    html.find(".cyberware-installed").change(this._onCyberwareInstall.bind(this));
+    html.find(".bioware-installed").change(this._onBiowareInstall.bind(this));
 
     // Damage quick controls (header)
-    html.find('.sr2-damage-adjust').click(this._onDamageAdjust.bind(this));
-    html.find('.sr2-damage-input').change(this._onDamageInputChange.bind(this));
-
-    // Initiative roll button
-    html.find('.initiative-roll-btn').click(this._onInitiativeRoll.bind(this));
+    html.find(".sr2-damage-adjust").click(this._onDamageAdjust.bind(this));
+    html.find(".sr2-damage-input").change(this._onDamageInputChange.bind(this));
+    html.find(".initiative-roll-btn").click(this._onInitiativeRoll.bind(this));
   }
 
   /**
@@ -1056,26 +836,26 @@ export class SR2ActorSheet extends ActorSheet {
 
     this._creatingEmbeddedItem = true;
     const createButton = event.currentTarget;
-    createButton.setAttribute('aria-disabled', 'true');
+    createButton.setAttribute("aria-disabled", "true");
     const header = event.currentTarget;
     const type = header.dataset.type;
     const data = foundry.utils.deepClone(header.dataset);
-    const typeLabel = type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Item';
+    const typeLabel = type ? type.charAt(0).toUpperCase() + type.slice(1) : "Item";
     const name = `New ${typeLabel}`;
     const itemData = {
       name: name,
       type: type,
-      system: data
+      system: data,
     };
     delete itemData.system["type"];
 
     try {
-      const [created] = await this.actor.createEmbeddedDocuments('Item', [itemData]);
+      const [created] = await this.actor.createEmbeddedDocuments("Item", [itemData]);
       await this.render(false);
       return created;
     } finally {
       this._creatingEmbeddedItem = false;
-      createButton.removeAttribute('aria-disabled');
+      createButton.removeAttribute("aria-disabled");
     }
   }
 
@@ -1089,8 +869,8 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Handle item rolls
     if (dataset.rollType) {
-      if (dataset.rollType == 'item') {
-        const itemId = element.closest('.item').dataset.itemId;
+      if (dataset.rollType == "item") {
+        const itemId = element.closest(".item").dataset.itemId;
         const item = this.actor.items.get(itemId);
         if (item) return item.roll();
       }
@@ -1098,12 +878,12 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Handle rolls that supply the formula directly
     if (dataset.roll) {
-      let label = dataset.label ? `[ability] ${dataset.label}` : '';
+      let label = dataset.label ? `[ability] ${dataset.label}` : "";
       let roll = new Roll(dataset.roll, this.actor.getRollData());
       roll.toMessage({
         speaker: ChatMessage.getSpeaker({ actor: this.actor }),
         flavor: label,
-        rollMode: game.settings.get('core', 'rollMode'),
+        rollMode: game.settings.get("core", "rollMode"),
       });
       return roll;
     }
@@ -1122,9 +902,7 @@ export class SR2ActorSheet extends ActorSheet {
     if (!pool) return;
 
     const currentValue = Number(pool.current) || 0;
-    const maxValue = poolType === "karma"
-      ? (Number(pool.total) || 0)
-      : (Number(pool.max) || 0);
+    const maxValue = poolType === "karma" ? Number(pool.total) || 0 : Number(pool.max) || 0;
     const newValue = sr2Clamp(currentValue + adjustment, 0, maxValue);
 
     this.actor.update({ [`system.pools.${poolType}.current`]: newValue });
@@ -1138,35 +916,37 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Check conditions for pool visibility
     const magicAttribute = this.actor.system.attributes.magic?.value || 0;
-    const isSpellcaster = Boolean(this.actor.system.magic?.awakened) && !Boolean(this.actor.system.magic?.physicalAdept);
-    const hasCyberdeck = this.actor.items.some(item => 
-      item.type === 'cyberware' && 
-      item.name.toLowerCase().includes('cyberdeck')
+    const isSpellcaster =
+      Boolean(this.actor.system.magic?.awakened) &&
+      !Boolean(this.actor.system.magic?.physicalAdept);
+    const hasCyberdeck = this.actor.items.some(
+      (item) => item.type === "cyberware" && item.name.toLowerCase().includes("cyberdeck"),
     );
-    const hasControlRig = this.actor.items.some(item => 
-      item.type === 'cyberware' && 
-      (item.name.toLowerCase().includes('control rig') || 
-       item.name.toLowerCase().includes('vehicle control rig'))
+    const hasControlRig = this.actor.items.some(
+      (item) =>
+        item.type === "cyberware" &&
+        (item.name.toLowerCase().includes("control rig") ||
+          item.name.toLowerCase().includes("vehicle control rig")),
     );
 
     // Build list of available pools for confirmation dialog
     const availablePools = [];
-    if (true) availablePools.push('Combat');
-    if (isSpellcaster && magicAttribute > 0) availablePools.push('Magic');
-    if (hasCyberdeck) availablePools.push('Hacking');
-    if (hasControlRig) availablePools.push('Control');
-    if ((this.actor.system.pools.task?.max || 0) > 0) availablePools.push('Task');
-    if (isSpellcaster && magicAttribute > 0) availablePools.push('Astral');
+    if (true) availablePools.push("Combat");
+    if (isSpellcaster && magicAttribute > 0) availablePools.push("Magic");
+    if (hasCyberdeck) availablePools.push("Hacking");
+    if (hasControlRig) availablePools.push("Control");
+    if ((this.actor.system.pools.task?.max || 0) > 0) availablePools.push("Task");
+    if (isSpellcaster && magicAttribute > 0) availablePools.push("Astral");
 
     // Confirm with GM before resetting
     const confirmed = await Dialog.confirm({
       title: "Reset All Pools",
       content: `<p>Are you sure you want to reset all dice pools to maximum for <strong>${this.actor.name}</strong>?</p>
                 <p>This will restore the following pools to their maximum values:</p>
-                <p><em>${availablePools.join(', ')}</em></p>`,
+                <p><em>${availablePools.join(", ")}</em></p>`,
       yes: () => true,
       no: () => false,
-      defaultYes: false
+      defaultYes: false,
     });
 
     if (!confirmed) return;
@@ -1177,16 +957,16 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Define pool types with their visibility conditions
     const poolTypes = [
-      { key: 'combat', condition: true },
-      { key: 'spell', condition: isSpellcaster && magicAttribute > 0 },
-      { key: 'hacking', condition: hasCyberdeck },
-      { key: 'control', condition: hasControlRig },
-      { key: 'task', condition: (poolData.task?.max || 0) > 0 },
-      { key: 'astral', condition: isSpellcaster && magicAttribute > 0 }
+      { key: "combat", condition: true },
+      { key: "spell", condition: isSpellcaster && magicAttribute > 0 },
+      { key: "hacking", condition: hasCyberdeck },
+      { key: "control", condition: hasControlRig },
+      { key: "task", condition: (poolData.task?.max || 0) > 0 },
+      { key: "astral", condition: isSpellcaster && magicAttribute > 0 },
     ];
 
     const resetPools = [];
-    poolTypes.forEach(poolType => {
+    poolTypes.forEach((poolType) => {
       if (poolType.condition && poolData[poolType.key]) {
         updateData[`system.pools.${poolType.key}.current`] = poolData[poolType.key].max;
         resetPools.push(poolType.key);
@@ -1207,13 +987,18 @@ export class SR2ActorSheet extends ActorSheet {
         <h3>🔄 Pools Reset</h3>
         <p><strong>${this.actor.name}'s</strong> dice pools have been reset to maximum by the GM.</p>
         <ul>
-          ${resetPools.map(type => {
-        const pool = poolData[type];
-        return pool && pool.max > 0 ? `<li>${type.charAt(0).toUpperCase() + type.slice(1)} Pool: ${pool.max}/${pool.max}</li>` : '';
-      }).filter(item => item).join('')}
+          ${resetPools
+            .map((type) => {
+              const pool = poolData[type];
+              return pool && pool.max > 0
+                ? `<li>${type.charAt(0).toUpperCase() + type.slice(1)} Pool: ${pool.max}/${pool.max}</li>`
+                : "";
+            })
+            .filter((item) => item)
+            .join("")}
         </ul>
       </div>`,
-      whisper: [game.user.id] // Only visible to GM
+      whisper: [game.user.id], // Only visible to GM
     });
   }
 
@@ -1235,13 +1020,13 @@ export class SR2ActorSheet extends ActorSheet {
       if (currentBaseSkill !== baseSkill) {
         // Prevent duplicate base skills (Languages may have multiple entries)
         if (baseSkill && baseSkill !== "Language") {
-          const duplicate = this.actor.items.some(i =>
-            i.type === "skill" &&
-            i.id !== item.id &&
-            i.system?.baseSkill === baseSkill
+          const duplicate = this.actor.items.some(
+            (i) => i.type === "skill" && i.id !== item.id && i.system?.baseSkill === baseSkill,
           );
           if (duplicate) {
-            ui.notifications.warn(`"${baseSkill}" is already on the sheet. Each skill can only be acquired once.`);
+            ui.notifications.warn(
+              `"${baseSkill}" is already on the sheet. Each skill can only be acquired once.`,
+            );
             element.value = currentBaseSkill || "";
             return;
           }
@@ -1252,19 +1037,19 @@ export class SR2ActorSheet extends ActorSheet {
           ...item.system,
           baseSkill: baseSkill,
           concentration: "",
-          specialization: ""
+          specialization: "",
         };
 
         const computed = sr2ComputeSkillRatingsFromAllocated(nextSystem);
         await item.update({
-          'system.baseSkill': baseSkill,
-          'system.concentration': "",
-          'system.specialization': "",
-          'system.allocatedRating': computed.allocatedRating,
-          'system.baseRating': computed.baseRating,
-          'system.concentrationRating': computed.concentrationRating,
-          'system.specializationRating': computed.specializationRating,
-          'name': baseSkill || 'New Skill'
+          "system.baseSkill": baseSkill,
+          "system.concentration": "",
+          "system.specialization": "",
+          "system.allocatedRating": computed.allocatedRating,
+          "system.baseRating": computed.baseRating,
+          "system.concentrationRating": computed.concentrationRating,
+          "system.specializationRating": computed.specializationRating,
+          name: baseSkill || "New Skill",
         });
       } else {
         // Even if the base skill didn't change, make sure the select shows the correct value
@@ -1282,7 +1067,7 @@ export class SR2ActorSheet extends ActorSheet {
     event.preventDefault();
     event.stopPropagation();
     const element = event.currentTarget;
-    const skillId = element.dataset.skillId || element.closest('.skill-item').dataset.itemId;
+    const skillId = element.dataset.skillId || element.closest(".skill-item").dataset.itemId;
     const concentration = element.value;
     const item = this.actor.items.get(skillId);
 
@@ -1308,14 +1093,14 @@ export class SR2ActorSheet extends ActorSheet {
     let nextAllocated = currentAllocated;
 
     // Clearing concentration also clears specialization (SR2: spec implies concentration)
-    const nextSpecialization = concentration ? (item.system.specialization || "") : "";
+    const nextSpecialization = concentration ? item.system.specialization || "" : "";
 
     // If a concentration is selected, ensure allocated rating supports it (min 2)
     const computedPreview = sr2ComputeSkillRatingsFromAllocated({
       ...item.system,
       concentration,
       specialization: nextSpecialization,
-      allocatedRating: nextAllocated
+      allocatedRating: nextAllocated,
     });
 
     if (baseSkill && nextAllocated < computedPreview.minAllocated) {
@@ -1341,7 +1126,7 @@ export class SR2ActorSheet extends ActorSheet {
       ...item.system,
       concentration,
       specialization: nextSpecialization,
-      allocatedRating: nextAllocated
+      allocatedRating: nextAllocated,
     });
 
     await item.update({
@@ -1350,7 +1135,7 @@ export class SR2ActorSheet extends ActorSheet {
       "system.allocatedRating": computed.allocatedRating,
       "system.baseRating": computed.baseRating,
       "system.concentrationRating": computed.concentrationRating,
-      "system.specializationRating": computed.specializationRating
+      "system.specializationRating": computed.specializationRating,
     });
   }
 
@@ -1361,7 +1146,7 @@ export class SR2ActorSheet extends ActorSheet {
     event.preventDefault();
     event.stopPropagation();
     const element = event.currentTarget;
-    const skillId = element.dataset.skillId || element.closest('.skill-item').dataset.itemId;
+    const skillId = element.dataset.skillId || element.closest(".skill-item").dataset.itemId;
     const specialization = element.value;
     const item = this.actor.items.get(skillId);
 
@@ -1395,7 +1180,7 @@ export class SR2ActorSheet extends ActorSheet {
     const computedPreview = sr2ComputeSkillRatingsFromAllocated({
       ...item.system,
       specialization,
-      allocatedRating: nextAllocated
+      allocatedRating: nextAllocated,
     });
 
     if (baseSkill && specialization && nextAllocated < computedPreview.minAllocated) {
@@ -1420,7 +1205,7 @@ export class SR2ActorSheet extends ActorSheet {
     const computed = sr2ComputeSkillRatingsFromAllocated({
       ...item.system,
       specialization,
-      allocatedRating: nextAllocated
+      allocatedRating: nextAllocated,
     });
 
     await item.update({
@@ -1428,7 +1213,7 @@ export class SR2ActorSheet extends ActorSheet {
       "system.allocatedRating": computed.allocatedRating,
       "system.baseRating": computed.baseRating,
       "system.concentrationRating": computed.concentrationRating,
-      "system.specializationRating": computed.specializationRating
+      "system.specializationRating": computed.specializationRating,
     });
   }
 
@@ -1437,7 +1222,7 @@ export class SR2ActorSheet extends ActorSheet {
    */
   _refreshSkillSelects(html) {
     // Ensure base skill selects show the correct selected values
-    html.find('.base-skill-select').each((i, select) => {
+    html.find(".base-skill-select").each((i, select) => {
       const skillId = select.dataset.skillId;
       const skill = this.actor.items.get(skillId);
       if (skill && skill.system.baseSkill) {
@@ -1446,7 +1231,7 @@ export class SR2ActorSheet extends ActorSheet {
     });
 
     // Ensure concentration selects show the correct selected values
-    html.find('.concentration-select').each((i, select) => {
+    html.find(".concentration-select").each((i, select) => {
       const skillId = select.dataset.skillId;
       const skill = this.actor.items.get(skillId);
       if (skill && skill.system.concentration) {
@@ -1455,24 +1240,24 @@ export class SR2ActorSheet extends ActorSheet {
     });
   }
 
-	  _isCreationMode() {
-	    const completed = this.actor.getFlag("shadowrun2e", "creationCompleted");
-	    if (completed === true) return false;
+  _isCreationMode() {
+    const completed = this.actor.getFlag("shadowrun2e", "creationCompleted");
+    if (completed === true) return false;
 
-	    const flag = this.actor.getFlag("shadowrun2e", "creationMode");
-	    if (typeof flag === "boolean") return flag;
+    const flag = this.actor.getFlag("shadowrun2e", "creationMode");
+    if (typeof flag === "boolean") return flag;
 
-	    const creation = this.actor.system?.creation;
-	    return Boolean(
+    const creation = this.actor.system?.creation;
+    return Boolean(
       (creation?.attributePoints || 0) > 0 ||
       (creation?.skillPoints || 0) > 0 ||
-      (creation?.forcePoints || 0) > 0
+      (creation?.forcePoints || 0) > 0,
     );
   }
 
   _getSkillPointsSpentExcluding(excludeItemId) {
     return this.actor.items
-      .filter(i => i.type === "skill" && i.id !== excludeItemId)
+      .filter((i) => i.type === "skill" && i.id !== excludeItemId)
       .reduce((sum, skill) => {
         if (!skill.system?.baseSkill) return sum;
         if (skill.system?.isFree) return sum;
@@ -1488,7 +1273,7 @@ export class SR2ActorSheet extends ActorSheet {
     event.stopPropagation();
 
     const element = event.currentTarget;
-    const skillId = element.closest('.skill-item')?.dataset?.itemId;
+    const skillId = element.closest(".skill-item")?.dataset?.itemId;
     const item = skillId ? this.actor.items.get(skillId) : null;
     if (!item) return;
     if (item.system.isFree) {
@@ -1510,7 +1295,11 @@ export class SR2ActorSheet extends ActorSheet {
 
     nextAllocated = sr2Clamp(nextAllocated, minAllocated, maxAllocated);
 
-    if (this._isCreationMode() && (Number(this.actor.system.creation?.skillPoints) || 0) > 0 && baseSkill) {
+    if (
+      this._isCreationMode() &&
+      (Number(this.actor.system.creation?.skillPoints) || 0) > 0 &&
+      baseSkill
+    ) {
       const total = Number(this.actor.system.creation?.skillPoints) || 0;
       const spentOther = this._getSkillPointsSpentExcluding(item.id);
       const maxForThis = total - spentOther;
@@ -1524,66 +1313,69 @@ export class SR2ActorSheet extends ActorSheet {
       nextAllocated = Math.min(nextAllocated, maxForThis);
     }
 
-    const computed = sr2ComputeSkillRatingsFromAllocated({ ...item.system, allocatedRating: nextAllocated });
+    const computed = sr2ComputeSkillRatingsFromAllocated({
+      ...item.system,
+      allocatedRating: nextAllocated,
+    });
 
     await item.update({
       "system.allocatedRating": computed.allocatedRating,
       "system.baseRating": computed.baseRating,
       "system.concentrationRating": computed.concentrationRating,
-      "system.specializationRating": computed.specializationRating
+      "system.specializationRating": computed.specializationRating,
     });
   }
 
-	  _onSkillAllocatedRatingInput(event) {
-	    const element = event.currentTarget;
-	    const rating = parseInt(element.value, 10);
-	    if (!Number.isFinite(rating)) {
-	      element.style.borderColor = '';
-	      return;
-	    }
+  _onSkillAllocatedRatingInput(event) {
+    const element = event.currentTarget;
+    const rating = parseInt(element.value, 10);
+    if (!Number.isFinite(rating)) {
+      element.style.borderColor = "";
+      return;
+    }
 
-	    const maxAllocated = this._isCreationMode() ? 6 : 12;
-	    if (rating < 0 || rating > maxAllocated) {
-	      element.style.borderColor = '#ff6b6b';
-	    } else {
-	      element.style.borderColor = '';
-	    }
-	  }
+    const maxAllocated = this._isCreationMode() ? 6 : 12;
+    if (rating < 0 || rating > maxAllocated) {
+      element.style.borderColor = "#ff6b6b";
+    } else {
+      element.style.borderColor = "";
+    }
+  }
 
-	  async _onSkillAllocatedAdjust(event) {
-	    event.preventDefault();
-	    event.stopPropagation();
+  async _onSkillAllocatedAdjust(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
-	    const button = event.currentTarget;
-	    const delta = parseInt(button?.dataset?.adjust, 10);
-	    if (!Number.isFinite(delta) || delta === 0) return;
+    const button = event.currentTarget;
+    const delta = parseInt(button?.dataset?.adjust, 10);
+    if (!Number.isFinite(delta) || delta === 0) return;
 
-	    const row = button.closest(".skill-item");
-	    const skillId = button?.dataset?.skillId || row?.dataset?.itemId;
-	    if (!row || !skillId) return;
+    const row = button.closest(".skill-item");
+    const skillId = button?.dataset?.skillId || row?.dataset?.itemId;
+    if (!row || !skillId) return;
 
-	    const input = row.querySelector('input[name*="allocatedRating"]');
-	    if (!input) return;
+    const input = row.querySelector('input[name*="allocatedRating"]');
+    if (!input) return;
 
-	    const current = parseInt(input.value, 10);
-	    const next = (Number.isFinite(current) ? current : 0) + delta;
-	    input.value = String(next);
+    const current = parseInt(input.value, 10);
+    const next = (Number.isFinite(current) ? current : 0) + delta;
+    input.value = String(next);
 
-	    await this._onSkillAllocatedRatingChange({
-	      preventDefault: () => {},
-	      stopPropagation: () => {},
-	      currentTarget: input
-	    });
+    await this._onSkillAllocatedRatingChange({
+      preventDefault: () => {},
+      stopPropagation: () => {},
+      currentTarget: input,
+    });
 
-	    const item = this.actor.items.get(skillId);
-	    if (item && !item.system?.isFree) {
-	      input.value = String(sr2SkillInferAllocatedRating(item.system));
-	    }
-	  }
+    const item = this.actor.items.get(skillId);
+    if (item && !item.system?.isFree) {
+      input.value = String(sr2SkillInferAllocatedRating(item.system));
+    }
+  }
 
-	  _onOpenLeader(event) {
-	    event.preventDefault();
-	    event.stopPropagation();
+  _onOpenLeader(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
     const leaderId = event.currentTarget?.dataset?.leaderId;
     const leader = leaderId ? game?.actors?.get(leaderId) : null;
@@ -1595,9 +1387,9 @@ export class SR2ActorSheet extends ActorSheet {
     leader.sheet?.render(true);
   }
 
-	  _onOpenConnection(event) {
-	    event.preventDefault();
-	    event.stopPropagation();
+  _onOpenConnection(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
     const actorId = event.currentTarget?.dataset?.actorId;
     const actor = actorId ? game?.actors?.get(actorId) : null;
@@ -1606,231 +1398,259 @@ export class SR2ActorSheet extends ActorSheet {
       return;
     }
 
-	    actor.sheet?.render(true);
-	  }
+    actor.sheet?.render(true);
+  }
 
-	  async _onAdjustContacts(event) {
-	    event.preventDefault();
-	    event.stopPropagation();
+  async _onAdjustContacts(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
-	    if (!this._isCreationMode()) return;
-	    if (Boolean(sr2GetSystemSetting("contactLevels", false))) return;
+    if (!this._isCreationMode()) return;
+    if (Boolean(sr2GetSystemSetting("contactLevels", false))) return;
 
-	    if (this.actor.system?.creation?.resourcesFinalized) {
-	      ui.notifications.warn("Resources are finalized. Reopen resources to purchase extras.");
-	      return;
-	    }
+    if (this.actor.system?.creation?.resourcesFinalized) {
+      ui.notifications.warn("Resources are finalized. Reopen resources to purchase extras.");
+      return;
+    }
 
-	    const delta = parseInt(event.currentTarget?.dataset?.delta, 10);
-	    if (!Number.isFinite(delta) || delta === 0) return;
+    const delta = parseInt(event.currentTarget?.dataset?.delta, 10);
+    if (!Number.isFinite(delta) || delta === 0) return;
 
-	    const raw = Math.max(0, parseInt(this.actor.system?.creation?.extras?.contacts, 10) || 0);
-	    const current = Math.max(2, raw);
-	    const next = Math.max(2, current + delta);
+    const raw = Math.max(0, parseInt(this.actor.system?.creation?.extras?.contacts, 10) || 0);
+    const current = Math.max(2, raw);
+    const next = Math.max(2, current + delta);
 
-	    await this.actor.update({
-	      "system.creation.extras.contacts": next
-	    });
-	  }
+    await this.actor.update({
+      "system.creation.extras.contacts": next,
+    });
+  }
 
-		  async _onToggleExtra(event) {
-		    event.preventDefault();
-		    event.stopPropagation();
+  async _onToggleExtra(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
-	    if (!this._isCreationMode()) return;
+    if (!this._isCreationMode()) return;
 
-	    if (this.actor.system?.creation?.resourcesFinalized) {
-	      ui.notifications.warn("Resources are finalized. Reopen resources to purchase extras.");
-	      return;
-	    }
+    if (this.actor.system?.creation?.resourcesFinalized) {
+      ui.notifications.warn("Resources are finalized. Reopen resources to purchase extras.");
+      return;
+    }
 
-	    const extra = event.currentTarget?.dataset?.extra;
-	    const disableBuddies = Boolean(sr2GetSystemSetting("disableBuddies", false)) || Boolean(sr2GetSystemSetting("contactLevels", false));
-	    const allowed = disableBuddies ? ["gang", "followers"] : ["buddy", "gang", "followers"];
-	    if (!allowed.includes(extra)) return;
+    const extra = event.currentTarget?.dataset?.extra;
+    const disableBuddies =
+      Boolean(sr2GetSystemSetting("disableBuddies", false)) ||
+      Boolean(sr2GetSystemSetting("contactLevels", false));
+    const allowed = disableBuddies ? ["gang", "followers"] : ["buddy", "gang", "followers"];
+    if (!allowed.includes(extra)) return;
 
-	    const current = Math.max(0, parseInt(this.actor.system?.creation?.extras?.[extra], 10) || 0);
-	    const next = current > 0 ? 0 : 1;
+    const current = Math.max(0, parseInt(this.actor.system?.creation?.extras?.[extra], 10) || 0);
+    const next = current > 0 ? 0 : 1;
 
-		    await this.actor.update({
-		      [`system.creation.extras.${extra}`]: next
-		    });
-		  }
+    await this.actor.update({
+      [`system.creation.extras.${extra}`]: next,
+    });
+  }
 
-		  async _sr2OpenActorCreateDialogWithDefaults({ type, leaderId = null, archetype = null }) {
-		    const applyDefaults = (app, html) => {
-		      try {
-		        // Normalize to a root element
-		        const root = html?.[0] ?? html;
-		        if (!root) return false;
+  async _sr2OpenActorCreateDialogWithDefaults({ type, leaderId = null, archetype = null }) {
+    const applyDefaults = (app, html) => {
+      try {
+        // Normalize to a root element
+        const root = html?.[0] ?? html;
+        if (!root) return false;
 
-		        const form = root.matches?.("form") ? root : root.querySelector?.("form");
-		        if (!form) return false;
+        const form = root.matches?.("form") ? root : root.querySelector?.("form");
+        if (!form) return false;
 
-		        const typeSelect = form.querySelector('select[name="type"]');
-		        if (!typeSelect) return false;
+        const typeSelect = form.querySelector('select[name="type"]');
+        if (!typeSelect) return false;
 
-		        // Only target the "Create Actor" dialog for this system.
-		        // Some Foundry versions use different create-dialog classes/hooks, so keep this check permissive.
-		        const optionValues = Array.from(typeSelect.options || []).map(o => o.value);
-		        const isSR2ActorCreateDialog =
-		          optionValues.includes("character") &&
-		          (optionValues.includes("contact") || optionValues.includes("follower") || optionValues.includes("spirit"));
-		        if (!isSR2ActorCreateDialog) return false;
-		        if (!optionValues.includes(type)) return false;
+        // Only target the "Create Actor" dialog for this system.
+        // Some Foundry versions use different create-dialog classes/hooks, so keep this check permissive.
+        const optionValues = Array.from(typeSelect.options || []).map((o) => o.value);
+        const isSR2ActorCreateDialog =
+          optionValues.includes("character") &&
+          (optionValues.includes("contact") ||
+            optionValues.includes("follower") ||
+            optionValues.includes("spirit"));
+        if (!isSR2ActorCreateDialog) return false;
+        if (!optionValues.includes(type)) return false;
 
-		        // Prefer setting after other render-hook enhancers have injected fields/handlers.
-		        setTimeout(() => {
-		          try {
-		            if (typeSelect.value !== type) {
-		              typeSelect.value = type;
-		              typeSelect.dispatchEvent(new Event("change", { bubbles: true }));
-		            }
+        // Prefer setting after other render-hook enhancers have injected fields/handlers.
+        setTimeout(() => {
+          try {
+            if (typeSelect.value !== type) {
+              typeSelect.value = type;
+              typeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+            }
 
-		            if (leaderId) {
-		              const leaderSelect = form.querySelector('select[name="system.details.leaderId"]');
-		              if (leaderSelect) {
-		                leaderSelect.value = leaderId;
-		                leaderSelect.dispatchEvent(new Event("change", { bubbles: true }));
-		              }
-		            }
+            if (leaderId) {
+              const leaderSelect = form.querySelector('select[name="system.details.leaderId"]');
+              if (leaderSelect) {
+                leaderSelect.value = leaderId;
+                leaderSelect.dispatchEvent(new Event("change", { bubbles: true }));
+              }
+            }
 
-		            if (archetype !== null) {
-		              const archetypeSelect = form.querySelector('select[name="system.details.archetype"]');
-		              if (archetypeSelect) {
-		                archetypeSelect.value = archetype;
-		                archetypeSelect.dispatchEvent(new Event("change", { bubbles: true }));
-		              }
-		            }
-		          } catch (err) {
-		            console.warn("SR2E | Failed to prefill Create Actor dialog:", err);
-		          }
-		        }, 0);
+            if (archetype !== null) {
+              const archetypeSelect = form.querySelector('select[name="system.details.archetype"]');
+              if (archetypeSelect) {
+                archetypeSelect.value = archetype;
+                archetypeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+              }
+            }
+          } catch (err) {
+            console.warn("SR2E | Failed to prefill Create Actor dialog:", err);
+          }
+        }, 0);
 
-		        return true;
-		      } catch (err) {
-		        console.warn("SR2E | Failed to open Create Actor dialog:", err);
-		        return false;
-		      }
-		    };
+        return true;
+      } catch (err) {
+        console.warn("SR2E | Failed to open Create Actor dialog:", err);
+        return false;
+      }
+    };
 
-		    let applied = false;
-		    const handler = (app, html) => {
-		      if (applied) return;
-		      applied = applyDefaults(app, html);
-		      if (!applied) return;
-		      cleanup();
-		    };
+    let applied = false;
+    const handler = (app, html) => {
+      if (applied) return;
+      applied = applyDefaults(app, html);
+      if (!applied) return;
+      cleanup();
+    };
 
-		    const cleanup = () => {
-		      try { Hooks.off("renderActorCreateDialog", handler); } catch (_) {}
-		      try { Hooks.off("renderDialog", handler); } catch (_) {}
-		      try { Hooks.off("renderDocumentCreateDialog", handler); } catch (_) {}
-		      try { Hooks.off("renderDocumentCreationDialog", handler); } catch (_) {}
-		    };
+    const cleanup = () => {
+      try {
+        Hooks.off("renderActorCreateDialog", handler);
+      } catch (_) {}
+      try {
+        Hooks.off("renderDialog", handler);
+      } catch (_) {}
+      try {
+        Hooks.off("renderDocumentCreateDialog", handler);
+      } catch (_) {}
+      try {
+        Hooks.off("renderDocumentCreationDialog", handler);
+      } catch (_) {}
+    };
 
-		    // Foundry versions differ: create-actor can fire multiple render hooks depending on version.
-		    Hooks.on("renderActorCreateDialog", handler);
-		    Hooks.on("renderDialog", handler);
-		    Hooks.on("renderDocumentCreateDialog", handler);
-		    Hooks.on("renderDocumentCreationDialog", handler);
+    // Foundry versions differ: create-actor can fire multiple render hooks depending on version.
+    Hooks.on("renderActorCreateDialog", handler);
+    Hooks.on("renderDialog", handler);
+    Hooks.on("renderDocumentCreateDialog", handler);
+    Hooks.on("renderDocumentCreationDialog", handler);
 
-		    // Safety: don't leave hooks installed if something unexpected happens.
-		    setTimeout(() => {
-		      if (!applied) cleanup();
-		    }, 10000);
+    // Safety: don't leave hooks installed if something unexpected happens.
+    setTimeout(() => {
+      if (!applied) cleanup();
+    }, 10000);
 
-		    return Actor.createDialog({ type });
-		  }
+    return Actor.createDialog({ type });
+  }
 
-		  async _onAddContact(event) {
-		    event.preventDefault();
-		    event.stopPropagation();
+  async _onAddContact(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
-		    return this._sr2OpenActorCreateDialogWithDefaults({
-		      type: "contact",
-		      leaderId: this.actor.id
-		    });
-		  }
+    return this._sr2OpenActorCreateDialogWithDefaults({
+      type: "contact",
+      leaderId: this.actor.id,
+    });
+  }
 
-		  async _onAddFollower(event) {
-		    event.preventDefault();
-		    event.stopPropagation();
+  async _onAddFollower(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
-		    const archetype = event.currentTarget?.dataset?.archetype ?? "";
+    const archetype = event.currentTarget?.dataset?.archetype ?? "";
 
-		    return this._sr2OpenActorCreateDialogWithDefaults({
-		      type: "follower",
-		      leaderId: this.actor.id,
-		      archetype
-		    });
-		  }
+    return this._sr2OpenActorCreateDialogWithDefaults({
+      type: "follower",
+      leaderId: this.actor.id,
+      archetype,
+    });
+  }
 
-		  async _onAddSpirit(event) {
-		    event.preventDefault();
-		    event.stopPropagation();
+  async _onAddSpirit(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
-		    return this._sr2OpenActorCreateDialogWithDefaults({
-		      type: "spirit"
-		    });
-		  }
+    return this._sr2OpenActorCreateDialogWithDefaults({
+      type: "spirit",
+    });
+  }
 
-		  async _onAddCritter(event) {
-		    event.preventDefault();
-		    event.stopPropagation();
+  async _onAddCritter(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
-		    return this._sr2OpenActorCreateDialogWithDefaults({
-		      type: "critter"
-		    });
-		  }
+    return this._sr2OpenActorCreateDialogWithDefaults({
+      type: "critter",
+    });
+  }
 
-		  async _onAddIC(event) {
-		    event.preventDefault();
-		    event.stopPropagation();
+  async _onAddIC(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
-		    return this._sr2OpenActorCreateDialogWithDefaults({
-		      type: "ic"
-		    });
-		  }
+    return this._sr2OpenActorCreateDialogWithDefaults({
+      type: "ic",
+    });
+  }
 
-		  async _onFinalizeResources(event) {
-		    event.preventDefault();
-		    event.stopPropagation();
+  async _onFinalizeResources(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
     const budget = Number(this.actor.system?.creation?.startingNuyen) || 0;
     if (budget <= 0) return;
     if (this.actor.system?.creation?.resourcesFinalized) return;
 
     const contactLevelsEnabled = Boolean(sr2GetSystemSetting("contactLevels", false));
-    const disableBuddies = contactLevelsEnabled || Boolean(sr2GetSystemSetting("disableBuddies", false));
+    const disableBuddies =
+      contactLevelsEnabled || Boolean(sr2GetSystemSetting("disableBuddies", false));
 
     const budgetOptions = { disableBuddies };
 
     if (contactLevelsEnabled) {
       const charisma = Number(this.actor.system?.attributes?.charisma?.value) || 0;
-      const linkedContacts = game?.actors?.filter(a => a.type === "contact" && a.system?.details?.leaderId === this.actor.id) ?? [];
+      const linkedContacts =
+        game?.actors?.filter(
+          (a) => a.type === "contact" && a.system?.details?.leaderId === this.actor.id,
+        ) ?? [];
       budgetOptions.contactLevelsSummary = sr2ComputeContactLevelSummary(
-        linkedContacts.map(a => ({ id: a.id, sort: Number(a.sort) || 0, contactLevel: a.system?.details?.contactLevel })),
-        charisma
+        linkedContacts.map((a) => ({
+          id: a.id,
+          sort: Number(a.sort) || 0,
+          contactLevel: a.system?.details?.contactLevel,
+        })),
+        charisma,
       );
 
       const over = budgetOptions.contactLevelsSummary?.over;
       if (over?.extraContacts || over?.extraLevel2 || over?.extraLevel3) {
-        ui.notifications.error("Contact limits exceeded. Reduce contacts or contact levels before finalizing resources.");
+        ui.notifications.error(
+          "Contact limits exceeded. Reduce contacts or contact levels before finalizing resources.",
+        );
         return;
       }
     }
 
-    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(this.actor.system, this.actor.items, budgetOptions);
+    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(
+      this.actor.system,
+      this.actor.items,
+      budgetOptions,
+    );
     if ((breakdown.remainingNuyen || 0) < 0) {
-      ui.notifications.error("Resource Budget exceeded. Reduce item/lifestyle/extras spending first.");
+      ui.notifications.error(
+        "Resource Budget exceeded. Reduce item/lifestyle/extras spending first.",
+      );
       return;
     }
 
     const unspentNuyen = Math.max(0, Math.floor(breakdown.remainingNuyen || 0));
     const startingCashFromUnspent = Math.floor(unspentNuyen / 10);
 
-    const roll = await (new Roll("3d6")).evaluate({ async: true });
+    const roll = await new Roll("3d6").evaluate({ async: true });
     const startingCashRoll = (Number(roll.total) || 0) * 1000;
     const startingCashFinal = startingCashFromUnspent + startingCashRoll;
 
@@ -1840,7 +1660,7 @@ export class SR2ActorSheet extends ActorSheet {
       "system.creation.startingCashFromUnspent": startingCashFromUnspent,
       "system.creation.startingCashRoll": startingCashRoll,
       "system.creation.startingCashFinal": startingCashFinal,
-      "system.resources.nuyen": startingCashFinal
+      "system.resources.nuyen": startingCashFinal,
     });
 
     ChatMessage.create({
@@ -1848,101 +1668,106 @@ export class SR2ActorSheet extends ActorSheet {
       flavor: `${this.actor.name} finalizes starting cash`,
       content: `<p>Unspent: ${unspentNuyen}¥ → ÷10 = ${startingCashFromUnspent}¥</p>
                 <p>Roll (3D6×1,000¥): ${startingCashRoll}¥</p>
-                <p><strong>Total Starting Cash:</strong> ${startingCashFinal}¥</p>`
+                <p><strong>Total Starting Cash:</strong> ${startingCashFinal}¥</p>`,
     });
 
-	    ui.notifications.info(`Resources finalized: ${startingCashFinal}¥ starting cash.`);
-	  }
+    ui.notifications.info(`Resources finalized: ${startingCashFinal}¥ starting cash.`);
+  }
 
-	  async _onUnfinalizeResources(event) {
-	    event.preventDefault();
-	    event.stopPropagation();
+  async _onUnfinalizeResources(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
-	    if (!this.actor.system?.creation?.resourcesFinalized) return;
+    if (!this.actor.system?.creation?.resourcesFinalized) return;
 
-	    await this.actor.update({
-	      "system.creation.resourcesFinalized": false,
-	      "system.creation.unspentNuyen": 0,
-	      "system.creation.startingCashFromUnspent": 0,
-	      "system.creation.startingCashRoll": 0,
-	      "system.creation.startingCashFinal": 0,
-	      // During creation mode, nuyen is derived from the budget after finalization.
-	      // While the budget is open, keep actual nuyen at 0 to avoid double-counting.
-	      "system.resources.nuyen": 0
-	    });
+    await this.actor.update({
+      "system.creation.resourcesFinalized": false,
+      "system.creation.unspentNuyen": 0,
+      "system.creation.startingCashFromUnspent": 0,
+      "system.creation.startingCashRoll": 0,
+      "system.creation.startingCashFinal": 0,
+      // During creation mode, nuyen is derived from the budget after finalization.
+      // While the budget is open, keep actual nuyen at 0 to avoid double-counting.
+      "system.resources.nuyen": 0,
+    });
 
-	    ui.notifications.info("Resource budget reopened.");
-	  }
+    ui.notifications.info("Resource budget reopened.");
+  }
 
-		  async _onCompleteCreation(event) {
-		    event.preventDefault();
-		    event.stopPropagation();
+  async _onCompleteCreation(event) {
+    event.preventDefault();
+    event.stopPropagation();
 
-		    const alreadyCompleted = this.actor.getFlag?.("shadowrun2e", "creationCompleted") === true;
-		    if (alreadyCompleted) {
-		      ui.notifications.warn("Character Generation is already finalized for this character.");
-		      return;
-		    }
+    const alreadyCompleted = this.actor.getFlag?.("shadowrun2e", "creationCompleted") === true;
+    if (alreadyCompleted) {
+      ui.notifications.warn("Character Generation is already finalized for this character.");
+      return;
+    }
 
-		    const budgetNuyen = Number(this.actor.system?.creation?.startingNuyen) || 0;
-		    const needsResourceFinalization =
-		      budgetNuyen > 0 &&
-		      this.actor.system?.creation?.resourcesFinalized !== true;
+    const budgetNuyen = Number(this.actor.system?.creation?.startingNuyen) || 0;
+    const needsResourceFinalization =
+      budgetNuyen > 0 && this.actor.system?.creation?.resourcesFinalized !== true;
 
-		    const message = `<p><strong>Finalize Character Generation?</strong></p>
+    const message = `<p><strong>Finalize Character Generation?</strong></p>
 		      <p>This will permanently disable Character Generation for <strong>${this.actor.name}</strong>.</p>
-		      ${needsResourceFinalization
-		        ? `<p><strong>Resources will also be finalized</strong> (starting cash = unspent budget ÷ 10 + 3d6 × 1,000¥).</p>`
-		        : ``}
+		      ${
+            needsResourceFinalization
+              ? `<p><strong>Resources will also be finalized</strong> (starting cash = unspent budget ÷ 10 + 3d6 × 1,000¥).</p>`
+              : ``
+          }
 		      <p>You will not be able to re-enter Character Generation or revert this.</p>`;
 
-		    let confirmed = false;
-		    if (globalThis.Dialog?.confirm) {
-		      confirmed = await Dialog.confirm({
-		        title: "Finalize Character Generation",
-		        content: message
-		      });
-		    } else {
-		      confirmed = confirm("Finalize Character Generation? This will permanently disable Character Generation and cannot be undone.");
-		    }
+    let confirmed = false;
+    if (globalThis.Dialog?.confirm) {
+      confirmed = await Dialog.confirm({
+        title: "Finalize Character Generation",
+        content: message,
+      });
+    } else {
+      confirmed = confirm(
+        "Finalize Character Generation? This will permanently disable Character Generation and cannot be undone.",
+      );
+    }
 
-		    if (!confirmed) return;
+    if (!confirmed) return;
 
-		    if (needsResourceFinalization) {
-		      await this._onFinalizeResources({
-		        preventDefault: () => { },
-		        stopPropagation: () => { }
-		      });
+    if (needsResourceFinalization) {
+      await this._onFinalizeResources({
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      });
 
-		      if (this.actor.system?.creation?.resourcesFinalized !== true) {
-		        // _onFinalizeResources displays its own error notifications when it can't finalize.
-		        return;
-		      }
-		    }
+      if (this.actor.system?.creation?.resourcesFinalized !== true) {
+        // _onFinalizeResources displays its own error notifications when it can't finalize.
+        return;
+      }
+    }
 
-		    await this.actor.update({
-		      "flags.shadowrun2e.creationMode": false,
-		      "flags.shadowrun2e.creationCompleted": true
-		    });
+    await this.actor.update({
+      "flags.shadowrun2e.creationMode": false,
+      "flags.shadowrun2e.creationCompleted": true,
+    });
 
-		    ui.notifications.info("Character Generation finalized. This cannot be undone.");
-		  }
+    ui.notifications.info("Character Generation finalized. This cannot be undone.");
+  }
 
   _getNormalizedLifestylesFromActor() {
     const rawLifestyles = this.actor.system?.resources?.lifestyles;
     if (Array.isArray(rawLifestyles) && rawLifestyles.length) {
-      return foundry.utils.deepClone(rawLifestyles).map(l => ({
+      return foundry.utils.deepClone(rawLifestyles).map((l) => ({
         type: l?.type || "street",
-        months: Math.max(1, parseInt(l?.months, 10) || 1)
+        months: Math.max(1, parseInt(l?.months, 10) || 1),
       }));
     }
 
     const legacyLifestyle = this.actor.system?.resources?.lifestyle || "street";
     const legacyMonths = this.actor.system?.creation?.lifestyleMonths ?? 1;
-    return [{
-      type: legacyLifestyle,
-      months: Math.max(1, parseInt(legacyMonths, 10) || 1)
-    }];
+    return [
+      {
+        type: legacyLifestyle,
+        months: Math.max(1, parseInt(legacyMonths, 10) || 1),
+      },
+    ];
   }
 
   async _onLifestyleAdd(event) {
@@ -1956,7 +1781,7 @@ export class SR2ActorSheet extends ActorSheet {
     await this.actor.update({
       "system.resources.lifestyles": lifestyles,
       "system.resources.lifestyle": primary.type || "street",
-      "system.creation.lifestyleMonths": primary.months || 1
+      "system.creation.lifestyleMonths": primary.months || 1,
     });
   }
 
@@ -1975,7 +1800,7 @@ export class SR2ActorSheet extends ActorSheet {
     await this.actor.update({
       "system.resources.lifestyles": lifestyles,
       "system.resources.lifestyle": primary.type || "street",
-      "system.creation.lifestyleMonths": primary.months || 1
+      "system.creation.lifestyleMonths": primary.months || 1,
     });
   }
 
@@ -1994,114 +1819,57 @@ export class SR2ActorSheet extends ActorSheet {
   async _onSkillRoll(event) {
     event.preventDefault();
     const skillId = event.currentTarget.dataset.skillId;
-    const rollType = event.currentTarget.dataset.rollType || 'base';
+    const rollType = event.currentTarget.dataset.rollType || "base";
 
     sr2LogDebug("Skill roll requested", { skillId, rollType });
 
-    // Get the skill item and force a fresh read
-    let skill = this.actor.items.get(skillId);
-
-    if (!skill) {
-      console.error("SR2E | Skill not found for roll:", skillId);
-      ui.notifications.error("Skill not found for roll");
-      return;
-    }
-
-    // Sorcery/Conjuring require a Magic rating.
-    const baseSkillName = skill.system?.baseSkill || "";
-    const magicRating = Number(this.actor.system?.attributes?.magic?.value) || 0;
-    if ((baseSkillName === "Sorcery" || baseSkillName === "Conjuring") && magicRating <= 0) {
-      ui.notifications.error("Sorcery and Conjuring require a Magic rating.");
-      return;
-    }
-
-    // If the user edited the allocated rating without blurring, prefer the form value for this roll.
-    const formElement = event.currentTarget.closest('form');
+    const skill = this.actor.items.get(skillId);
+    const formElement = event.currentTarget.closest("form");
+    let allocatedRatingValue;
     if (formElement) {
-      const allocatedRatingInput = formElement.querySelector(`input[name*="${skillId}"][name*="allocatedRating"]`);
+      const allocatedRatingInput = formElement.querySelector(
+        `input[name*="${skillId}"][name*="allocatedRating"]`,
+      );
       if (allocatedRatingInput) {
-        const allocated = parseInt(allocatedRatingInput.value, 10);
-        const currentAllocated = sr2SkillInferAllocatedRating(skill.system);
-        if (Number.isFinite(allocated) && allocated !== currentAllocated) {
-          const computed = sr2ComputeSkillRatingsFromAllocated({ ...skill.system, allocatedRating: allocated });
-          skill = {
-            ...skill,
-            system: {
-              ...skill.system,
-              allocatedRating: computed.allocatedRating,
-              baseRating: computed.baseRating,
-              concentrationRating: computed.concentrationRating,
-              specializationRating: computed.specializationRating
-            }
-          };
-        }
+        allocatedRatingValue = parseInt(allocatedRatingInput.value, 10);
       }
     }
 
-    let skillRating = 0;
-    let title = skill.name || skill.system.baseSkill || 'Unknown Skill';
-    let rollDescription = '';
-
-    sr2LogDebug("Rolling skill", { skillName: skill.name, rollType });
-
-    // Determine which rating to use based on roll type
-    switch (rollType) {
-      case 'base':
-        skillRating = parseInt(skill.system.baseRating) || 0;
-        rollDescription = 'Base Skill';
-        title = skill.system.baseSkill || skill.name || 'Unknown Skill';
-        if (skill.system.baseSkill === "Language" && skill.name) {
-          title = skill.name;
-        }
-        sr2LogDebug("Base skill roll", { baseRating: skill.system.baseRating, parsed: skillRating });
-        break;
-      case 'concentration':
-        skillRating = parseInt(skill.system.concentrationRating) || 0;
-        if (skill.system.concentration) {
-          title = `${skill.system.baseSkill || skill.name} (${skill.system.concentration})`;
-          rollDescription = 'Concentration';
-          sr2LogDebug("Concentration roll", { concentrationRating: skill.system.concentrationRating, parsed: skillRating });
-        } else {
-          ui.notifications.warn("No concentration selected for this skill.");
-          return;
-        }
-        break;
-      case 'specialization':
-        skillRating = parseInt(skill.system.specializationRating) || 0;
-        if (skill.system.specialization) {
-          title = `${skill.system.baseSkill || skill.name} [${skill.system.specialization}]`;
-          rollDescription = 'Specialization';
-          sr2LogDebug("Specialization roll", { specializationRating: skill.system.specializationRating, parsed: skillRating });
-        } else {
-          ui.notifications.warn("No specialization entered for this skill.");
-          return;
-        }
-        break;
-    }
-
-    sr2LogDebug("Skill rating selected", { skillRating, rollType });
-
-    // Calculate dice pool - skills roll only their rating in SR2E
-    let dicePool = skillRating;
-
-    // Ensure minimum dice pool of 1 (defaulting skill)
-    if (dicePool < 1) {
-      dicePool = 1;
-      sr2LogDebug("Using defaulting dice pool", { dicePool: 1 });
-    }
-
-    // Add roll type to title
-    const finalTitle = `${title} (${rollDescription})`;
-
-    sr2LogDebug("Final skill dice pool", { dicePool, title: finalTitle });
-
-    if (baseSkillName === "Conjuring") {
-      await this._onConjuringRoll(dicePool, finalTitle);
+    const preparedRoll = sr2PrepareSkillRoll({
+      actor: this.actor,
+      skill,
+      rollType,
+      allocatedRatingValue,
+    });
+    if (!preparedRoll.ok) {
+      if (preparedRoll.warning) ui.notifications.warn(preparedRoll.warning);
+      else if (preparedRoll.error) ui.notifications.error(preparedRoll.error);
       return;
     }
 
-    // Show TN selection dialog and roll
-    await this._showTargetNumberDialog(dicePool, finalTitle, 'skill', 4, null, { baseSkillName });
+    sr2LogDebug("Prepared skill roll", {
+      skillName: preparedRoll.skill?.name,
+      rollType,
+      skillRating: preparedRoll.skillRating,
+      dicePool: preparedRoll.dicePool,
+      defaulting: preparedRoll.isDefaulting,
+    });
+
+    if (preparedRoll.baseSkillName === "Conjuring") {
+      await this._onConjuringRoll(preparedRoll.dicePool, preparedRoll.finalTitle);
+      return;
+    }
+
+    await this._showTargetNumberDialog(
+      preparedRoll.dicePool,
+      preparedRoll.finalTitle,
+      "skill",
+      4,
+      null,
+      {
+        baseSkillName: preparedRoll.baseSkillName,
+      },
+    );
   }
 
   async _promptConjuringDetails() {
@@ -2121,7 +1889,7 @@ export class SR2ActorSheet extends ActorSheet {
       </div>
     `;
 
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       let isResolved = false;
       let isRolling = false;
       const finish = (result) => {
@@ -2139,18 +1907,21 @@ export class SR2ActorSheet extends ActorSheet {
             label: "Continue",
             callback: (html) => {
               const spiritType = String(html.find('input[name="spiritType"]').val() || "").trim();
-              const force = Math.max(1, parseInt(html.find('input[name="spiritForce"]').val(), 10) || defaultForce);
+              const force = Math.max(
+                1,
+                parseInt(html.find('input[name="spiritForce"]').val(), 10) || defaultForce,
+              );
               finish({ ok: true, spiritType, force });
-            }
+            },
           },
           cancel: {
             icon: '<i class="fas fa-times"></i>',
             label: "Cancel",
-            callback: () => finish({ ok: false })
-          }
+            callback: () => finish({ ok: false }),
+          },
         },
         default: "continue",
-        close: () => finish({ ok: false })
+        close: () => finish({ ok: false }),
       });
 
       dialog.render(true);
@@ -2158,7 +1929,10 @@ export class SR2ActorSheet extends ActorSheet {
   }
 
   _sr2NormalizeSpiritType(value) {
-    return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+    return String(value || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
   }
 
   _sr2DescribeConjuringDrain(force, charisma) {
@@ -2167,9 +1941,9 @@ export class SR2ActorSheet extends ActorSheet {
 
     if (cha <= 0) return "";
 
-    if (f < (cha / 2)) return "L Stun";
+    if (f < cha / 2) return "L Stun";
     if (f <= cha) return "M Stun";
-    if (f <= (2 * cha)) return "S Physical";
+    if (f <= 2 * cha) return "S Physical";
     return "D Physical";
   }
 
@@ -2182,45 +1956,57 @@ export class SR2ActorSheet extends ActorSheet {
     const normalizedSpiritType = this._sr2NormalizeSpiritType(spiritType);
 
     const focusPools = [];
-    const equippedGear = this.actor.items.filter(i => i.type === "gear" && i.system?.equipped);
+    const equippedGear = this.actor.items.filter((i) => i.type === "gear" && i.system?.equipped);
     for (const item of equippedGear) {
       const focus = sr2ParseFocusName(item.name);
       if (!focus) continue;
       if (focus.kind !== "spirit focus") continue;
 
       const focusSpiritType = this._sr2NormalizeSpiritType(item.system?.focus?.spiritType);
-      if (!normalizedSpiritType || !focusSpiritType || focusSpiritType !== normalizedSpiritType) continue;
+      if (!normalizedSpiritType || !focusSpiritType || focusSpiritType !== normalizedSpiritType)
+        continue;
 
       focusPools.push({
         key: `focus-spirit-${item.id}`,
         name: `${item.name} (${item.system?.focus?.spiritType || spiritType})`,
         current: focus.rating,
         max: focus.rating,
-        isActorPool: false
+        isActorPool: false,
       });
     }
 
-    const conjuringTitle = spiritType ? `${title}: ${spiritType} (Force ${force})` : `${title} (Force ${force})`;
-    const conjuringResult = await this._showTargetNumberDialog(conjuringDicePool, conjuringTitle, "skill", force, null, {
-      baseSkillName: "Conjuring",
-      additionalPools: focusPools
-    });
+    const conjuringTitle = spiritType
+      ? `${title}: ${spiritType} (Force ${force})`
+      : `${title} (Force ${force})`;
+    const conjuringResult = await this._showTargetNumberDialog(
+      conjuringDicePool,
+      conjuringTitle,
+      "skill",
+      force,
+      null,
+      {
+        baseSkillName: "Conjuring",
+        additionalPools: focusPools,
+      },
+    );
     if (!conjuringResult?.rolled) return;
 
     const focusDiceUsed = {};
-    for (const { pool, dice } of (conjuringResult.poolsUsed || [])) {
+    for (const { pool, dice } of conjuringResult.poolsUsed || []) {
       if (pool?.isActorPool) continue;
       if (!pool?.key) continue;
       focusDiceUsed[pool.key] = (focusDiceUsed[pool.key] || 0) + (Number(dice) || 0);
     }
 
-    const remainingFocusPools = focusPools.map(pool => {
-      const used = Number(focusDiceUsed[pool.key]) || 0;
-      return {
-        ...pool,
-        current: Math.max(0, (Number(pool.current) || 0) - used)
-      };
-    }).filter(pool => (Number(pool.current) || 0) > 0);
+    const remainingFocusPools = focusPools
+      .map((pool) => {
+        const used = Number(focusDiceUsed[pool.key]) || 0;
+        return {
+          ...pool,
+          current: Math.max(0, (Number(pool.current) || 0) - used),
+        };
+      })
+      .filter((pool) => (Number(pool.current) || 0) > 0);
 
     // SR2: Conjuring drain uses Charisma dice against TN = spirit Force (see Conjuring, p. 139).
     const charisma = Number(this.actor.system?.attributes?.charisma?.value) || 0;
@@ -2230,7 +2016,7 @@ export class SR2ActorSheet extends ActorSheet {
 
     await this._showTargetNumberDialog(drainDicePool, drainTitle, "drain", force, null, {
       baseSkillName: "Conjuring",
-      additionalPools: remainingFocusPools
+      additionalPools: remainingFocusPools,
     });
   }
 
@@ -2248,19 +2034,19 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Map attribute names to modifier keys
     const modifierMap = {
-      'body': 'BOD',
-      'quickness': 'QCK',
-      'strength': 'STR',
-      'charisma': 'CHA',
-      'intelligence': 'INT',
-      'willpower': 'WIL',
-      'reaction': 'RCT'
+      body: "BOD",
+      quickness: "QCK",
+      strength: "STR",
+      charisma: "CHA",
+      intelligence: "INT",
+      willpower: "WIL",
+      reaction: "RCT",
     };
 
     if (modifierMap[attributeName]) {
       // Reaction is already derived (includes modifiers) in `SR2Actor.prepareDerivedData`.
       // Avoid double-counting RCT/attribute modifiers on Reaction tests.
-      if (attributeName !== 'reaction') {
+      if (attributeName !== "reaction") {
         modifierValue = modifiers[modifierMap[attributeName]] || 0;
       }
     }
@@ -2269,9 +2055,10 @@ export class SR2ActorSheet extends ActorSheet {
     let dicePool = attributeValue + modifierValue;
 
     // Power Focus adds dice to Magic tests (spellcasters only)
-    const isSpellcaster = Boolean(this.actor.system?.magic?.awakened) && !this.actor.system?.magic?.physicalAdept;
-    const powerFocusBonus = isSpellcaster ? (Number(this.actor._sr2PowerFocusBonus) || 0) : 0;
-    const appliesPowerFocus = attributeName === 'magic' && powerFocusBonus > 0;
+    const isSpellcaster =
+      Boolean(this.actor.system?.magic?.awakened) && !this.actor.system?.magic?.physicalAdept;
+    const powerFocusBonus = isSpellcaster ? Number(this.actor._sr2PowerFocusBonus) || 0 : 0;
+    const appliesPowerFocus = attributeName === "magic" && powerFocusBonus > 0;
     if (appliesPowerFocus) {
       dicePool += powerFocusBonus;
     }
@@ -2287,7 +2074,7 @@ export class SR2ActorSheet extends ActorSheet {
     }
 
     // Show TN selection dialog and roll
-    await this._showTargetNumberDialog(dicePool, title, 'attribute');
+    await this._showTargetNumberDialog(dicePool, title, "attribute");
   }
 
   /**
@@ -2302,15 +2089,15 @@ export class SR2ActorSheet extends ActorSheet {
     const excludeMagicPool = baseSkillName === "Conjuring";
 
     // Check for cyberdeck and control rig
-    const hasCyberdeck = rollActor.items.some(item => 
-      item.type === 'cyberware' && 
-      item.name.toLowerCase().includes('cyberdeck')
+    const hasCyberdeck = rollActor.items.some(
+      (item) => item.type === "cyberware" && item.name.toLowerCase().includes("cyberdeck"),
     );
-    
-    const hasControlRig = rollActor.items.some(item => 
-      item.type === 'cyberware' && 
-      (item.name.toLowerCase().includes('control rig') || 
-       item.name.toLowerCase().includes('vehicle control rig'))
+
+    const hasControlRig = rollActor.items.some(
+      (item) =>
+        item.type === "cyberware" &&
+        (item.name.toLowerCase().includes("control rig") ||
+          item.name.toLowerCase().includes("vehicle control rig")),
     );
 
     const restrictToMagicPools = rollType === "spell" || rollType === "drain";
@@ -2318,20 +2105,40 @@ export class SR2ActorSheet extends ActorSheet {
     // Define pool types with their visibility conditions
     const poolTypes = restrictToMagicPools
       ? [
-          { key: 'karma', name: 'Karma Pool', maxKey: 'total', condition: true },
-          { key: 'spell', name: 'Magic Pool', maxKey: 'max', condition: magicAttribute > 0 && !excludeMagicPool }
+          { key: "karma", name: "Karma Pool", maxKey: "total", condition: true },
+          {
+            key: "spell",
+            name: "Magic Pool",
+            maxKey: "max",
+            condition: magicAttribute > 0 && !excludeMagicPool,
+          },
         ]
       : [
-          { key: 'karma', name: 'Karma Pool', maxKey: 'total', condition: true },
-          { key: 'combat', name: 'Combat Pool', maxKey: 'max', condition: true },
-          { key: 'spell', name: 'Magic Pool', maxKey: 'max', condition: magicAttribute > 0 && !excludeMagicPool },
-          { key: 'hacking', name: 'Hacking Pool', maxKey: 'max', condition: hasCyberdeck },
-          { key: 'control', name: 'Control Pool', maxKey: 'max', condition: hasControlRig },
-          { key: 'task', name: 'Task Pool', maxKey: 'max', condition: (poolData.task?.max || 0) > 0 },
-          { key: 'astral', name: 'Astral Combat Pool', maxKey: 'max', condition: magicAttribute > 0 }
+          { key: "karma", name: "Karma Pool", maxKey: "total", condition: true },
+          { key: "combat", name: "Combat Pool", maxKey: "max", condition: true },
+          {
+            key: "spell",
+            name: "Magic Pool",
+            maxKey: "max",
+            condition: magicAttribute > 0 && !excludeMagicPool,
+          },
+          { key: "hacking", name: "Hacking Pool", maxKey: "max", condition: hasCyberdeck },
+          { key: "control", name: "Control Pool", maxKey: "max", condition: hasControlRig },
+          {
+            key: "task",
+            name: "Task Pool",
+            maxKey: "max",
+            condition: (poolData.task?.max || 0) > 0,
+          },
+          {
+            key: "astral",
+            name: "Astral Combat Pool",
+            maxKey: "max",
+            condition: magicAttribute > 0,
+          },
         ];
 
-    poolTypes.forEach(poolType => {
+    poolTypes.forEach((poolType) => {
       // Only add pools that meet their visibility condition
       if (poolType.condition) {
         const pool = poolData[poolType.key];
@@ -2341,7 +2148,7 @@ export class SR2ActorSheet extends ActorSheet {
             name: poolType.name,
             current: pool.current || 0,
             max: pool[poolType.maxKey] || 0,
-            isActorPool: true
+            isActorPool: true,
           });
         }
       }
@@ -2353,24 +2160,40 @@ export class SR2ActorSheet extends ActorSheet {
   /**
    * Show Target Number selection dialog
    */
-  async _showTargetNumberDialog(dicePool, title, rollType, defaultTN = 4, weaponData = null, context = {}) {
+  async _showTargetNumberDialog(
+    dicePool,
+    title,
+    rollType,
+    defaultTN = 4,
+    weaponData = null,
+    context = {},
+  ) {
     const enrichedContext = { ...(context || {}), rollType };
     const rollActor = enrichedContext.rollActor || this.actor;
-    const additionalPools = Array.isArray(enrichedContext?.additionalPools) ? enrichedContext.additionalPools : [];
+    const additionalPools = Array.isArray(enrichedContext?.additionalPools)
+      ? enrichedContext.additionalPools
+      : [];
     let availablePools = [
       ...this._getAvailablePools(enrichedContext, rollActor),
-      ...additionalPools
+      ...additionalPools,
     ];
 
-    const allowedPoolKeys = Array.isArray(enrichedContext?.allowedPoolKeys) ? enrichedContext.allowedPoolKeys : null;
+    const allowedPoolKeys = Array.isArray(enrichedContext?.allowedPoolKeys)
+      ? enrichedContext.allowedPoolKeys
+      : null;
     if (allowedPoolKeys) {
-      availablePools = availablePools.filter(pool => allowedPoolKeys.includes(pool.key));
+      availablePools = availablePools.filter((pool) => allowedPoolKeys.includes(pool.key));
     }
 
-    const poolCaps = (enrichedContext?.poolCaps && typeof enrichedContext.poolCaps === "object") ? enrichedContext.poolCaps : {};
-    const isRangedAttack = rollType === 'attack' && weaponData && weaponData.system.weaponType === 'ranged';
+    const poolCaps =
+      enrichedContext?.poolCaps && typeof enrichedContext.poolCaps === "object"
+        ? enrichedContext.poolCaps
+        : {};
+    const isRangedAttack =
+      rollType === "attack" && weaponData && weaponData.system.weaponType === "ranged";
 
-    const rangedModifiersSection = isRangedAttack ? `
+    const rangedModifiersSection = isRangedAttack
+      ? `
       <div class="ranged-modifiers-section">
         <h4><strong>Ranged Combat Modifiers:</strong></h4>
         <div class="modifier-grid">
@@ -2470,7 +2293,8 @@ export class SR2ActorSheet extends ActorSheet {
           <strong>Total TN Modifier: <span id="total-tn-modifier">+0</span></strong>
         </div>
       </div>
-    ` : '';
+    `
+      : "";
 
     const content = `
       <div class="target-number-dialog">
@@ -2482,47 +2306,53 @@ export class SR2ActorSheet extends ActorSheet {
         <div class="target-number-section">
           <label for="target-number"><strong>Base Target Number:</strong></label>
           <select id="target-number" name="targetNumber">
-            <option value="2" ${defaultTN === 2 ? 'selected' : ''}>2 - Trivial</option>
-            <option value="3" ${defaultTN === 3 ? 'selected' : ''}>3 - Easy</option>
-            <option value="4" ${defaultTN === 4 ? 'selected' : ''}>4 - Average</option>
-            <option value="5" ${defaultTN === 5 ? 'selected' : ''}>5 - Fair</option>
-            <option value="6" ${defaultTN === 6 ? 'selected' : ''}>6 - Hard</option>
-            <option value="7" ${defaultTN === 7 ? 'selected' : ''}>7 - Extreme</option>
-            <option value="8" ${defaultTN === 8 ? 'selected' : ''}>8 - Nearly Impossible</option>
-            <option value="9" ${defaultTN === 9 ? 'selected' : ''}>9 - Impossible</option>
-            <option value="10" ${defaultTN === 10 ? 'selected' : ''}>10 - Miraculous</option>
-            <option value="11" ${defaultTN === 11 ? 'selected' : ''}>11</option>
-            <option value="12" ${defaultTN === 12 ? 'selected' : ''}>12</option>
-            <option value="13" ${defaultTN === 13 ? 'selected' : ''}>13</option>
-            <option value="14" ${defaultTN === 14 ? 'selected' : ''}>14</option>
-            <option value="15" ${defaultTN === 15 ? 'selected' : ''}>15</option>
-            <option value="16" ${defaultTN === 16 ? 'selected' : ''}>16</option>
-            <option value="17" ${defaultTN === 17 ? 'selected' : ''}>17</option>
-            <option value="18" ${defaultTN === 18 ? 'selected' : ''}>18</option>
-            <option value="19" ${defaultTN === 19 ? 'selected' : ''}>19</option>
-            <option value="20" ${defaultTN === 20 ? 'selected' : ''}>20</option>
-            <option value="21" ${defaultTN === 21 ? 'selected' : ''}>21</option>
-            <option value="22" ${defaultTN === 22 ? 'selected' : ''}>22</option>
-            <option value="23" ${defaultTN === 23 ? 'selected' : ''}>23</option>
-            <option value="24" ${defaultTN === 24 ? 'selected' : ''}>24</option>
-            <option value="25" ${defaultTN === 25 ? 'selected' : ''}>25</option>
-            <option value="26" ${defaultTN === 26 ? 'selected' : ''}>26</option>
-            <option value="27" ${defaultTN === 27 ? 'selected' : ''}>27</option>
-            <option value="28" ${defaultTN === 28 ? 'selected' : ''}>28</option>
-            <option value="29" ${defaultTN === 29 ? 'selected' : ''}>29</option>
-            <option value="30" ${defaultTN === 30 ? 'selected' : ''}>30</option>
+            <option value="2" ${defaultTN === 2 ? "selected" : ""}>2 - Trivial</option>
+            <option value="3" ${defaultTN === 3 ? "selected" : ""}>3 - Easy</option>
+            <option value="4" ${defaultTN === 4 ? "selected" : ""}>4 - Average</option>
+            <option value="5" ${defaultTN === 5 ? "selected" : ""}>5 - Fair</option>
+            <option value="6" ${defaultTN === 6 ? "selected" : ""}>6 - Hard</option>
+            <option value="7" ${defaultTN === 7 ? "selected" : ""}>7 - Extreme</option>
+            <option value="8" ${defaultTN === 8 ? "selected" : ""}>8 - Nearly Impossible</option>
+            <option value="9" ${defaultTN === 9 ? "selected" : ""}>9 - Impossible</option>
+            <option value="10" ${defaultTN === 10 ? "selected" : ""}>10 - Miraculous</option>
+            <option value="11" ${defaultTN === 11 ? "selected" : ""}>11</option>
+            <option value="12" ${defaultTN === 12 ? "selected" : ""}>12</option>
+            <option value="13" ${defaultTN === 13 ? "selected" : ""}>13</option>
+            <option value="14" ${defaultTN === 14 ? "selected" : ""}>14</option>
+            <option value="15" ${defaultTN === 15 ? "selected" : ""}>15</option>
+            <option value="16" ${defaultTN === 16 ? "selected" : ""}>16</option>
+            <option value="17" ${defaultTN === 17 ? "selected" : ""}>17</option>
+            <option value="18" ${defaultTN === 18 ? "selected" : ""}>18</option>
+            <option value="19" ${defaultTN === 19 ? "selected" : ""}>19</option>
+            <option value="20" ${defaultTN === 20 ? "selected" : ""}>20</option>
+            <option value="21" ${defaultTN === 21 ? "selected" : ""}>21</option>
+            <option value="22" ${defaultTN === 22 ? "selected" : ""}>22</option>
+            <option value="23" ${defaultTN === 23 ? "selected" : ""}>23</option>
+            <option value="24" ${defaultTN === 24 ? "selected" : ""}>24</option>
+            <option value="25" ${defaultTN === 25 ? "selected" : ""}>25</option>
+            <option value="26" ${defaultTN === 26 ? "selected" : ""}>26</option>
+            <option value="27" ${defaultTN === 27 ? "selected" : ""}>27</option>
+            <option value="28" ${defaultTN === 28 ? "selected" : ""}>28</option>
+            <option value="29" ${defaultTN === 29 ? "selected" : ""}>29</option>
+            <option value="30" ${defaultTN === 30 ? "selected" : ""}>30</option>
           </select>
         </div>
 
         ${rangedModifiersSection}
 
-	        ${availablePools.length > 0 ? `
+	        ${
+            availablePools.length > 0
+              ? `
 	        <div class="pool-dice-section">
 	          <label><strong>Pool Dice (Optional):</strong></label>
-	          ${availablePools.map(pool => `
+	          ${availablePools
+              .map(
+                (pool) => `
               ${(() => {
                 const cap = Number(poolCaps?.[pool.key]);
-                const maxDice = Number.isFinite(cap) ? Math.max(0, Math.min(pool.current, cap)) : pool.current;
+                const maxDice = Number.isFinite(cap)
+                  ? Math.max(0, Math.min(pool.current, cap))
+                  : pool.current;
                 const hasDice = maxDice > 0;
                 const disabledAttr = hasDice ? "" : "disabled";
                 const tooltipAttr = hasDice ? "" : 'title="No dice available (pool is empty)"';
@@ -2537,13 +2367,17 @@ export class SR2ActorSheet extends ActorSheet {
 	            </div>
                 `;
               })()}
-	          `).join('')}
+	          `,
+              )
+              .join("")}
 	        </div>
-	        ` : ''}
+	        `
+              : ""
+          }
 	      </div>
     `;
 
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       let isResolved = false;
       let isRolling = false;
       const finish = (result) => {
@@ -2557,14 +2391,14 @@ export class SR2ActorSheet extends ActorSheet {
         content: content,
         render: (html) => {
           // Handle pool checkbox interactions
-          html.find('.pool-checkbox').change(function () {
-            const isChecked = $(this).is(':checked');
+          html.find(".pool-checkbox").change(function () {
+            const isChecked = $(this).is(":checked");
             const poolKey = $(this).val();
             const diceInput = html.find(`input[name="pool-${poolKey}-dice"]`);
-            const pool = availablePools.find(p => p.key === poolKey);
+            const pool = availablePools.find((p) => p.key === poolKey);
 
             if (isChecked) {
-              diceInput.prop('disabled', false);
+              diceInput.prop("disabled", false);
               // Only default to 1 if the pool has dice available
               if (pool && pool.current > 0) {
                 diceInput.val(1);
@@ -2572,14 +2406,14 @@ export class SR2ActorSheet extends ActorSheet {
                 diceInput.val(0);
               }
             } else {
-              diceInput.prop('disabled', true);
+              diceInput.prop("disabled", true);
               diceInput.val(0);
             }
           });
 
           // Clamp pool dice inputs to their max values (prevents typing above available dice)
-          html.find('.pool-dice-input').on('input change', function () {
-            const rawMax = parseInt($(this).attr('max'), 10);
+          html.find(".pool-dice-input").on("input change", function () {
+            const rawMax = parseInt($(this).attr("max"), 10);
             const max = Number.isFinite(rawMax) ? rawMax : 0;
 
             let rawValue = parseInt($(this).val(), 10);
@@ -2595,13 +2429,15 @@ export class SR2ActorSheet extends ActorSheet {
           if (isRangedAttack) {
             const updateTotalModifier = () => {
               let totalModifier = 0;
-              html.find('.modifier-select').each(function() {
+              html.find(".modifier-select").each(function () {
                 totalModifier += parseInt($(this).val()) || 0;
               });
-              html.find('#total-tn-modifier').text(totalModifier >= 0 ? `+${totalModifier}` : `${totalModifier}`);
+              html
+                .find("#total-tn-modifier")
+                .text(totalModifier >= 0 ? `+${totalModifier}` : `${totalModifier}`);
             };
 
-            html.find('.modifier-select').change(updateTotalModifier);
+            html.find(".modifier-select").change(updateTotalModifier);
             updateTotalModifier(); // Initial calculation
           }
         },
@@ -2613,141 +2449,183 @@ export class SR2ActorSheet extends ActorSheet {
               if (isRolling || isResolved) return;
               isRolling = true;
               try {
-	              const baseTargetNumber = parseInt(html.find('#target-number').val());
-	              let finalDicePool = dicePool;
+                const baseTargetNumber = parseInt(html.find("#target-number").val());
+                let finalDicePool = dicePool;
 
-              // Calculate ranged combat modifiers if applicable
-              let tnModifier = 0;
-              let modifierDetails = [];
-            
-              if (isRangedAttack) {
-                const recoilMod = parseInt(html.find('select[name="recoil-modifier"]').val()) || 0;
-                const visibilityMod = parseInt(html.find('select[name="visibility-modifier"]').val()) || 0;
-                const coverMod = parseInt(html.find('select[name="cover-modifier"]').val()) || 0;
-                const multipleTargetsMod = parseInt(html.find('select[name="multiple-targets-modifier"]').val()) || 0;
-                const targetMovementMod = parseInt(html.find('select[name="target-movement-modifier"]').val()) || 0;
-                const attackerMeleeMod = parseInt(html.find('select[name="attacker-melee-modifier"]').val()) || 0;
-                const attackerMovementMod = parseInt(html.find('select[name="attacker-movement-modifier"]').val()) || 0;
-                const accessoriesMod = parseInt(html.find('select[name="accessories-modifier"]').val()) || 0;
-                const otherMod = parseInt(html.find('select[name="other-modifier"]').val()) || 0;
+                // Calculate ranged combat modifiers if applicable
+                let tnModifier = 0;
+                let modifierDetails = [];
 
-                tnModifier = recoilMod + visibilityMod + coverMod + multipleTargetsMod + 
-                            targetMovementMod + attackerMeleeMod + attackerMovementMod + 
-                            accessoriesMod + otherMod;
+                if (isRangedAttack) {
+                  const recoilMod =
+                    parseInt(html.find('select[name="recoil-modifier"]').val()) || 0;
+                  const visibilityMod =
+                    parseInt(html.find('select[name="visibility-modifier"]').val()) || 0;
+                  const coverMod = parseInt(html.find('select[name="cover-modifier"]').val()) || 0;
+                  const multipleTargetsMod =
+                    parseInt(html.find('select[name="multiple-targets-modifier"]').val()) || 0;
+                  const targetMovementMod =
+                    parseInt(html.find('select[name="target-movement-modifier"]').val()) || 0;
+                  const attackerMeleeMod =
+                    parseInt(html.find('select[name="attacker-melee-modifier"]').val()) || 0;
+                  const attackerMovementMod =
+                    parseInt(html.find('select[name="attacker-movement-modifier"]').val()) || 0;
+                  const accessoriesMod =
+                    parseInt(html.find('select[name="accessories-modifier"]').val()) || 0;
+                  const otherMod = parseInt(html.find('select[name="other-modifier"]').val()) || 0;
 
-                // Build modifier details for display
-                if (recoilMod !== 0) modifierDetails.push(`Recoil: ${recoilMod >= 0 ? '+' : ''}${recoilMod}`);
-                if (visibilityMod !== 0) modifierDetails.push(`Visibility: ${visibilityMod >= 0 ? '+' : ''}${visibilityMod}`);
-                if (coverMod !== 0) modifierDetails.push(`Cover: ${coverMod >= 0 ? '+' : ''}${coverMod}`);
-                if (multipleTargetsMod !== 0) modifierDetails.push(`Multiple Targets: ${multipleTargetsMod >= 0 ? '+' : ''}${multipleTargetsMod}`);
-                if (targetMovementMod !== 0) modifierDetails.push(`Target Movement: ${targetMovementMod >= 0 ? '+' : ''}${targetMovementMod}`);
-                if (attackerMeleeMod !== 0) modifierDetails.push(`Attacker in Melee: ${attackerMeleeMod >= 0 ? '+' : ''}${attackerMeleeMod}`);
-                if (attackerMovementMod !== 0) modifierDetails.push(`Attacker Movement: ${attackerMovementMod >= 0 ? '+' : ''}${attackerMovementMod}`);
-                if (accessoriesMod !== 0) modifierDetails.push(`Accessories: ${accessoriesMod >= 0 ? '+' : ''}${accessoriesMod}`);
-                if (otherMod !== 0) modifierDetails.push(`Other: ${otherMod >= 0 ? '+' : ''}${otherMod}`);
-              }
+                  tnModifier =
+                    recoilMod +
+                    visibilityMod +
+                    coverMod +
+                    multipleTargetsMod +
+                    targetMovementMod +
+                    attackerMeleeMod +
+                    attackerMovementMod +
+                    accessoriesMod +
+                    otherMod;
 
-              const finalTargetNumber = Math.max(2, baseTargetNumber + tnModifier);
+                  // Build modifier details for display
+                  if (recoilMod !== 0)
+                    modifierDetails.push(`Recoil: ${recoilMod >= 0 ? "+" : ""}${recoilMod}`);
+                  if (visibilityMod !== 0)
+                    modifierDetails.push(
+                      `Visibility: ${visibilityMod >= 0 ? "+" : ""}${visibilityMod}`,
+                    );
+                  if (coverMod !== 0)
+                    modifierDetails.push(`Cover: ${coverMod >= 0 ? "+" : ""}${coverMod}`);
+                  if (multipleTargetsMod !== 0)
+                    modifierDetails.push(
+                      `Multiple Targets: ${multipleTargetsMod >= 0 ? "+" : ""}${multipleTargetsMod}`,
+                    );
+                  if (targetMovementMod !== 0)
+                    modifierDetails.push(
+                      `Target Movement: ${targetMovementMod >= 0 ? "+" : ""}${targetMovementMod}`,
+                    );
+                  if (attackerMeleeMod !== 0)
+                    modifierDetails.push(
+                      `Attacker in Melee: ${attackerMeleeMod >= 0 ? "+" : ""}${attackerMeleeMod}`,
+                    );
+                  if (attackerMovementMod !== 0)
+                    modifierDetails.push(
+                      `Attacker Movement: ${attackerMovementMod >= 0 ? "+" : ""}${attackerMovementMod}`,
+                    );
+                  if (accessoriesMod !== 0)
+                    modifierDetails.push(
+                      `Accessories: ${accessoriesMod >= 0 ? "+" : ""}${accessoriesMod}`,
+                    );
+                  if (otherMod !== 0)
+                    modifierDetails.push(`Other: ${otherMod >= 0 ? "+" : ""}${otherMod}`);
+                }
 
-              // Handle pool dice
-              const poolsUsed = [];
-              let totalPoolDice = 0;
+                const finalTargetNumber = Math.max(2, baseTargetNumber + tnModifier);
 
-	              availablePools.forEach(pool => {
-	                const checkbox = html.find(`input[name="pool-${pool.key}"]`);
-	                const diceInput = html.find(`input[name="pool-${pool.key}-dice"]`);
-	
-	                if (checkbox.is(':checked')) {
-	                  const diceUsed = parseInt(diceInput.val()) || 0;
-	                  // Validate that we don't use more dice than available
-	                  const cap = Number(poolCaps?.[pool.key]);
-	                  const maxFromCap = Number.isFinite(cap) ? cap : Infinity;
-	                  const actualDiceUsed = Math.min(diceUsed, pool.current, maxFromCap);
-	                  if (actualDiceUsed > 0) {
-	                    totalPoolDice += actualDiceUsed;
-	                    poolsUsed.push({ pool: pool, dice: actualDiceUsed });
-	                  }
-	                }
-              });
+                // Handle pool dice
+                const poolsUsed = [];
+                let totalPoolDice = 0;
 
-              // Add pool dice to final dice pool
-              finalDicePool += totalPoolDice;
+                availablePools.forEach((pool) => {
+                  const checkbox = html.find(`input[name="pool-${pool.key}"]`);
+                  const diceInput = html.find(`input[name="pool-${pool.key}-dice"]`);
 
-              // Ensure minimum dice pool of 1
-              if (finalDicePool < 1) {
-                finalDicePool = 1;
-              }
+                  if (checkbox.is(":checked")) {
+                    const diceUsed = parseInt(diceInput.val()) || 0;
+                    // Validate that we don't use more dice than available
+                    const cap = Number(poolCaps?.[pool.key]);
+                    const maxFromCap = Number.isFinite(cap) ? cap : Infinity;
+                    const actualDiceUsed = Math.min(diceUsed, pool.current, maxFromCap);
+                    if (actualDiceUsed > 0) {
+                      totalPoolDice += actualDiceUsed;
+                      poolsUsed.push({ pool: pool, dice: actualDiceUsed });
+                    }
+                  }
+                });
 
-	              // Update actor's pool values
-	              if (poolsUsed.length > 0) {
-	                const updateData = {};
-	                poolsUsed.forEach(({ pool, dice }) => {
-	                  if (!pool.isActorPool) return;
-	                  const newCurrent = Math.max(0, pool.current - dice);
-	                  updateData[`system.pools.${pool.key}.current`] = newCurrent;
-	                });
-	                if (Object.keys(updateData).length > 0) {
-	                  await rollActor.update(updateData);
-	                }
-	              }
+                // Add pool dice to final dice pool
+                finalDicePool += totalPoolDice;
 
-              // Create enhanced title with pool info and modifiers
-              let finalTitle = `${title} (TN ${finalTargetNumber})`;
-              if (tnModifier !== 0) {
-                finalTitle += ` [Base TN ${baseTargetNumber} ${tnModifier >= 0 ? '+' : ''}${tnModifier}]`;
-              }
-	              if (poolsUsed.length > 0) {
-	                const poolInfo = poolsUsed.map(({ pool, dice }) => `${dice} ${pool.name}`).join(', ');
-	                finalTitle += ` [+${totalPoolDice} from ${poolInfo}]`;
-	              }
-	
-	              // Roll the dice
-	              const unclampedDicePool = (Number(dicePool) || 0) + totalPoolDice;
-	              let sources = [];
-	              if (unclampedDicePool <= 0) {
-	                sources = ["base"];
-	              } else {
-	                for (let i = 0; i < Math.max(0, Number(dicePool) || 0); i++) {
-	                  sources.push("base");
-	                }
-	                for (const { pool, dice } of poolsUsed) {
-	                  for (let i = 0; i < dice; i++) {
-	                    sources.push(pool.key);
-	                  }
-	                }
-	              }
-	              while (sources.length < finalDicePool) sources.push("base");
-	              if (sources.length > finalDicePool) sources = sources.slice(0, finalDicePool);
+                // Ensure minimum dice pool of 1
+                if (finalDicePool < 1) {
+                  finalDicePool = 1;
+                }
 
-	              const rollResult = await rollActor.rollDice(finalDicePool, finalTargetNumber, finalTitle, { sources });
-	
-	              // Show modifier breakdown in chat if there were ranged modifiers
-	              if (isRangedAttack && modifierDetails.length > 0) {
-	                const modifierChatData = {
-	                  user: game.user.id,
-	                  speaker: ChatMessage.getSpeaker({ actor: rollActor }),
-	                  content: `
+                // Update actor's pool values
+                if (poolsUsed.length > 0) {
+                  const updateData = {};
+                  poolsUsed.forEach(({ pool, dice }) => {
+                    if (!pool.isActorPool) return;
+                    const newCurrent = Math.max(0, pool.current - dice);
+                    updateData[`system.pools.${pool.key}.current`] = newCurrent;
+                  });
+                  if (Object.keys(updateData).length > 0) {
+                    await rollActor.update(updateData);
+                  }
+                }
+
+                // Create enhanced title with pool info and modifiers
+                let finalTitle = `${title} (TN ${finalTargetNumber})`;
+                if (tnModifier !== 0) {
+                  finalTitle += ` [Base TN ${baseTargetNumber} ${tnModifier >= 0 ? "+" : ""}${tnModifier}]`;
+                }
+                if (poolsUsed.length > 0) {
+                  const poolInfo = poolsUsed
+                    .map(({ pool, dice }) => `${dice} ${pool.name}`)
+                    .join(", ");
+                  finalTitle += ` [+${totalPoolDice} from ${poolInfo}]`;
+                }
+
+                // Roll the dice
+                const unclampedDicePool = (Number(dicePool) || 0) + totalPoolDice;
+                let sources = [];
+                if (unclampedDicePool <= 0) {
+                  sources = ["base"];
+                } else {
+                  for (let i = 0; i < Math.max(0, Number(dicePool) || 0); i++) {
+                    sources.push("base");
+                  }
+                  for (const { pool, dice } of poolsUsed) {
+                    for (let i = 0; i < dice; i++) {
+                      sources.push(pool.key);
+                    }
+                  }
+                }
+                while (sources.length < finalDicePool) sources.push("base");
+                if (sources.length > finalDicePool) sources = sources.slice(0, finalDicePool);
+
+                const rollResult = await rollActor.rollDice(
+                  finalDicePool,
+                  finalTargetNumber,
+                  finalTitle,
+                  { sources },
+                );
+
+                // Show modifier breakdown in chat if there were ranged modifiers
+                if (isRangedAttack && modifierDetails.length > 0) {
+                  const modifierChatData = {
+                    user: game.user.id,
+                    speaker: ChatMessage.getSpeaker({ actor: rollActor }),
+                    content: `
 	                    <div class="ranged-modifiers-breakdown">
 	                      <h4>Ranged Combat Modifiers Applied:</h4>
 	                      <ul>
-                        ${modifierDetails.map(detail => `<li>${detail}</li>`).join('')}
+                        ${modifierDetails.map((detail) => `<li>${detail}</li>`).join("")}
                       </ul>
-                      <p><strong>Total TN Modifier: ${tnModifier >= 0 ? '+' : ''}${tnModifier}</strong></p>
+                      <p><strong>Total TN Modifier: ${tnModifier >= 0 ? "+" : ""}${tnModifier}</strong></p>
                     </div>
-                  `
-                };
-                ChatMessage.create(modifierChatData);
-              }
+                  `,
+                  };
+                  ChatMessage.create(modifierChatData);
+                }
 
-              finish({
-                rolled: true,
-                rollResult,
-                finalDicePool,
-                finalTargetNumber,
-                baseTargetNumber,
-                tnModifier,
-                poolsUsed
-              });
+                finish({
+                  rolled: true,
+                  rollResult,
+                  finalDicePool,
+                  finalTargetNumber,
+                  baseTargetNumber,
+                  tnModifier,
+                  poolsUsed,
+                });
               } catch (error) {
                 console.error("SR2E | Failed to resolve TN roll dialog", error);
                 ui.notifications?.error?.("Roll failed (see console).");
@@ -2755,20 +2633,20 @@ export class SR2ActorSheet extends ActorSheet {
               } finally {
                 isRolling = false;
               }
-            }
+            },
           },
           cancel: {
             icon: '<i class="fas fa-times"></i>',
             label: "Cancel",
-            callback: () => finish({ rolled: false })
-          }
+            callback: () => finish({ rolled: false }),
+          },
         },
         default: "roll",
         close: () => {
           // Dialog auto-close after clicking Roll should not short-circuit async roll handling.
           if (isRolling) return;
           finish({ rolled: false });
-        }
+        },
       });
 
       dialog.render(true);
@@ -2793,42 +2671,43 @@ export class SR2ActorSheet extends ActorSheet {
     }
   }
 
-	  /**
-	   * Toggle sustained spell effects (no Spell Lock item required)
-	   */
-	  async _onSpellLockToggle(event) {
-	    event.preventDefault();
+  /**
+   * Toggle sustained spell effects (no Spell Lock item required)
+   */
+  async _onSpellLockToggle(event) {
+    event.preventDefault();
 
     const spellId = event.currentTarget.dataset.itemId;
     const spell = this.actor.items.get(spellId);
     if (!spell || spell.type !== "spell") return;
 
-	    const spellLock = spell.system?.spellLock ?? {};
-	    const isEnabled = Boolean(spellLock.enabled);
+    const spellLock = spell.system?.spellLock ?? {};
+    const isEnabled = Boolean(spellLock.enabled);
 
-	    try {
-	      await spell.update({ "system.spellLock.enabled": !isEnabled });
-	      await this._syncSpellLockEffects();
-	      if (this.rendered) this.render(false);
-	    } catch (error) {
-	      console.error("SR2E | Failed to toggle sustained spell", error);
-	      ui.notifications.error("Failed to toggle sustained spell (see console).");
-	    }
-	  }
+    try {
+      await spell.update({ "system.spellLock.enabled": !isEnabled });
+      await this._syncSpellLockEffects();
+      if (this.rendered) this.render(false);
+    } catch (error) {
+      console.error("SR2E | Failed to toggle sustained spell", error);
+      ui.notifications.error("Failed to toggle sustained spell (see console).");
+    }
+  }
 
-	  async _syncSpellLockEffects() {
-	    try {
-	      const enabledLockedSpells = this.actor.items.filter(i =>
-	        i.type === "spell" &&
-	        i.system?.spellLock?.enabled
-	      );
-
-      const hasInvisibility = enabledLockedSpells.some(spell =>
-        String(spell.name || "").toLowerCase().includes("invisibility")
+  async _syncSpellLockEffects() {
+    try {
+      const enabledLockedSpells = this.actor.items.filter(
+        (i) => i.type === "spell" && i.system?.spellLock?.enabled,
       );
 
-      const existingInvisibility = this.actor.effects.find(e =>
-        e.getFlag("shadowrun2e", "spellLockInvisibilityEffect") === true
+      const hasInvisibility = enabledLockedSpells.some((spell) =>
+        String(spell.name || "")
+          .toLowerCase()
+          .includes("invisibility"),
+      );
+
+      const existingInvisibility = this.actor.effects.find(
+        (e) => e.getFlag("shadowrun2e", "spellLockInvisibilityEffect") === true,
       );
 
       if (!hasInvisibility) {
@@ -2836,14 +2715,16 @@ export class SR2ActorSheet extends ActorSheet {
         return;
       }
 
-	      if (!existingInvisibility) {
-	        await this.actor.createEmbeddedDocuments("ActiveEffect", [{
-	          name: "Sustained Spell: Invisibility",
-	          icon: "icons/svg/invisible.svg",
-	          changes: [],
-	          disabled: false,
-	          flags: { shadowrun2e: { spellLockInvisibilityEffect: true } }
-	        }]);
+      if (!existingInvisibility) {
+        await this.actor.createEmbeddedDocuments("ActiveEffect", [
+          {
+            name: "Sustained Spell: Invisibility",
+            icon: "icons/svg/invisible.svg",
+            changes: [],
+            disabled: false,
+            flags: { shadowrun2e: { spellLockInvisibilityEffect: true } },
+          },
+        ]);
         return;
       }
 
@@ -2867,7 +2748,10 @@ export class SR2ActorSheet extends ActorSheet {
 
     try {
       const force = Math.max(1, Number(spell.system.force) || 1);
-      const magicRating = Number(this.actor.system.attributes.magic.effective ?? this.actor.system.attributes.magic.value) || 0;
+      const magicRating =
+        Number(
+          this.actor.system.attributes.magic.effective ?? this.actor.system.attributes.magic.value,
+        ) || 0;
       const sorcerySkill = this._getHighestSorcerySkill();
 
       // SR2 spellcasting: Spell Success Test uses Force dice; Magic Pool and foci add dice separately.
@@ -2885,7 +2769,7 @@ export class SR2ActorSheet extends ActorSheet {
       const title = `Casting ${spell.name} (Force ${force})`;
 
       const spellClass = sr2NormalizeSpellClass(spell.system?.class);
-      const spellClassLabel = spellClass ? (SR2_SPELL_CLASS_LABELS[spellClass] || spellClass) : "";
+      const spellClassLabel = spellClass ? SR2_SPELL_CLASS_LABELS[spellClass] || spellClass : "";
 
       const targets = Array.from(game.user?.targets ?? []);
       const resistAttributeLabel = sr2InferSpellResistFromType(spell.system?.type);
@@ -2893,14 +2777,16 @@ export class SR2ActorSheet extends ActorSheet {
       let defaultCastTargetNumber = 4;
       if (targets.length === 1 && resistAttributeKey) {
         const targetActor = targets[0]?.actor;
-        const resistAttributeValue = Number(targetActor?.system?.attributes?.[resistAttributeKey]?.value);
+        const resistAttributeValue = Number(
+          targetActor?.system?.attributes?.[resistAttributeKey]?.value,
+        );
         if (Number.isFinite(resistAttributeValue) && resistAttributeValue > 0) {
           defaultCastTargetNumber = sr2Clamp(resistAttributeValue, 2, 30);
         }
       }
 
       const focusPools = [];
-      const equippedGear = this.actor.items.filter(i => i.type === "gear" && i.system?.equipped);
+      const equippedGear = this.actor.items.filter((i) => i.type === "gear" && i.system?.equipped);
       for (const item of equippedGear) {
         const focus = sr2ParseFocusName(item.name);
         if (!focus) continue;
@@ -2914,7 +2800,7 @@ export class SR2ActorSheet extends ActorSheet {
             name: `${item.name} (${spell.name})`,
             current: focus.rating,
             max: focus.rating,
-            isActorPool: false
+            isActorPool: false,
           });
         }
 
@@ -2927,45 +2813,62 @@ export class SR2ActorSheet extends ActorSheet {
             name: `${item.name}${spellClassLabel ? ` (${spellClassLabel})` : ""}`,
             current: focus.rating,
             max: focus.rating,
-            isActorPool: false
+            isActorPool: false,
           });
         }
       }
 
       // Show TN selection dialog and roll for spellcasting
-      const castResult = await this._showTargetNumberDialog(dicePool, title, 'spell', defaultCastTargetNumber, null, {
-        baseSkillName: "Sorcery",
-        additionalPools: focusPools
-      });
+      const castResult = await this._showTargetNumberDialog(
+        dicePool,
+        title,
+        "spell",
+        defaultCastTargetNumber,
+        null,
+        {
+          baseSkillName: "Sorcery",
+          additionalPools: focusPools,
+        },
+      );
       if (!castResult?.rolled) return;
 
       // Calculate drain
       const misfireDrainMod = castResult.rollResult?.isCriticalFailure ? 2 : 0;
-      const drainValue = Math.max(2, this._calculateDrain(spell.system.drain, force) + misfireDrainMod);
+      const drainValue = Math.max(
+        2,
+        this._calculateDrain(spell.system.drain, force) + misfireDrainMod,
+      );
       const drainPool = Number(this.actor.system.attributes.willpower.value) || 0;
 
       // Show TN selection dialog and roll drain resistance
       const drainTitle = `Drain Resistance for ${spell.name}`;
 
       const focusDiceUsed = {};
-      for (const { pool, dice } of (castResult.poolsUsed || [])) {
+      for (const { pool, dice } of castResult.poolsUsed || []) {
         if (pool?.isActorPool) continue;
         if (!pool?.key) continue;
         focusDiceUsed[pool.key] = (focusDiceUsed[pool.key] || 0) + (Number(dice) || 0);
       }
 
-      const remainingFocusPools = focusPools.map(pool => {
+      const remainingFocusPools = focusPools.map((pool) => {
         const used = Number(focusDiceUsed[pool.key]) || 0;
         return {
           ...pool,
-          current: Math.max(0, (Number(pool.current) || 0) - used)
+          current: Math.max(0, (Number(pool.current) || 0) - used),
         };
       });
 
-      const drainResult = await this._showTargetNumberDialog(drainPool, drainTitle, 'drain', drainValue, null, {
-        baseSkillName: "Sorcery",
-        additionalPools: remainingFocusPools
-      });
+      const drainResult = await this._showTargetNumberDialog(
+        drainPool,
+        drainTitle,
+        "drain",
+        drainValue,
+        null,
+        {
+          baseSkillName: "Sorcery",
+          additionalPools: remainingFocusPools,
+        },
+      );
       if (!drainResult?.rolled) return;
 
       const baseDrainLevel = sr2InferSpellDamageLevelFromDrain(spell.system.drain) || "";
@@ -3003,7 +2906,9 @@ export class SR2ActorSheet extends ActorSheet {
         nextPrimary = maxPrimary;
       }
 
-      const updateData = { [`system.health.${damageType}.value`]: Math.max(0, Math.min(maxPrimary, nextPrimary)) };
+      const updateData = {
+        [`system.health.${damageType}.value`]: Math.max(0, Math.min(maxPrimary, nextPrimary)),
+      };
       if (carry > 0) {
         const nextOther = Math.max(0, Math.min(maxOther, currentOther + carry));
         updateData[`system.health.${otherType}.value`] = nextOther;
@@ -3020,18 +2925,7 @@ export class SR2ActorSheet extends ActorSheet {
    * Get the highest Sorcery skill rating
    */
   _getHighestSorcerySkill() {
-    const sorcerySkills = this.actor.items.filter(i =>
-      i.type === 'skill' && i.system.baseSkill === 'Sorcery'
-    );
-
-    if (sorcerySkills.length === 0) return 0;
-
-    return Math.max(...sorcerySkills.map(skill => {
-      const baseRating = skill.system.baseRating || 0;
-      const concRating = skill.system.concentrationRating || 0;
-      const specRating = skill.system.specializationRating || 0;
-      return Math.max(baseRating, concRating, specRating);
-    }));
+    return sr2GetHighestSkillRatingByBaseSkill(this.actor, "Sorcery");
   }
 
   /**
@@ -3045,7 +2939,9 @@ export class SR2ActorSheet extends ActorSheet {
     if (!weapon) return;
 
     const isRanged = weapon.system.weaponType === "ranged";
-    const { skillRating, skillName, rollDescription } = sr2GetWeaponSkillData(this.actor, weapon, { notify: true });
+    const { skillRating, skillName, rollDescription } = sr2GetWeaponSkillData(this.actor, weapon, {
+      notify: true,
+    });
     const dicePool = Math.max(0, Number(skillRating) || 0);
 
     const targets = Array.from(game.user?.targets ?? []);
@@ -3056,7 +2952,7 @@ export class SR2ActorSheet extends ActorSheet {
       await ChatMessage.create({
         user: game.user.id,
         speaker: ChatMessage.getSpeaker({ actor: this.actor }),
-        content: `<div class="sr2-combat-resolution"><p>${message}</p></div>`
+        content: `<div class="sr2-combat-resolution"><p>${message}</p></div>`,
       });
     };
 
@@ -3072,10 +2968,17 @@ export class SR2ActorSheet extends ActorSheet {
     if (!targetToken || !targetActor) {
       const attackType = isRanged ? "Ranged Attack" : "Melee Attack";
       const subtitle = dicePool > 0 ? `${skillName} (${rollDescription})` : "Defaulting";
-      const attackResult = await this._showTargetNumberDialog(dicePool, `${attackType} with ${weapon.name} - ${subtitle}`, "attack", 4, weapon, {
-        allowedPoolKeys: ["combat", "karma"],
-        poolCaps: { combat: dicePool }
-      });
+      const attackResult = await this._showTargetNumberDialog(
+        dicePool,
+        `${attackType} with ${weapon.name} - ${subtitle}`,
+        "attack",
+        4,
+        weapon,
+        {
+          allowedPoolKeys: ["combat", "karma"],
+          poolCaps: { combat: dicePool },
+        },
+      );
       if (!attackResult?.rolled) return;
 
       await ChatMessage.create({
@@ -3087,7 +2990,7 @@ export class SR2ActorSheet extends ActorSheet {
             <p><strong>Damage Code:</strong> ${weapon.system.damage || "1L"}</p>
             <p><em>Target exactly one token to auto-resolve damage/resistance.</em></p>
           </div>
-        `
+        `,
       });
 
       await consumeAmmo();
@@ -3100,8 +3003,15 @@ export class SR2ActorSheet extends ActorSheet {
       let distance = null;
       let distanceUnits = "";
 
-      const attackerToken = canvas?.tokens?.controlled?.find(t => t.actor?.id === this.actor.id) || (this.actor.getActiveTokens?.(true)?.[0] ?? null);
-      if (canvas?.grid?.size && canvas?.scene?.grid?.distance && attackerToken?.center && targetToken?.center) {
+      const attackerToken =
+        canvas?.tokens?.controlled?.find((t) => t.actor?.id === this.actor.id) ||
+        (this.actor.getActiveTokens?.(true)?.[0] ?? null);
+      if (
+        canvas?.grid?.size &&
+        canvas?.scene?.grid?.distance &&
+        attackerToken?.center &&
+        targetToken?.center
+      ) {
         const dx = targetToken.center.x - attackerToken.center.x;
         const dy = targetToken.center.y - attackerToken.center.y;
         const pixels = Math.hypot(dx, dy);
@@ -3145,22 +3055,35 @@ export class SR2ActorSheet extends ActorSheet {
       }
 
       const subtitle = dicePool > 0 ? `${skillName} (${rollDescription})` : "Defaulting";
-      const rangeSuffix = rangeLabel && Number.isFinite(distance)
-        ? ` [${rangeLabel} ${distance.toFixed(1)}${distanceUnits ? ` ${distanceUnits}` : ""}]`
-        : (rangeLabel ? ` [${rangeLabel}]` : "");
-      const rangeText = rangeLabel && Number.isFinite(distance)
-        ? `${rangeLabel} ${distance.toFixed(1)}${distanceUnits ? ` ${distanceUnits}` : ""}`
-        : rangeLabel;
+      const rangeSuffix =
+        rangeLabel && Number.isFinite(distance)
+          ? ` [${rangeLabel} ${distance.toFixed(1)}${distanceUnits ? ` ${distanceUnits}` : ""}]`
+          : rangeLabel
+            ? ` [${rangeLabel}]`
+            : "";
+      const rangeText =
+        rangeLabel && Number.isFinite(distance)
+          ? `${rangeLabel} ${distance.toFixed(1)}${distanceUnits ? ` ${distanceUnits}` : ""}`
+          : rangeLabel;
 
-      const attackResult = await this._showTargetNumberDialog(dicePool, `Ranged Attack with ${weapon.name} - ${subtitle}${rangeSuffix}`, "attack", baseTargetNumber, weapon, {
-        allowedPoolKeys: ["combat", "karma"],
-        poolCaps: { combat: dicePool }
-      });
+      const attackResult = await this._showTargetNumberDialog(
+        dicePool,
+        `Ranged Attack with ${weapon.name} - ${subtitle}${rangeSuffix}`,
+        "attack",
+        baseTargetNumber,
+        weapon,
+        {
+          allowedPoolKeys: ["combat", "karma"],
+          poolCaps: { combat: dicePool },
+        },
+      );
       if (!attackResult?.rolled) return;
 
       const attackerSuccesses = Number(attackResult.rollResult?.successes) || 0;
       if (attackerSuccesses <= 0) {
-        await resolveErrorChat(`<strong>${this.actor.name}</strong> misses with <strong>${weapon.name}</strong>.`);
+        await resolveErrorChat(
+          `<strong>${this.actor.name}</strong> misses with <strong>${weapon.name}</strong>.`,
+        );
         await consumeAmmo();
         return;
       }
@@ -3168,14 +3091,18 @@ export class SR2ActorSheet extends ActorSheet {
       const attackerStrength = sr2GetModifiedAttribute(this.actor, "strength");
       const parsed = sr2ParseDamageCode(weapon.system.damage || "", { strength: attackerStrength });
       if (!parsed) {
-        await resolveErrorChat(`Cannot auto-resolve: unparseable damage code <strong>${weapon.system.damage || ""}</strong>.`);
+        await resolveErrorChat(
+          `Cannot auto-resolve: unparseable damage code <strong>${weapon.system.damage || ""}</strong>.`,
+        );
         await consumeAmmo();
         return;
       }
 
       const armorRatings = sr2GetArmorRatings(targetActor);
       const rangeType = String(weapon.system.rangeType || "");
-      const usesImpactArmor = ["(GRLN)", "(MISLN)"].includes(rangeType.toUpperCase()) || /grenade|missile|rocket/i.test(String(weapon.name || ""));
+      const usesImpactArmor =
+        ["(GRLN)", "(MISLN)"].includes(rangeType.toUpperCase()) ||
+        /grenade|missile|rocket/i.test(String(weapon.name || ""));
       const armorValue = usesImpactArmor ? armorRatings.impact : armorRatings.ballistic;
 
       const resistTargetNumber = Math.max(2, parsed.power - armorValue);
@@ -3189,13 +3116,14 @@ export class SR2ActorSheet extends ActorSheet {
         null,
         {
           rollActor: targetActor,
-          allowedPoolKeys: ["combat", "karma"]
-        }
+          allowedPoolKeys: ["combat", "karma"],
+        },
       );
       if (!resistResult?.rolled) return;
 
       const defenderSuccesses = Number(resistResult.rollResult?.successes) || 0;
-      const defenderCombatPoolSuccesses = Number(resistResult.rollResult?.successesBySource?.combat) || 0;
+      const defenderCombatPoolSuccesses =
+        Number(resistResult.rollResult?.successesBySource?.combat) || 0;
 
       const cleanMiss = defenderCombatPoolSuccesses > attackerSuccesses;
       let finalLevel = null;
@@ -3204,7 +3132,7 @@ export class SR2ActorSheet extends ActorSheet {
       if (!cleanMiss) {
         const net = attackerSuccesses - defenderSuccesses;
         const stages = Math.floor(Math.abs(net) / 2);
-        const stageDelta = net > 0 ? stages : (net < 0 ? -stages : 0);
+        const stageDelta = net > 0 ? stages : net < 0 ? -stages : 0;
         finalLevel = sr2StageDamageLevel(parsed.level, stageDelta);
         if (finalLevel) boxes = SR2_DAMAGE_BOXES_BY_LEVEL[finalLevel] ?? 0;
       }
@@ -3220,7 +3148,9 @@ export class SR2ActorSheet extends ActorSheet {
 
       const resultLabel = cleanMiss
         ? `Clean miss (defender Combat Pool successes ${defenderCombatPoolSuccesses} > attacker ${attackerSuccesses}).`
-        : (finalLevel ? `${finalLevel} ${parsed.damageType === "stun" ? "Stun" : "Physical"} (${boxes} boxes)` : "No damage");
+        : finalLevel
+          ? `${finalLevel} ${parsed.damageType === "stun" ? "Stun" : "Physical"} (${boxes} boxes)`
+          : "No damage";
 
       await ChatMessage.create({
         user: game.user.id,
@@ -3235,15 +3165,15 @@ export class SR2ActorSheet extends ActorSheet {
             <p><strong>Resistance successes:</strong> ${defenderSuccesses} (Combat Pool-only: ${defenderCombatPoolSuccesses})</p>
             <p><strong>Result:</strong> ${resultLabel}${finalLevel && boxes > 0 ? (applied ? "" : " (not applied)") : ""}</p>
           </div>
-        `
+        `,
       });
 
       await consumeAmmo();
       return;
     }
 
-    const equippedMeleeWeapons = targetActor.items.filter(i =>
-      i.type === "weapon" && i.system?.weaponType === "melee" && i.system?.equipped
+    const equippedMeleeWeapons = targetActor.items.filter(
+      (i) => i.type === "weapon" && i.system?.weaponType === "melee" && i.system?.equipped,
     );
     const defenderWeapon = equippedMeleeWeapons.length > 0 ? equippedMeleeWeapons[0] : null;
     const defenderWeaponName = defenderWeapon?.name || "Unarmed";
@@ -3253,12 +3183,16 @@ export class SR2ActorSheet extends ActorSheet {
     let defenderRollDescription = "Unarmed";
 
     if (defenderWeapon) {
-      const defenderSkillData = sr2GetWeaponSkillData(targetActor, defenderWeapon, { notify: false });
+      const defenderSkillData = sr2GetWeaponSkillData(targetActor, defenderWeapon, {
+        notify: false,
+      });
       defenderSkillRating = Math.max(0, Number(defenderSkillData.skillRating) || 0);
       defenderSkillName = defenderSkillData.skillName || defenderSkillName;
       defenderRollDescription = defenderSkillData.rollDescription || "Base Skill";
     } else {
-      const unarmedSkill = targetActor.items.find(i => i.type === "skill" && i.system?.baseSkill === "Unarmed Combat");
+      const unarmedSkill = targetActor.items.find(
+        (i) => i.type === "skill" && i.system?.baseSkill === "Unarmed Combat",
+      );
       if (unarmedSkill) {
         defenderSkillRating = Math.max(0, Number(unarmedSkill.system?.baseRating) || 0);
         defenderSkillName = unarmedSkill.name || "Unarmed Combat";
@@ -3266,27 +3200,46 @@ export class SR2ActorSheet extends ActorSheet {
       }
     }
 
-    const attackerReach = (Number(this.actor.system?.details?.traits?.reach) || 0) + (Number(weapon.system?.reach) || 0);
-    const defenderReach = (Number(targetActor.system?.details?.traits?.reach) || 0) + (Number(defenderWeapon?.system?.reach) || 0);
+    const attackerReach =
+      (Number(this.actor.system?.details?.traits?.reach) || 0) +
+      (Number(weapon.system?.reach) || 0);
+    const defenderReach =
+      (Number(targetActor.system?.details?.traits?.reach) || 0) +
+      (Number(defenderWeapon?.system?.reach) || 0);
     const reachDelta = attackerReach - defenderReach;
 
     const attackerMeleeTN = Math.max(2, 4 - reachDelta);
     const defenderMeleeTN = Math.max(2, 4 + reachDelta);
 
     const attackerSubtitle = dicePool > 0 ? `${skillName} (${rollDescription})` : "Defaulting";
-    const reachNote = reachDelta !== 0 ? ` [Reach Δ ${reachDelta >= 0 ? "+" : ""}${reachDelta}]` : "";
+    const reachNote =
+      reachDelta !== 0 ? ` [Reach Δ ${reachDelta >= 0 ? "+" : ""}${reachDelta}]` : "";
 
-    const attackerTest = await this._showTargetNumberDialog(dicePool, `Melee Attack (${weapon.name}) - ${attackerSubtitle}${reachNote}`, "attack", attackerMeleeTN, weapon, {
-      allowedPoolKeys: ["combat", "karma"],
-      poolCaps: { combat: dicePool }
-    });
+    const attackerTest = await this._showTargetNumberDialog(
+      dicePool,
+      `Melee Attack (${weapon.name}) - ${attackerSubtitle}${reachNote}`,
+      "attack",
+      attackerMeleeTN,
+      weapon,
+      {
+        allowedPoolKeys: ["combat", "karma"],
+        poolCaps: { combat: dicePool },
+      },
+    );
     if (!attackerTest?.rolled) return;
 
-    const defenderTest = await this._showTargetNumberDialog(defenderSkillRating, `Melee Defense (${defenderWeaponName}) - ${defenderSkillName} (${defenderRollDescription})${reachNote}`, "attack", defenderMeleeTN, defenderWeapon, {
-      rollActor: targetActor,
-      allowedPoolKeys: ["combat", "karma"],
-      poolCaps: { combat: defenderSkillRating }
-    });
+    const defenderTest = await this._showTargetNumberDialog(
+      defenderSkillRating,
+      `Melee Defense (${defenderWeaponName}) - ${defenderSkillName} (${defenderRollDescription})${reachNote}`,
+      "attack",
+      defenderMeleeTN,
+      defenderWeapon,
+      {
+        rollActor: targetActor,
+        allowedPoolKeys: ["combat", "karma"],
+        poolCaps: { combat: defenderSkillRating },
+      },
+    );
     if (!defenderTest?.rolled) return;
 
     const attackerSuccesses = Number(attackerTest.rollResult?.successes) || 0;
@@ -3302,10 +3255,12 @@ export class SR2ActorSheet extends ActorSheet {
     const stageUp = Math.floor(Math.max(0, hitterSuccesses - otherSuccesses) / 2);
 
     const hitterStrength = sr2GetModifiedAttribute(hitterActor, "strength");
-    const rawDamageCode = hitterWeapon ? (hitterWeapon.system.damage || "") : "(STR)M Stun";
+    const rawDamageCode = hitterWeapon ? hitterWeapon.system.damage || "" : "(STR)M Stun";
     const parsed = sr2ParseDamageCode(rawDamageCode, { strength: hitterStrength });
     if (!parsed) {
-      await resolveErrorChat(`Cannot auto-resolve: unparseable melee damage code <strong>${rawDamageCode}</strong>.`);
+      await resolveErrorChat(
+        `Cannot auto-resolve: unparseable melee damage code <strong>${rawDamageCode}</strong>.`,
+      );
       return;
     }
 
@@ -3322,8 +3277,8 @@ export class SR2ActorSheet extends ActorSheet {
       null,
       {
         rollActor: hitActor,
-        allowedPoolKeys: ["combat", "karma"]
-      }
+        allowedPoolKeys: ["combat", "karma"],
+      },
     );
     if (!resistResult?.rolled) return;
 
@@ -3359,7 +3314,7 @@ export class SR2ActorSheet extends ActorSheet {
           <p><strong>Resistance successes:</strong> ${resistSuccesses}</p>
           <p><strong>Result:</strong> ${resultLabel}${finalLevel && boxes > 0 ? (applied ? "" : " (not applied)") : ""}</p>
         </div>
-      `
+      `,
     });
   }
 
@@ -3411,11 +3366,11 @@ export class SR2ActorSheet extends ActorSheet {
     }
 
     try {
-      const response = await fetch('/systems/shadowrun2e/data/ranges.json');
+      const response = await fetch("/systems/shadowrun2e/data/ranges.json");
       this.rangesData = await response.json();
       return this.rangesData;
     } catch (error) {
-      console.error('Failed to load ranges data:', error);
+      console.error("Failed to load ranges data:", error);
       return null;
     }
   }
@@ -3424,40 +3379,40 @@ export class SR2ActorSheet extends ActorSheet {
    * Display range bands for selected weapon
    */
   _displayRangeBands(rangeData) {
-    const rangeBands = document.getElementById('range-bands');
+    const rangeBands = document.getElementById("range-bands");
     if (!rangeBands) return;
 
-    document.getElementById('short-range').textContent = rangeData.short;
-    document.getElementById('medium-range').textContent = rangeData.medium;
-    document.getElementById('long-range').textContent = rangeData.long;
-    document.getElementById('extreme-range').textContent = rangeData.extreme;
+    document.getElementById("short-range").textContent = rangeData.short;
+    document.getElementById("medium-range").textContent = rangeData.medium;
+    document.getElementById("long-range").textContent = rangeData.long;
+    document.getElementById("extreme-range").textContent = rangeData.extreme;
 
-    rangeBands.style.display = 'grid';
+    rangeBands.style.display = "grid";
   }
 
   /**
    * Hide range bands
    */
   _hideRangeBands() {
-    const rangeBands = document.getElementById('range-bands');
+    const rangeBands = document.getElementById("range-bands");
     if (rangeBands) {
-      rangeBands.style.display = 'none';
+      rangeBands.style.display = "none";
     }
 
-    const rangeCategory = document.getElementById('range-category');
-    const rangeModifier = document.getElementById('range-modifier');
-    if (rangeCategory) rangeCategory.textContent = '-';
-    if (rangeModifier) rangeModifier.textContent = '';
+    const rangeCategory = document.getElementById("range-category");
+    const rangeModifier = document.getElementById("range-modifier");
+    if (rangeCategory) rangeCategory.textContent = "-";
+    if (rangeModifier) rangeModifier.textContent = "";
   }
 
   /**
    * Calculate and display range category based on distance
    */
   async _calculateRangeCategory() {
-    const weaponSelect = document.getElementById('range-weapon-select');
-    const distanceInput = document.getElementById('range-distance');
-    const rangeCategorySpan = document.getElementById('range-category');
-    const rangeModifierSpan = document.getElementById('range-modifier');
+    const weaponSelect = document.getElementById("range-weapon-select");
+    const distanceInput = document.getElementById("range-distance");
+    const rangeCategorySpan = document.getElementById("range-category");
+    const rangeModifierSpan = document.getElementById("range-modifier");
 
     if (!weaponSelect || !distanceInput || !rangeCategorySpan) return;
 
@@ -3466,8 +3421,8 @@ export class SR2ActorSheet extends ActorSheet {
     const distance = parseInt(distanceInput.value);
 
     if (!weaponId || !rangeType || !distance) {
-      rangeCategorySpan.textContent = '-';
-      rangeModifierSpan.textContent = '';
+      rangeCategorySpan.textContent = "-";
+      rangeModifierSpan.textContent = "";
       return;
     }
 
@@ -3475,30 +3430,30 @@ export class SR2ActorSheet extends ActorSheet {
     if (!rangesData || !rangesData[rangeType]) return;
 
     const ranges = rangesData[rangeType];
-    let category = '';
-    let modifier = '';
-    let categoryClass = '';
+    let category = "";
+    let modifier = "";
+    let categoryClass = "";
 
     if (distance <= ranges.short) {
-      category = 'Short';
-      modifier = '(TN 4)';
-      categoryClass = 'short';
+      category = "Short";
+      modifier = "(TN 4)";
+      categoryClass = "short";
     } else if (distance <= ranges.medium) {
-      category = 'Medium';
-      modifier = '(TN 5)';
-      categoryClass = 'medium';
+      category = "Medium";
+      modifier = "(TN 5)";
+      categoryClass = "medium";
     } else if (distance <= ranges.long) {
-      category = 'Long';
-      modifier = '(TN 6)';
-      categoryClass = 'long';
+      category = "Long";
+      modifier = "(TN 6)";
+      categoryClass = "long";
     } else if (distance <= ranges.extreme) {
-      category = 'Extreme';
-      modifier = '(TN 9)';
-      categoryClass = 'extreme';
+      category = "Extreme";
+      modifier = "(TN 9)";
+      categoryClass = "extreme";
     } else {
-      category = 'Out of Range';
-      modifier = '(Impossible)';
-      categoryClass = 'impossible';
+      category = "Out of Range";
+      modifier = "(Impossible)";
+      categoryClass = "impossible";
     }
 
     rangeCategorySpan.textContent = category;
@@ -3518,21 +3473,21 @@ export class SR2ActorSheet extends ActorSheet {
       const { SR2ItemBrowser } = await import("/systems/shadowrun2e/scripts/item-browser.js");
 
       // Create a custom item browser with totem selection handling
-      const browser = new SR2ItemBrowser(this.actor, 'totem', {});
+      const browser = new SR2ItemBrowser(this.actor, "totem", {});
 
       // Override the default item creation to handle totem selection
       const originalAddItem = browser.addItem;
       browser.addItem = async (item) => {
         // First, unselect any existing totems
-        const existingTotems = this.actor.items.filter(i => i.type === 'totem');
+        const existingTotems = this.actor.items.filter((i) => i.type === "totem");
         for (const existingTotem of existingTotems) {
-          await existingTotem.update({ 'system.isSelected': false });
+          await existingTotem.update({ "system.isSelected": false });
         }
 
         // Then add the new totem and mark it as selected
         const newItem = await originalAddItem.call(browser, item);
         if (newItem) {
-          await newItem.update({ 'system.isSelected': true });
+          await newItem.update({ "system.isSelected": true });
         }
         return newItem;
       };
@@ -3571,7 +3526,7 @@ export class SR2ActorSheet extends ActorSheet {
           checkbox.checked = false;
           ui.notifications.error(
             `Cannot install ${item.name}. Essence cost (${essenceCost}) would reduce your Essence below 0.1. ` +
-            `Current Essence: ${currentEssence.toFixed(2)}, Required: ${essenceCost.toFixed(2)}`
+              `Current Essence: ${currentEssence.toFixed(2)}, Required: ${essenceCost.toFixed(2)}`,
           );
           return;
         }
@@ -3585,7 +3540,7 @@ export class SR2ActorSheet extends ActorSheet {
                      <p>New Essence: <strong>${remainingEssence.toFixed(2)}</strong></p>
                      <p>This cannot be undone. Continue?</p>`,
             yes: () => true,
-            no: () => false
+            no: () => false,
           });
 
           if (!confirm) {
@@ -3595,9 +3550,8 @@ export class SR2ActorSheet extends ActorSheet {
         }
 
         // Install the cyberware
-        await item.update({ 'system.installed': true });
+        await item.update({ "system.installed": true });
         ui.notifications.info(`${item.name} installed. Essence reduced by ${essenceCost}.`);
-
       } else {
         // Uninstall the cyberware
         const confirm = await Dialog.confirm({
@@ -3606,7 +3560,7 @@ export class SR2ActorSheet extends ActorSheet {
                    <p>This will restore <strong>${essenceCost}</strong> Essence.</p>
                    <p><em>Note: In Shadowrun, cyberware removal typically requires surgery and may have complications.</em></p>`,
           yes: () => true,
-          no: () => false
+          no: () => false,
         });
 
         if (!confirm) {
@@ -3614,7 +3568,7 @@ export class SR2ActorSheet extends ActorSheet {
           return;
         }
 
-        await item.update({ 'system.installed': false });
+        await item.update({ "system.installed": false });
         ui.notifications.info(`${item.name} removed. Essence restored by ${essenceCost}.`);
       }
 
@@ -3645,8 +3599,8 @@ export class SR2ActorSheet extends ActorSheet {
     try {
       if (isInstalling) {
         // Calculate current Bio Index usage
-        const installedBioware = this.actor.items.filter(i =>
-          i.type === 'bioware' && i.system.installed && i._id !== itemId
+        const installedBioware = this.actor.items.filter(
+          (i) => i.type === "bioware" && i.system.installed && i._id !== itemId,
         );
         const currentBioIndex = installedBioware.reduce((total, bio) => {
           return total + (parseFloat(bio.system.bioIndex) || 0);
@@ -3661,7 +3615,7 @@ export class SR2ActorSheet extends ActorSheet {
           checkbox.checked = false;
           ui.notifications.error(
             `Cannot install ${item.name}. Bio Index cost (${bioIndex}) exceeds available capacity. ` +
-            `Available Bio Index: ${remainingBioIndex.toFixed(2)}, Required: ${bioIndex.toFixed(2)}`
+              `Available Bio Index: ${remainingBioIndex.toFixed(2)}, Required: ${bioIndex.toFixed(2)}`,
           );
           return;
         }
@@ -3676,7 +3630,7 @@ export class SR2ActorSheet extends ActorSheet {
                      <p>Remaining after installation: <strong>${(remainingBioIndex - bioIndex).toFixed(2)}</strong></p>
                      <p>Continue?</p>`,
             yes: () => true,
-            no: () => false
+            no: () => false,
           });
 
           if (!confirm) {
@@ -3686,9 +3640,8 @@ export class SR2ActorSheet extends ActorSheet {
         }
 
         // Install the bioware
-        await item.update({ 'system.installed': true });
+        await item.update({ "system.installed": true });
         ui.notifications.info(`${item.name} installed. Bio Index used: ${bioIndex}.`);
-
       } else {
         // Uninstall the bioware
         const confirm = await Dialog.confirm({
@@ -3697,7 +3650,7 @@ export class SR2ActorSheet extends ActorSheet {
                    <p>This will free up <strong>${bioIndex}</strong> Bio Index.</p>
                    <p><em>Note: In Shadowrun, bioware removal typically requires surgery and may have complications.</em></p>`,
           yes: () => true,
-          no: () => false
+          no: () => false,
         });
 
         if (!confirm) {
@@ -3705,7 +3658,7 @@ export class SR2ActorSheet extends ActorSheet {
           return;
         }
 
-        await item.update({ 'system.installed': false });
+        await item.update({ "system.installed": false });
         ui.notifications.info(`${item.name} removed. Bio Index freed: ${bioIndex}.`);
       }
 
@@ -3733,7 +3686,7 @@ export class SR2ActorSheet extends ActorSheet {
       let formula = drainCode.replace(/F/g, force.toString());
 
       // Remove brackets and damage level indicators
-      formula = formula.replace(/[\[\]LMSD]/g, '');
+      formula = formula.replace(/[\[\]LMSD]/g, "");
       formula = formula.replace(/[^0-9+\-*/().]/g, "");
 
       // Evaluate arithmetic safely (no arbitrary code execution).
@@ -3755,41 +3708,41 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Find the actual damage box element (in case user clicked on a child element)
     let element = event.currentTarget;
-    if (!element.classList.contains('damage-box')) {
-      element = element.closest('.damage-box');
+    if (!element.classList.contains("damage-box")) {
+      element = element.closest(".damage-box");
     }
 
     if (!element) {
-      console.error('SR2E | Could not find damage box element');
+      console.error("SR2E | Could not find damage box element");
       return;
     }
 
     try {
       // Try to get box number from multiple sources
-      let boxNumberStr = element.dataset.boxNumber || element.getAttribute('data-box-number');
+      let boxNumberStr = element.dataset.boxNumber || element.getAttribute("data-box-number");
 
       // If we still don't have a box number, try to find it from the element's position
       if (!boxNumberStr) {
-        const damageBoxes = element.parentElement.querySelectorAll('.damage-box');
+        const damageBoxes = element.parentElement.querySelectorAll(".damage-box");
         const index = Array.from(damageBoxes).indexOf(element);
         if (index >= 0) {
           boxNumberStr = (index + 1).toString();
-          console.log('SR2E | Box number derived from position:', boxNumberStr);
+          console.log("SR2E | Box number derived from position:", boxNumberStr);
         }
       }
 
       // Last resort: try to get it from the text content of the box-number span
       if (!boxNumberStr) {
-        const boxNumberSpan = element.querySelector('.box-number');
+        const boxNumberSpan = element.querySelector(".box-number");
         if (boxNumberSpan && boxNumberSpan.textContent) {
           boxNumberStr = boxNumberSpan.textContent.trim();
-          console.log('SR2E | Box number derived from text content:', boxNumberStr);
+          console.log("SR2E | Box number derived from text content:", boxNumberStr);
         }
       }
 
       // Validate input parameters
       const boxNumber = parseInt(boxNumberStr);
-      const damageBoxesContainer = element.closest('.damage-boxes');
+      const damageBoxesContainer = element.closest(".damage-boxes");
 
       if (!damageBoxesContainer) {
         throw new Error("Damage box container not found");
@@ -3799,18 +3752,18 @@ export class SR2ActorSheet extends ActorSheet {
 
       // Validate box number
       if (isNaN(boxNumber) || boxNumber < 1 || boxNumber > 10) {
-        console.error('SR2E | Box number validation failed:', {
+        console.error("SR2E | Box number validation failed:", {
           boxNumberStr,
           boxNumber,
           isNaN: isNaN(boxNumber),
           element: element,
-          dataset: element.dataset
+          dataset: element.dataset,
         });
         throw new Error(`Invalid box number: ${boxNumber}. Must be between 1 and 10.`);
       }
 
       // Validate damage type
-      if (!damageType || !['physical', 'stun'].includes(damageType)) {
+      if (!damageType || !["physical", "stun"].includes(damageType)) {
         throw new Error(`Invalid damage type: ${damageType}. Must be 'physical' or 'stun'.`);
       }
 
@@ -3834,11 +3787,13 @@ export class SR2ActorSheet extends ActorSheet {
       const currentDamage = this.actor.system.health[damageType].value;
 
       // Validate current damage value
-      if (typeof currentDamage !== 'number' || isNaN(currentDamage)) {
-        console.warn(`SR2E | Invalid current ${damageType} damage value: ${currentDamage}, defaulting to 0`);
+      if (typeof currentDamage !== "number" || isNaN(currentDamage)) {
+        console.warn(
+          `SR2E | Invalid current ${damageType} damage value: ${currentDamage}, defaulting to 0`,
+        );
         // Set a default value and continue
         await this.actor.update({
-          [`system.health.${damageType}.value`]: 0
+          [`system.health.${damageType}.value`]: 0,
         });
         return;
       }
@@ -3854,7 +3809,7 @@ export class SR2ActorSheet extends ActorSheet {
       }
 
       // Validate and clamp damage within bounds (0-10)
-      if (typeof newDamage !== 'number' || isNaN(newDamage)) {
+      if (typeof newDamage !== "number" || isNaN(newDamage)) {
         throw new Error(`Invalid damage value calculated: ${newDamage}`);
       }
 
@@ -3870,29 +3825,33 @@ export class SR2ActorSheet extends ActorSheet {
       try {
         // Use queued update for better concurrent handling
         this._queueUpdate({
-          [`system.health.${damageType}.value`]: newDamage
+          [`system.health.${damageType}.value`]: newDamage,
         });
 
-        console.log(`SR2E | Queued ${damageType} damage update from ${currentDamage} to ${newDamage}`);
+        console.log(
+          `SR2E | Queued ${damageType} damage update from ${currentDamage} to ${newDamage}`,
+        );
 
         // Provide immediate UI feedback
         this._updateDamageBoxDisplay(damageType, newDamage);
 
         // Provide user feedback for significant damage changes
         if (newDamage >= 8 && currentDamage < 8) {
-          ui.notifications.warn(`${this.actor.name} has taken severe ${damageType} damage (${newDamage}/10)!`);
+          ui.notifications.warn(
+            `${this.actor.name} has taken severe ${damageType} damage (${newDamage}/10)!`,
+          );
         } else if (newDamage === 10 && currentDamage < 10) {
           ui.notifications.error(`${this.actor.name} has reached maximum ${damageType} damage!`);
         } else if (newDamage === 0 && currentDamage > 0) {
           ui.notifications.info(`${this.actor.name}'s ${damageType} damage has been cleared.`);
         }
-
       } catch (updateError) {
         console.error(`SR2E | Failed to queue ${damageType} damage update:`, updateError);
-        ui.notifications.error(`Failed to update ${damageType} damage. The character sheet may be locked or you may not have permission.`);
+        ui.notifications.error(
+          `Failed to update ${damageType} damage. The character sheet may be locked or you may not have permission.`,
+        );
         throw updateError;
       }
-
     } catch (error) {
       console.error("SR2E | Error handling damage box click:", error);
       ui.notifications.error(`Error updating damage: ${error.message}`);
@@ -3910,21 +3869,23 @@ export class SR2ActorSheet extends ActorSheet {
    * Test function to validate damage box functionality
    */
   _testDamageBoxes() {
-    console.log('SR2E | Testing damage box functionality...');
+    console.log("SR2E | Testing damage box functionality...");
 
-    const physicalBoxes = this.element.find('.damage-boxes[data-damage-type="physical"] .damage-box');
+    const physicalBoxes = this.element.find(
+      '.damage-boxes[data-damage-type="physical"] .damage-box',
+    );
     const stunBoxes = this.element.find('.damage-boxes[data-damage-type="stun"] .damage-box');
 
-    console.log('SR2E | Found physical damage boxes:', physicalBoxes.length);
-    console.log('SR2E | Found stun damage boxes:', stunBoxes.length);
+    console.log("SR2E | Found physical damage boxes:", physicalBoxes.length);
+    console.log("SR2E | Found stun damage boxes:", stunBoxes.length);
 
     physicalBoxes.each((index, element) => {
-      const boxNumber = element.dataset.boxNumber || element.getAttribute('data-box-number');
+      const boxNumber = element.dataset.boxNumber || element.getAttribute("data-box-number");
       console.log(`SR2E | Physical box ${index + 1}: data-box-number = ${boxNumber}`);
     });
 
     stunBoxes.each((index, element) => {
-      const boxNumber = element.dataset.boxNumber || element.getAttribute('data-box-number');
+      const boxNumber = element.dataset.boxNumber || element.getAttribute("data-box-number");
       console.log(`SR2E | Stun box ${index + 1}: data-box-number = ${boxNumber}`);
     });
   }
@@ -3971,41 +3932,14 @@ export class SR2ActorSheet extends ActorSheet {
   }
 
   /**
-   * Handle initiative roll button clicks
+   * Roll initiative to chat using the actor's current derived initiative terms.
    */
   async _onInitiativeRoll(event) {
     event.preventDefault();
     event.stopPropagation();
 
     try {
-      const initiative = this.actor.system?.initiative || {};
-
-      let initiativeDice = parseInt(initiative.dice, 10);
-      if (!Number.isFinite(initiativeDice) || initiativeDice < 1) initiativeDice = 1;
-      if (initiativeDice > 10) initiativeDice = 10;
-
-      const baseFromReaction = this.actor.system?.attributes?.reaction?.value;
-      let initiativeBase = parseInt(initiative.base ?? baseFromReaction ?? 0, 10);
-      if (!Number.isFinite(initiativeBase) || initiativeBase < 0) initiativeBase = 0;
-
-      const rollFormula = `${initiativeDice}d6 + ${initiativeBase}`;
-      const roll = await (new Roll(rollFormula)).evaluate({ async: true });
-
-      await roll.toMessage({
-        speaker: ChatMessage.getSpeaker({ actor: this.actor }),
-        flavor: `${this.actor.name} rolls Initiative (${initiativeDice}d6+${initiativeBase})`
-      });
-
-      const total = Number(roll.total) || 0;
-      await this.actor.update({ "system.initiative.current": total });
-
-      // Add or update this actor in the SR2 initiative tracker so quick initiative
-      // rolls are represented in active encounters.
-      try {
-        await this._addToInitiativeTracker(total);
-      } catch (trackerError) {
-        console.warn("SR2E | Initiative roll completed but tracker update failed:", trackerError);
-      }
+      await sr2RollInitiativeToChat(this.actor);
     } catch (error) {
       console.error("SR2E | Error rolling initiative:", error);
       ui.notifications.error("Failed to roll initiative (see console).");
@@ -4017,51 +3951,51 @@ export class SR2ActorSheet extends ActorSheet {
    */
   _onDamageBoxKeydown(event) {
     const element = event.currentTarget;
-    const damageBoxes = element.closest('.damage-boxes');
-    const allBoxes = Array.from(damageBoxes.querySelectorAll('.damage-box'));
+    const damageBoxes = element.closest(".damage-boxes");
+    const allBoxes = Array.from(damageBoxes.querySelectorAll(".damage-box"));
     const currentIndex = allBoxes.indexOf(element);
 
     let targetIndex = currentIndex;
     let handled = false;
 
     switch (event.key) {
-      case 'Enter':
-      case ' ':
+      case "Enter":
+      case " ":
         // Activate the damage box (same as clicking)
         event.preventDefault();
         this._onDamageBoxClick(event);
         handled = true;
         break;
 
-      case 'ArrowLeft':
-      case 'ArrowUp':
+      case "ArrowLeft":
+      case "ArrowUp":
         event.preventDefault();
         targetIndex = Math.max(0, currentIndex - 1);
         handled = true;
         break;
 
-      case 'ArrowRight':
-      case 'ArrowDown':
+      case "ArrowRight":
+      case "ArrowDown":
         event.preventDefault();
         targetIndex = Math.min(allBoxes.length - 1, currentIndex + 1);
         handled = true;
         break;
 
-      case 'Home':
+      case "Home":
         event.preventDefault();
         targetIndex = 0;
         handled = true;
         break;
 
-      case 'End':
+      case "End":
         event.preventDefault();
         targetIndex = allBoxes.length - 1;
         handled = true;
         break;
 
-      case '0':
-      case 'Delete':
-      case 'Backspace':
+      case "0":
+      case "Delete":
+      case "Backspace":
         // Clear all damage
         event.preventDefault();
         const damageType = damageBoxes.dataset.damageType;
@@ -4071,15 +4005,15 @@ export class SR2ActorSheet extends ActorSheet {
 
       default:
         // Handle number keys 1-9 for direct damage setting
-        if (event.key >= '1' && event.key <= '9') {
+        if (event.key >= "1" && event.key <= "9") {
           event.preventDefault();
           const boxNumber = parseInt(event.key);
           if (boxNumber <= allBoxes.length) {
             // Create a synthetic click event for the target box
             const targetBox = allBoxes[boxNumber - 1];
             const syntheticEvent = {
-              preventDefault: () => { },
-              currentTarget: targetBox
+              preventDefault: () => {},
+              currentTarget: targetBox,
             };
             this._onDamageBoxClick(syntheticEvent);
             // Focus the target box
@@ -4104,8 +4038,8 @@ export class SR2ActorSheet extends ActorSheet {
     const damageBoxes = event.currentTarget;
     const focusedBox = event.target;
 
-    if (focusedBox.classList.contains('damage-box')) {
-      const allBoxes = Array.from(damageBoxes.querySelectorAll('.damage-box'));
+    if (focusedBox.classList.contains("damage-box")) {
+      const allBoxes = Array.from(damageBoxes.querySelectorAll(".damage-box"));
       const focusedIndex = allBoxes.indexOf(focusedBox);
       this._updateDamageBoxTabIndex(damageBoxes, focusedIndex);
     }
@@ -4115,7 +4049,7 @@ export class SR2ActorSheet extends ActorSheet {
    * Update tabindex for damage boxes to maintain proper keyboard navigation
    */
   _updateDamageBoxTabIndex(damageBoxes, focusedIndex) {
-    const allBoxes = damageBoxes.querySelectorAll('.damage-box');
+    const allBoxes = damageBoxes.querySelectorAll(".damage-box");
     allBoxes.forEach((box, index) => {
       box.tabIndex = index === focusedIndex ? 0 : -1;
     });
@@ -4126,7 +4060,7 @@ export class SR2ActorSheet extends ActorSheet {
    */
   async _clearDamage(damageType) {
     try {
-      if (!['physical', 'stun'].includes(damageType)) {
+      if (!["physical", "stun"].includes(damageType)) {
         throw new Error(`Invalid damage type: ${damageType}`);
       }
 
@@ -4139,14 +4073,13 @@ export class SR2ActorSheet extends ActorSheet {
 
       // Update the actor's damage value
       this._queueUpdate({
-        [`system.health.${damageType}.value`]: 0
+        [`system.health.${damageType}.value`]: 0,
       });
 
       // Provide immediate UI feedback
       this._updateDamageBoxDisplay(damageType, 0);
 
       ui.notifications.info(`${this.actor.name}'s ${damageType} damage has been cleared.`);
-
     } catch (error) {
       console.error(`SR2E | Error clearing ${damageType} damage:`, error);
       ui.notifications.error(`Failed to clear ${damageType} damage: ${error.message}`);
@@ -4164,38 +4097,41 @@ export class SR2ActorSheet extends ActorSheet {
 
       // Check if health structure exists
       if (!currentHealth) {
-        updateData['system.health'] = {
+        updateData["system.health"] = {
           physical: { value: 0, max: 10 },
-          stun: { value: 0, max: 10 }
+          stun: { value: 0, max: 10 },
         };
         needsUpdate = true;
       } else {
         // Check physical health
         if (!currentHealth.physical) {
-          updateData['system.health.physical'] = { value: 0, max: 10 };
+          updateData["system.health.physical"] = { value: 0, max: 10 };
           needsUpdate = true;
         } else {
-          if (typeof currentHealth.physical.value !== 'number' || isNaN(currentHealth.physical.value)) {
-            updateData['system.health.physical.value'] = 0;
+          if (
+            typeof currentHealth.physical.value !== "number" ||
+            isNaN(currentHealth.physical.value)
+          ) {
+            updateData["system.health.physical.value"] = 0;
             needsUpdate = true;
           }
-          if (typeof currentHealth.physical.max !== 'number' || isNaN(currentHealth.physical.max)) {
-            updateData['system.health.physical.max'] = 10;
+          if (typeof currentHealth.physical.max !== "number" || isNaN(currentHealth.physical.max)) {
+            updateData["system.health.physical.max"] = 10;
             needsUpdate = true;
           }
         }
 
         // Check stun health
         if (!currentHealth.stun) {
-          updateData['system.health.stun'] = { value: 0, max: 10 };
+          updateData["system.health.stun"] = { value: 0, max: 10 };
           needsUpdate = true;
         } else {
-          if (typeof currentHealth.stun.value !== 'number' || isNaN(currentHealth.stun.value)) {
-            updateData['system.health.stun.value'] = 0;
+          if (typeof currentHealth.stun.value !== "number" || isNaN(currentHealth.stun.value)) {
+            updateData["system.health.stun.value"] = 0;
             needsUpdate = true;
           }
-          if (typeof currentHealth.stun.max !== 'number' || isNaN(currentHealth.stun.max)) {
-            updateData['system.health.stun.max'] = 10;
+          if (typeof currentHealth.stun.max !== "number" || isNaN(currentHealth.stun.max)) {
+            updateData["system.health.stun.max"] = 10;
             needsUpdate = true;
           }
         }
@@ -4203,12 +4139,11 @@ export class SR2ActorSheet extends ActorSheet {
 
       // Apply updates if needed
       if (needsUpdate) {
-        console.log('SR2E | Initializing health data structure:', updateData);
+        console.log("SR2E | Initializing health data structure:", updateData);
         await this.actor.update(updateData);
       }
-
     } catch (error) {
-      console.error('SR2E | Error initializing health data:', error);
+      console.error("SR2E | Error initializing health data:", error);
     }
   }
 
@@ -4279,7 +4214,9 @@ export class SR2ActorSheet extends ActorSheet {
       await this.actor.update(updateData);
     } catch (error) {
       console.error("SR2E | Failed to process update queue:", error);
-      ui.notifications.error("Failed to save changes. You may not have permission to modify this character.");
+      ui.notifications.error(
+        "Failed to save changes. You may not have permission to modify this character.",
+      );
     }
   }
 
@@ -4289,7 +4226,9 @@ export class SR2ActorSheet extends ActorSheet {
   _updateDamageBoxDisplay(damageType, newDamage) {
     try {
       // Use cached selector for better performance
-      const damageBoxes = this._getCachedElement(`.damage-boxes[data-damage-type="${damageType}"] .damage-box`);
+      const damageBoxes = this._getCachedElement(
+        `.damage-boxes[data-damage-type="${damageType}"] .damage-box`,
+      );
 
       if (!damageBoxes || damageBoxes.length === 0) {
         console.warn(`SR2E | No damage boxes found for type: ${damageType}`);
@@ -4302,21 +4241,21 @@ export class SR2ActorSheet extends ActorSheet {
       damageBoxes.each((index, box) => {
         const boxNumber = parseInt(box.dataset.boxNumber);
         const shouldBeFilled = boxNumber <= newDamage;
-        const currentlyFilled = box.dataset.filled === 'true';
+        const currentlyFilled = box.dataset.filled === "true";
 
         if (shouldBeFilled !== currentlyFilled) {
           updates.push({
             element: box,
             filled: shouldBeFilled,
-            boxNumber: boxNumber
+            boxNumber: boxNumber,
           });
         }
       });
 
       // Apply all updates at once
-      updates.forEach(update => {
+      updates.forEach((update) => {
         update.element.dataset.filled = update.filled.toString();
-        update.element.setAttribute('aria-checked', update.filled.toString());
+        update.element.setAttribute("aria-checked", update.filled.toString());
       });
 
       // Update damage counter with cached element
@@ -4325,339 +4264,8 @@ export class SR2ActorSheet extends ActorSheet {
         const maxDamage = this.actor.system.health[damageType].max || 10;
         damageCounter.text(`${newDamage}/${maxDamage}`);
       }
-
     } catch (error) {
       console.error(`SR2E | Error updating ${damageType} damage display:`, error);
-    }
-  }
-
-  /**
-   * Display initiative roll results in the UI
-   */
-  _displayInitiativeResult(diceResults, diceTotal, reactionBonus, finalTotal, rollFormula) {
-    try {
-      // Validate UI elements exist
-      if (!this.element || this.element.length === 0) {
-        console.warn("SR2E | Character sheet element not found, cannot display initiative result");
-        return;
-      }
-
-      const resultDiv = this.element.find('.initiative-result');
-      if (resultDiv.length === 0) {
-        console.warn("SR2E | Initiative result display area not found in UI");
-        return;
-      }
-
-      const diceResultSpan = resultDiv.find('.dice-result');
-      const bonusResultSpan = resultDiv.find('.bonus-result');
-      const totalResultSpan = resultDiv.find('.total-result');
-      const formulaSpan = resultDiv.find('.formula-text');
-
-      // Format dice results display with error handling
-      let diceDisplay = '';
-      try {
-        if (Array.isArray(diceResults) && diceResults.length > 0) {
-          diceDisplay = `[${diceResults.join(', ')}] = ${diceTotal}`;
-        } else {
-          diceDisplay = `Dice Total: ${diceTotal}`;
-        }
-      } catch (displayError) {
-        console.warn("SR2E | Error formatting dice display:", displayError);
-        diceDisplay = `Dice Total: ${diceTotal}`;
-      }
-
-      // Update UI elements with error handling for each
-      try {
-        if (diceResultSpan.length > 0) {
-          diceResultSpan.text(diceDisplay);
-        }
-      } catch (error) {
-        console.warn("SR2E | Failed to update dice result display:", error);
-      }
-
-      try {
-        if (bonusResultSpan.length > 0) {
-          bonusResultSpan.text(`+ ${reactionBonus}`);
-        }
-      } catch (error) {
-        console.warn("SR2E | Failed to update bonus result display:", error);
-      }
-
-      try {
-        if (totalResultSpan.length > 0) {
-          totalResultSpan.text(`= ${finalTotal}`);
-        }
-      } catch (error) {
-        console.warn("SR2E | Failed to update total result display:", error);
-      }
-
-      try {
-        if (formulaSpan.length > 0) {
-          formulaSpan.text(`Formula: ${rollFormula}`);
-        }
-      } catch (error) {
-        console.warn("SR2E | Failed to update formula display:", error);
-      }
-
-      // Show the result div with animation and error handling
-      try {
-        resultDiv.slideDown(300);
-      } catch (animationError) {
-        console.warn("SR2E | Failed to animate result display:", animationError);
-        // Fallback to just showing the element
-        try {
-          resultDiv.show();
-        } catch (showError) {
-          console.warn("SR2E | Failed to show result display:", showError);
-        }
-      }
-
-      // Trigger UI synchronization
-      this._synchronizeUIState();
-
-    } catch (error) {
-      console.error("SR2E | Error displaying initiative result:", error);
-      // Don't throw error, just log it since this is a display function
-    }
-  }
-
-  /**
-   * Calculate action phases from initiative score
-   * SR2 phase system: characters act on multiple phases based on initiative
-   * Each phase occurs every 10 points of initiative
-   * Example: Initiative 27 = acts on phases 27, 17, 7
-   */
-  _calculateActionPhases(initiativeScore) {
-    try {
-      // Validate input
-      if (typeof initiativeScore !== 'number' || isNaN(initiativeScore)) {
-        throw new Error(`Invalid initiative score: ${initiativeScore}. Must be a number.`);
-      }
-
-      if (initiativeScore < 1) {
-        console.warn(`SR2E | Initiative score too low: ${initiativeScore}, using minimum of 1`);
-        initiativeScore = 1;
-      }
-
-      if (initiativeScore > 100) {
-        console.warn(`SR2E | Initiative score very high: ${initiativeScore}, this may indicate an error`);
-      }
-
-      const phases = [];
-      let currentPhase = Math.floor(initiativeScore); // Ensure integer
-      let iterationCount = 0;
-      const maxIterations = 20; // Safety limit to prevent infinite loops
-
-      while (currentPhase > 0 && iterationCount < maxIterations) {
-        phases.push(currentPhase);
-        currentPhase -= 10;
-        iterationCount++;
-      }
-
-      if (iterationCount >= maxIterations) {
-        console.warn(`SR2E | Phase calculation hit iteration limit for initiative ${initiativeScore}`);
-      }
-
-      // Validate result
-      if (phases.length === 0) {
-        console.warn(`SR2E | No phases calculated for initiative ${initiativeScore}, adding single phase`);
-        phases.push(Math.max(1, Math.floor(initiativeScore)));
-      }
-
-      console.log(`SR2E | Calculated ${phases.length} action phases for initiative ${initiativeScore}: [${phases.join(', ')}]`);
-      return phases;
-
-    } catch (error) {
-      console.error("SR2E | Error calculating action phases:", error);
-      // Return fallback single phase
-      const fallbackPhase = Math.max(1, Math.floor(initiativeScore) || 1);
-      console.warn(`SR2E | Using fallback single phase: ${fallbackPhase}`);
-      return [fallbackPhase];
-    }
-  }
-
-  /**
-   * Add character to initiative tracker after rolling initiative
-   */
-  async _addToInitiativeTracker(initiativeResult) {
-    try {
-      // Validate initiative result
-      if (typeof initiativeResult !== 'number' || isNaN(initiativeResult) || initiativeResult < 1) {
-        throw new Error(`Invalid initiative result: ${initiativeResult}`);
-      }
-
-      // Validate actor data
-      if (!this.actor || !this.actor.id) {
-        throw new Error("Actor data is missing or invalid");
-      }
-
-      // Check if canvas and tokens are available
-      if (!canvas || !canvas.tokens) {
-        throw new Error("Canvas or tokens not available. Make sure you're on a scene with tokens.");
-      }
-
-      // Get or create the global initiative tracker instance through the tracker module.
-      let initiativeTracker = null;
-      try {
-        initiativeTracker = sr2GetInitiativeTracker();
-      } catch (trackerError) {
-        throw new Error(`Failed to create initiative tracker: ${trackerError.message}`);
-      }
-
-      // Get the token for this actor (prefer controlled token, fallback to any token)
-      let token = null;
-
-      try {
-        const controlledTokens = canvas.tokens.controlled.filter(t => t.actor?.id === this.actor.id);
-
-        if (controlledTokens.length > 0) {
-          token = controlledTokens[0];
-        } else {
-          // Find any token representing this actor on the current scene
-          token = canvas.tokens.placeables.find(t => t.actor?.id === this.actor.id);
-        }
-      } catch (tokenError) {
-        console.error("SR2E | Error finding token:", tokenError);
-      }
-
-      if (!token) {
-        console.warn(`SR2E | No token found for actor ${this.actor.name}, cannot add to initiative tracker`);
-        ui.notifications.warn(`No token found for ${this.actor.name}. Place a token on the scene to add to initiative tracker.`);
-        return;
-      }
-
-      // Validate token data
-      if (!token.id) {
-        throw new Error("Token ID is missing");
-      }
-
-      // Validate initiative tracker has combatants array
-      if (!Array.isArray(initiativeTracker.combatants)) {
-        console.warn("SR2E | Initiative tracker combatants array missing, creating new array");
-        initiativeTracker.combatants = [];
-      }
-
-      // Check if character is already in the tracker
-      const existingCombatant = initiativeTracker.combatants.find(c => c.actorId === this.actor.id);
-
-      // Calculate action phases for this initiative result with error handling
-      let actionPhases;
-      try {
-        actionPhases = this._calculateActionPhases(initiativeResult);
-
-        // Validate action phases result
-        if (!Array.isArray(actionPhases) || actionPhases.length === 0) {
-          throw new Error(`Invalid action phases calculated: ${actionPhases}`);
-        }
-      } catch (phaseError) {
-        console.error("SR2E | Error calculating action phases:", phaseError);
-        // Fallback to simple single phase
-        actionPhases = [initiativeResult];
-      }
-
-      // Get safe values for initiative dice and reaction
-      const initiativeDice = (this.actor.system?.initiative?.dice &&
-        typeof this.actor.system.initiative.dice === 'number' &&
-        !isNaN(this.actor.system.initiative.dice))
-        ? this.actor.system.initiative.dice : 1;
-
-      const reaction = (this.actor.system?.attributes?.reaction?.value &&
-        typeof this.actor.system.attributes.reaction.value === 'number' &&
-        !isNaN(this.actor.system.attributes.reaction.value))
-        ? this.actor.system.attributes.reaction.value : 1;
-
-      let combatantRecord = existingCombatant || null;
-
-      if (existingCombatant) {
-        // Update existing combatant's initiative and phases
-        try {
-          existingCombatant.initiative = initiativeResult;
-          existingCombatant.currentInitiative = initiativeResult;
-          existingCombatant.actionPhases = actionPhases;
-          existingCombatant.hasRolled = true;
-          existingCombatant.initiativeDice = initiativeDice;
-          existingCombatant.reaction = reaction;
-
-          console.log(`SR2E | Updated ${this.actor.name}'s initiative in tracker: ${initiativeResult}, phases: [${actionPhases.join(', ')}]`);
-        } catch (updateError) {
-          throw new Error(`Failed to update existing combatant: ${updateError.message}`);
-        }
-      } else {
-        // Add new combatant to tracker
-        try {
-          const combatant = {
-            id: foundry.utils.randomID(),
-            tokenId: token.document?.id ?? token.id,
-            actorId: this.actor.id,
-            name: this.actor.name || "Unknown Character",
-            img: this.actor.img || "icons/svg/mystery-man.svg",
-            initiative: initiativeResult,
-            currentInitiative: initiativeResult,
-            actionPhases: actionPhases,
-            initiativeDice: initiativeDice,
-            reaction: reaction,
-            hasRolled: true
-          };
-
-          initiativeTracker.combatants.push(combatant);
-          combatantRecord = combatant;
-          console.log(`SR2E | Added ${this.actor.name} to initiative tracker with initiative ${initiativeResult}, phases: [${actionPhases.join(', ')}]`);
-        } catch (addError) {
-          throw new Error(`Failed to add new combatant: ${addError.message}`);
-        }
-      }
-
-      // Keep Foundry Combat synchronized for quick initiative rolls.
-      if (token && combatantRecord) {
-        try {
-          if (typeof initiativeTracker._ensureCombatEncounter === "function") {
-            await initiativeTracker._ensureCombatEncounter();
-          }
-          if (typeof initiativeTracker._addToFoundryCombat === "function") {
-            await initiativeTracker._addToFoundryCombat(token, combatantRecord);
-          }
-          if (typeof initiativeTracker._updateFoundryCombatInitiative === "function") {
-            await initiativeTracker._updateFoundryCombatInitiative(combatantRecord, initiativeResult);
-          }
-        } catch (syncError) {
-          console.warn("SR2E | Failed to sync initiative result to Foundry combat:", syncError);
-        }
-      }
-
-      // Render the tracker if it's currently open
-      try {
-        if (initiativeTracker.rendered) {
-          initiativeTracker.render();
-        }
-      } catch (renderError) {
-        console.warn("SR2E | Failed to render initiative tracker:", renderError);
-        // Don't throw error for render failure, it's not critical
-      }
-
-      // Show notification
-      const message = existingCombatant
-        ? `${this.actor.name} updated in initiative tracker with initiative ${initiativeResult}`
-        : `${this.actor.name} added to initiative tracker with initiative ${initiativeResult}`;
-      ui.notifications.info(message);
-
-    } catch (error) {
-      console.error("SR2E | Error adding character to initiative tracker:", error);
-
-      // Provide specific error messages
-      let errorMessage = "Failed to add character to initiative tracker.";
-
-      if (error.message.includes("Canvas")) {
-        errorMessage = "No active scene found. Open a scene with tokens to use the initiative tracker.";
-      } else if (error.message.includes("token")) {
-        errorMessage = `No token found for ${this.actor.name}. Place a token on the scene first.`;
-      } else if (error.message.includes("tracker")) {
-        errorMessage = "Initiative tracker system error. Try reloading the page.";
-      } else {
-        errorMessage = `Initiative tracker error: ${error.message}`;
-      }
-
-      ui.notifications.error(errorMessage);
-      throw error; // Re-throw to be handled by calling function
     }
   }
 
@@ -4670,15 +4278,11 @@ export class SR2ActorSheet extends ActorSheet {
       // Update damage displays in other tabs if they exist
       this._updateDamageDisplays();
 
-      // Update initiative displays in other parts of the sheet
-      this._updateInitiativeDisplays();
-
       // Trigger any dependent calculations
       this._updateDependentValues();
 
       // Emit custom event for other systems to listen to
       this._emitCombatStateChange();
-
     } catch (error) {
       console.error("SR2E | Error synchronizing UI state:", error);
       // Don't throw error, just log it since this is a synchronization function
@@ -4696,18 +4300,18 @@ export class SR2ActorSheet extends ActorSheet {
       const stunDamage = this.actor.system.health.stun?.value || 0;
 
       // Update any damage indicators outside the combat panel
-      const damageIndicators = this.element.find('.damage-indicator, .health-status');
+      const damageIndicators = this.element.find(".damage-indicator, .health-status");
       damageIndicators.each((index, element) => {
         try {
           const $element = $(element);
-          const damageType = $element.data('damage-type');
+          const damageType = $element.data("damage-type");
 
-          if (damageType === 'physical') {
+          if (damageType === "physical") {
             $element.text(physicalDamage);
-            $element.attr('data-damage-level', physicalDamage);
-          } else if (damageType === 'stun') {
+            $element.attr("data-damage-level", physicalDamage);
+          } else if (damageType === "stun") {
             $element.text(stunDamage);
-            $element.attr('data-damage-level', stunDamage);
+            $element.attr("data-damage-level", stunDamage);
           }
         } catch (elementError) {
           console.warn("SR2E | Error updating damage indicator:", elementError);
@@ -4715,47 +4319,20 @@ export class SR2ActorSheet extends ActorSheet {
       });
 
       // Update damage-based CSS classes for visual feedback
-      this.element.removeClass('light-damage moderate-damage heavy-damage critical-damage');
+      this.element.removeClass("light-damage moderate-damage heavy-damage critical-damage");
 
       const totalDamage = physicalDamage + stunDamage;
       if (totalDamage >= 16) {
-        this.element.addClass('critical-damage');
+        this.element.addClass("critical-damage");
       } else if (totalDamage >= 12) {
-        this.element.addClass('heavy-damage');
+        this.element.addClass("heavy-damage");
       } else if (totalDamage >= 6) {
-        this.element.addClass('moderate-damage');
+        this.element.addClass("moderate-damage");
       } else if (totalDamage > 0) {
-        this.element.addClass('light-damage');
+        this.element.addClass("light-damage");
       }
-
     } catch (error) {
       console.error("SR2E | Error updating damage displays:", error);
-    }
-  }
-
-  /**
-   * Update initiative displays throughout the character sheet
-   */
-  _updateInitiativeDisplays() {
-    try {
-      if (!this.actor?.system?.initiative) return;
-
-      const currentInitiative = this.actor.system.initiative.current || 0;
-
-      // Update any initiative indicators outside the combat panel
-      const initiativeIndicators = this.element.find('.initiative-indicator, .initiative-display');
-      initiativeIndicators.each((index, element) => {
-        try {
-          const $element = $(element);
-          $element.text(currentInitiative);
-          $element.attr('data-initiative', currentInitiative);
-        } catch (elementError) {
-          console.warn("SR2E | Error updating initiative indicator:", elementError);
-        }
-      });
-
-    } catch (error) {
-      console.error("SR2E | Error updating initiative displays:", error);
     }
   }
 
@@ -4777,27 +4354,26 @@ export class SR2ActorSheet extends ActorSheet {
       const totalPenalty = physicalPenalty + stunPenalty;
 
       // Update penalty displays
-      const penaltyIndicators = this.element.find('.damage-penalty, .wound-penalty');
+      const penaltyIndicators = this.element.find(".damage-penalty, .wound-penalty");
       penaltyIndicators.each((index, element) => {
         try {
           const $element = $(element);
-          $element.text(totalPenalty > 0 ? `-${totalPenalty}` : '0');
-          $element.attr('data-penalty', totalPenalty);
+          $element.text(totalPenalty > 0 ? `-${totalPenalty}` : "0");
+          $element.attr("data-penalty", totalPenalty);
 
           // Add visual styling based on penalty severity
-          $element.removeClass('minor-penalty major-penalty severe-penalty');
+          $element.removeClass("minor-penalty major-penalty severe-penalty");
           if (totalPenalty >= 6) {
-            $element.addClass('severe-penalty');
+            $element.addClass("severe-penalty");
           } else if (totalPenalty >= 3) {
-            $element.addClass('major-penalty');
+            $element.addClass("major-penalty");
           } else if (totalPenalty > 0) {
-            $element.addClass('minor-penalty');
+            $element.addClass("minor-penalty");
           }
         } catch (elementError) {
           console.warn("SR2E | Error updating penalty indicator:", elementError);
         }
       });
-
     } catch (error) {
       console.error("SR2E | Error updating dependent values:", error);
     }
@@ -4812,18 +4388,16 @@ export class SR2ActorSheet extends ActorSheet {
         actorId: this.actor.id,
         physicalDamage: this.actor.system.health?.physical?.value || 0,
         stunDamage: this.actor.system.health?.stun?.value || 0,
-        initiative: this.actor.system.initiative?.current || 0,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       // Emit event for other systems to listen to
-      Hooks.callAll('sr2e.combatStateChanged', combatState);
+      Hooks.callAll("sr2e.combatStateChanged", combatState);
 
       // Also emit on the actor for actor-specific listeners
       if (this.actor.sheet) {
-        $(this.actor.sheet.element).trigger('combatStateChanged', combatState);
+        $(this.actor.sheet.element).trigger("combatStateChanged", combatState);
       }
-
     } catch (error) {
       console.error("SR2E | Error emitting combat state change:", error);
     }
@@ -4838,7 +4412,7 @@ export class SR2ActorSheet extends ActorSheet {
 
       // Add loading state
       if (this.element && this.element.length > 0) {
-        this.element.addClass('loading');
+        this.element.addClass("loading");
       }
 
       // Call parent render method
@@ -4846,7 +4420,7 @@ export class SR2ActorSheet extends ActorSheet {
 
       // Remove loading state and synchronize UI
       if (this.element && this.element.length > 0) {
-        this.element.removeClass('loading');
+        this.element.removeClass("loading");
 
         // Synchronize UI state after render
         setTimeout(() => {
@@ -4855,13 +4429,12 @@ export class SR2ActorSheet extends ActorSheet {
       }
 
       return result;
-
     } catch (error) {
       console.error("SR2E | Error rendering character sheet:", error);
 
       // Remove loading state even on error
       if (this.element && this.element.length > 0) {
-        this.element.removeClass('loading');
+        this.element.removeClass("loading");
       }
 
       // Show user-friendly error
@@ -4879,11 +4452,8 @@ export class SR2ActorSheet extends ActorSheet {
       if (actor.id !== this.actor.id) return;
 
       // Check if combat-related data was updated
-      const combatDataUpdated = (
-        updateData.system?.health ||
-        updateData.system?.initiative ||
-        updateData.system?.attributes?.reaction
-      );
+      const combatDataUpdated =
+        updateData.system?.health || updateData.system?.attributes?.reaction;
 
       if (combatDataUpdated) {
         // Synchronize UI with a small delay to ensure data is fully updated
@@ -4891,20 +4461,17 @@ export class SR2ActorSheet extends ActorSheet {
           this._synchronizeUIState();
         }, 50);
       }
-
     } catch (error) {
       console.error("SR2E | Error handling actor update:", error);
     }
   }
-
-
 
   /**
    * Clean up listeners when sheet is closed
    */
   async close(options = {}) {
     if (this._hasActorUpdateHook && globalThis.Hooks) {
-      Hooks.off('updateActor', this._boundOnActorUpdate);
+      Hooks.off("updateActor", this._boundOnActorUpdate);
       this._hasActorUpdateHook = false;
     }
 
@@ -4924,7 +4491,7 @@ export class SR2ActorSheet extends ActorSheet {
     const itemUpdates = {};
 
     for (const [key, value] of Object.entries(formData)) {
-      if (key.startsWith('items.')) {
+      if (key.startsWith("items.")) {
         // This is an item update
         const match = key.match(/^items\.([^.]+)\.(.+)$/);
         if (match) {
@@ -4936,7 +4503,7 @@ export class SR2ActorSheet extends ActorSheet {
           }
 
           // Handle skill rating fields to ensure they're numbers
-          if (itemPath.includes('Rating')) {
+          if (itemPath.includes("Rating")) {
             itemUpdates[itemId][itemPath] = parseInt(value) || 0;
           } else {
             itemUpdates[itemId][itemPath] = value;
@@ -4952,7 +4519,8 @@ export class SR2ActorSheet extends ActorSheet {
     let creationMode = this._isCreationMode();
     if (creationModeOverride !== undefined) {
       if (typeof creationModeOverride === "boolean") creationMode = creationModeOverride;
-      else if (typeof creationModeOverride === "string") creationMode = creationModeOverride === "true";
+      else if (typeof creationModeOverride === "string")
+        creationMode = creationModeOverride === "true";
       else creationMode = Boolean(creationModeOverride);
     }
 
@@ -4981,13 +4549,14 @@ export class SR2ActorSheet extends ActorSheet {
         if (i.type === "gear") {
           const quantity = Math.max(1, Number(i.system.quantity) || 1);
           const explicitBondCost = Math.max(0, Number(i.system.bondCost) || 0);
-          const perItemCost = explicitBondCost > 0
-            ? explicitBondCost
-            : sr2InferFocusBondCostForGearItem({
-              category: i.system.category,
-              name: i.name,
-              price: i.system.price ?? i.system.cost ?? 0
-            });
+          const perItemCost =
+            explicitBondCost > 0
+              ? explicitBondCost
+              : sr2InferFocusBondCostForGearItem({
+                  category: i.system.category,
+                  name: i.name,
+                  price: i.system.price ?? i.system.cost ?? 0,
+                });
           if (perItemCost > 0) spent += perItemCost * quantity;
         }
       }
@@ -5006,12 +4575,15 @@ export class SR2ActorSheet extends ActorSheet {
             concentration: updateData["system.concentration"] ?? item.system.concentration,
             specialization: updateData["system.specialization"] ?? item.system.specialization,
             allocatedRating: updateData["system.allocatedRating"] ?? item.system.allocatedRating,
-            isFree: updateData["system.isFree"] ?? item.system.isFree
+            isFree: updateData["system.isFree"] ?? item.system.isFree,
           };
 
           const computed = sr2ComputeSkillRatingsFromAllocated(nextSystem);
-          const shouldClampAllocated = creationMode && !nextSystem.isFree && nextSystem.baseSkill !== "Language";
-          updateData["system.allocatedRating"] = shouldClampAllocated ? Math.min(computed.allocatedRating, 6) : computed.allocatedRating;
+          const shouldClampAllocated =
+            creationMode && !nextSystem.isFree && nextSystem.baseSkill !== "Language";
+          updateData["system.allocatedRating"] = shouldClampAllocated
+            ? Math.min(computed.allocatedRating, 6)
+            : computed.allocatedRating;
           updateData["system.baseRating"] = computed.baseRating;
           updateData["system.concentrationRating"] = computed.concentrationRating;
           updateData["system.specializationRating"] = computed.specializationRating;
@@ -5026,7 +4598,9 @@ export class SR2ActorSheet extends ActorSheet {
             const spentOther = computeForceSpentExcluding(item.id);
             const maxForThis = totalForcePoints - spentOther;
             if (maxForThis < 1) {
-              ui.notifications.error("Not enough Force Points remaining. Reduce other spells/foci first.");
+              ui.notifications.error(
+                "Not enough Force Points remaining. Reduce other spells/foci first.",
+              );
               updateData["system.force"] = item.system.force || 1;
             } else {
               updateData["system.force"] = Math.min(nextForce, maxForThis);
@@ -5042,36 +4616,36 @@ export class SR2ActorSheet extends ActorSheet {
       }
     }
 
-	    // Then update actor if there are actor-level changes
-	    if (Object.keys(actorUpdates).length > 0) {
-	      // Sync legacy lifestyle fields from the multi-lifestyle list
-	      const existingLifestyles = this._getNormalizedLifestylesFromActor();
-	      const lifestylesByIndex = new Map();
-	      for (const [key, value] of Object.entries(actorUpdates)) {
-	        const match = key.match(/^system\.resources\.lifestyles\.(\d+)\.(type|months)$/);
-	        if (!match) continue;
+    // Then update actor if there are actor-level changes
+    if (Object.keys(actorUpdates).length > 0) {
+      // Sync legacy lifestyle fields from the multi-lifestyle list
+      const existingLifestyles = this._getNormalizedLifestylesFromActor();
+      const lifestylesByIndex = new Map();
+      for (const [key, value] of Object.entries(actorUpdates)) {
+        const match = key.match(/^system\.resources\.lifestyles\.(\d+)\.(type|months)$/);
+        if (!match) continue;
 
-	        const index = parseInt(match[1], 10);
-	        if (!Number.isFinite(index)) continue;
+        const index = parseInt(match[1], 10);
+        if (!Number.isFinite(index)) continue;
 
-	        if (!lifestylesByIndex.has(index)) {
-	          const current = existingLifestyles[index] || { type: "street", months: 1 };
-	          lifestylesByIndex.set(index, {
-	            type: current.type || "street",
-	            months: Math.max(1, parseInt(current.months, 10) || 1)
-	          });
-	        }
-	        const entry = lifestylesByIndex.get(index);
-	        if (match[2] === "type") entry.type = String(value || "street");
-	        if (match[2] === "months") entry.months = Math.max(1, parseInt(value, 10) || 1);
-	      }
+        if (!lifestylesByIndex.has(index)) {
+          const current = existingLifestyles[index] || { type: "street", months: 1 };
+          lifestylesByIndex.set(index, {
+            type: current.type || "street",
+            months: Math.max(1, parseInt(current.months, 10) || 1),
+          });
+        }
+        const entry = lifestylesByIndex.get(index);
+        if (match[2] === "type") entry.type = String(value || "street");
+        if (match[2] === "months") entry.months = Math.max(1, parseInt(value, 10) || 1);
+      }
 
       if (lifestylesByIndex.size > 0) {
         const normalizedLifestyles = [...lifestylesByIndex.entries()]
           .sort(([a], [b]) => a - b)
           .map(([, entry]) => ({
             type: entry.type || "street",
-            months: entry.months || 1
+            months: entry.months || 1,
           }));
 
         for (const key of Object.keys(actorUpdates)) {
@@ -5082,49 +4656,59 @@ export class SR2ActorSheet extends ActorSheet {
           ? normalizedLifestyles
           : [{ type: "street", months: 1 }];
 
-        actorUpdates["system.resources.lifestyle"] = actorUpdates["system.resources.lifestyles"][0]?.type || "street";
-        actorUpdates["system.creation.lifestyleMonths"] = actorUpdates["system.resources.lifestyles"][0]?.months || 1;
+        actorUpdates["system.resources.lifestyle"] =
+          actorUpdates["system.resources.lifestyles"][0]?.type || "street";
+        actorUpdates["system.creation.lifestyleMonths"] =
+          actorUpdates["system.resources.lifestyles"][0]?.months || 1;
       }
 
       // Clamp attributes by racial mins/maxes and enforce Attribute Points in creation mode
-      const metatype = actorUpdates["system.details.metatype"] ?? this.actor.system.details?.metatype ?? "human";
+      const metatype =
+        actorUpdates["system.details.metatype"] ?? this.actor.system.details?.metatype ?? "human";
       const bounds = sr2GetRacialAttributeBounds(metatype);
 
       const attrKeys = ["body", "quickness", "strength", "charisma", "intelligence", "willpower"];
       const newAttributeValues = {};
       for (const key of attrKeys) {
         const path = `system.attributes.${key}.value`;
-        const raw = actorUpdates[path] !== undefined ? actorUpdates[path] : this.actor.system.attributes?.[key]?.value;
+        const raw =
+          actorUpdates[path] !== undefined
+            ? actorUpdates[path]
+            : this.actor.system.attributes?.[key]?.value;
         const clamped = sr2Clamp(raw, bounds[key].min, bounds[key].max);
         newAttributeValues[key] = clamped;
         if (actorUpdates[path] !== undefined) actorUpdates[path] = clamped;
       }
 
-		      if (creationMode && totalAttributePoints > 0) {
-		        const spent = attrKeys.reduce((sum, key) => {
-		          const value = Number(newAttributeValues[key]);
-		          const baseline = Number(bounds[key]?.min) || 0;
-		          return sum + Math.max(0, value - baseline);
-		        }, 0);
-		
-		        if (spent > totalAttributePoints) {
-		          const changedName = event?.currentTarget?.name || "";
-		          const match = changedName.match(/^system\.attributes\.([^.]+)\.value$/);
-		          const changedKey = match?.[1];
-		          if (changedKey && attrKeys.includes(changedKey)) {
-		            const baseline = Number(bounds[changedKey]?.min) || 0;
-		            const currentSpent = Math.max(0, Number(newAttributeValues[changedKey]) - baseline);
-		            const otherSpent = spent - currentSpent;
-		            const allowedSpent = Math.max(0, totalAttributePoints - otherSpent);
-		            const allowedFinalRaw = baseline + allowedSpent;
-		            const allowedFinal = sr2Clamp(allowedFinalRaw, bounds[changedKey].min, bounds[changedKey].max);
-		            actorUpdates[`system.attributes.${changedKey}.value`] = allowedFinal;
-		            ui.notifications.warn("Attribute Points exceeded; clamped the last change.");
-		          } else {
-		            ui.notifications.warn("Attribute Points exceeded.");
-	          }
-	        }
-	      }
+      if (creationMode && totalAttributePoints > 0) {
+        const spent = attrKeys.reduce((sum, key) => {
+          const value = Number(newAttributeValues[key]);
+          const baseline = Number(bounds[key]?.min) || 0;
+          return sum + Math.max(0, value - baseline);
+        }, 0);
+
+        if (spent > totalAttributePoints) {
+          const changedName = event?.currentTarget?.name || "";
+          const match = changedName.match(/^system\.attributes\.([^.]+)\.value$/);
+          const changedKey = match?.[1];
+          if (changedKey && attrKeys.includes(changedKey)) {
+            const baseline = Number(bounds[changedKey]?.min) || 0;
+            const currentSpent = Math.max(0, Number(newAttributeValues[changedKey]) - baseline);
+            const otherSpent = spent - currentSpent;
+            const allowedSpent = Math.max(0, totalAttributePoints - otherSpent);
+            const allowedFinalRaw = baseline + allowedSpent;
+            const allowedFinal = sr2Clamp(
+              allowedFinalRaw,
+              bounds[changedKey].min,
+              bounds[changedKey].max,
+            );
+            actorUpdates[`system.attributes.${changedKey}.value`] = allowedFinal;
+            ui.notifications.warn("Attribute Points exceeded; clamped the last change.");
+          } else {
+            ui.notifications.warn("Attribute Points exceeded.");
+          }
+        }
+      }
 
       await this.object.update(actorUpdates);
     }
@@ -5139,17 +4723,18 @@ export class SR2ActorSheet extends ActorSheet {
     const element = event.currentTarget;
 
     // Get item data - try different ways to find the item ID
-    let itemId = element.dataset.itemId ||
-                 element.getAttribute('data-item-id') ||
-                 element.closest('[data-item-id]')?.dataset.itemId;
-    
+    let itemId =
+      element.dataset.itemId ||
+      element.getAttribute("data-item-id") ||
+      element.closest("[data-item-id]")?.dataset.itemId;
+
     if (!itemId) {
       console.warn("SR2E | No item ID found for drag operation");
       return;
     }
-    
+
     const item = this.actor.items.get(itemId);
-    
+
     if (!item) {
       console.warn("SR2E | Item not found for drag:", itemId);
       return;
@@ -5184,10 +4769,10 @@ export class SR2ActorSheet extends ActorSheet {
    */
   async _onWeaponAttackWithMeleeDialog(event) {
     event.preventDefault();
-    
+
     const weaponId = event.currentTarget.dataset.itemId;
     const weapon = this.actor.items.get(weaponId);
-    
+
     if (!weapon) {
       ui.notifications.error("Weapon not found");
       return;
@@ -5195,7 +4780,7 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Check if this is a melee weapon (has reach property)
     const isMeleeWeapon = weapon.system.reach !== undefined && weapon.system.reach !== null;
-    
+
     if (isMeleeWeapon) {
       // Show melee combat modifiers dialog
       this._showMeleeCombatDialog(weapon);
@@ -5217,35 +4802,35 @@ export class SR2ActorSheet extends ActorSheet {
         <div class="target-number-section">
           <label for="target-number"><strong>Base Target Number:</strong></label>
           <select id="target-number" name="targetNumber">
-            <option value="2" ${defaultTN === 2 ? 'selected' : ''}>2 - Trivial</option>
-            <option value="3" ${defaultTN === 3 ? 'selected' : ''}>3 - Easy</option>
-            <option value="4" ${defaultTN === 4 ? 'selected' : ''}>4 - Average</option>
-            <option value="5" ${defaultTN === 5 ? 'selected' : ''}>5 - Fair</option>
-            <option value="6" ${defaultTN === 6 ? 'selected' : ''}>6 - Hard</option>
-            <option value="7" ${defaultTN === 7 ? 'selected' : ''}>7 - Extreme</option>
-            <option value="8" ${defaultTN === 8 ? 'selected' : ''}>8 - Nearly Impossible</option>
-            <option value="9" ${defaultTN === 9 ? 'selected' : ''}>9 - Impossible</option>
-            <option value="10" ${defaultTN === 10 ? 'selected' : ''}>10 - Miraculous</option>
-            <option value="11" ${defaultTN === 11 ? 'selected' : ''}>11</option>
-            <option value="12" ${defaultTN === 12 ? 'selected' : ''}>12</option>
-            <option value="13" ${defaultTN === 13 ? 'selected' : ''}>13</option>
-            <option value="14" ${defaultTN === 14 ? 'selected' : ''}>14</option>
-            <option value="15" ${defaultTN === 15 ? 'selected' : ''}>15</option>
-            <option value="16" ${defaultTN === 16 ? 'selected' : ''}>16</option>
-            <option value="17" ${defaultTN === 17 ? 'selected' : ''}>17</option>
-            <option value="18" ${defaultTN === 18 ? 'selected' : ''}>18</option>
-            <option value="19" ${defaultTN === 19 ? 'selected' : ''}>19</option>
-            <option value="20" ${defaultTN === 20 ? 'selected' : ''}>20</option>
-            <option value="21" ${defaultTN === 21 ? 'selected' : ''}>21</option>
-            <option value="22" ${defaultTN === 22 ? 'selected' : ''}>22</option>
-            <option value="23" ${defaultTN === 23 ? 'selected' : ''}>23</option>
-            <option value="24" ${defaultTN === 24 ? 'selected' : ''}>24</option>
-            <option value="25" ${defaultTN === 25 ? 'selected' : ''}>25</option>
-            <option value="26" ${defaultTN === 26 ? 'selected' : ''}>26</option>
-            <option value="27" ${defaultTN === 27 ? 'selected' : ''}>27</option>
-            <option value="28" ${defaultTN === 28 ? 'selected' : ''}>28</option>
-            <option value="29" ${defaultTN === 29 ? 'selected' : ''}>29</option>
-            <option value="30" ${defaultTN === 30 ? 'selected' : ''}>30</option>
+            <option value="2" ${defaultTN === 2 ? "selected" : ""}>2 - Trivial</option>
+            <option value="3" ${defaultTN === 3 ? "selected" : ""}>3 - Easy</option>
+            <option value="4" ${defaultTN === 4 ? "selected" : ""}>4 - Average</option>
+            <option value="5" ${defaultTN === 5 ? "selected" : ""}>5 - Fair</option>
+            <option value="6" ${defaultTN === 6 ? "selected" : ""}>6 - Hard</option>
+            <option value="7" ${defaultTN === 7 ? "selected" : ""}>7 - Extreme</option>
+            <option value="8" ${defaultTN === 8 ? "selected" : ""}>8 - Nearly Impossible</option>
+            <option value="9" ${defaultTN === 9 ? "selected" : ""}>9 - Impossible</option>
+            <option value="10" ${defaultTN === 10 ? "selected" : ""}>10 - Miraculous</option>
+            <option value="11" ${defaultTN === 11 ? "selected" : ""}>11</option>
+            <option value="12" ${defaultTN === 12 ? "selected" : ""}>12</option>
+            <option value="13" ${defaultTN === 13 ? "selected" : ""}>13</option>
+            <option value="14" ${defaultTN === 14 ? "selected" : ""}>14</option>
+            <option value="15" ${defaultTN === 15 ? "selected" : ""}>15</option>
+            <option value="16" ${defaultTN === 16 ? "selected" : ""}>16</option>
+            <option value="17" ${defaultTN === 17 ? "selected" : ""}>17</option>
+            <option value="18" ${defaultTN === 18 ? "selected" : ""}>18</option>
+            <option value="19" ${defaultTN === 19 ? "selected" : ""}>19</option>
+            <option value="20" ${defaultTN === 20 ? "selected" : ""}>20</option>
+            <option value="21" ${defaultTN === 21 ? "selected" : ""}>21</option>
+            <option value="22" ${defaultTN === 22 ? "selected" : ""}>22</option>
+            <option value="23" ${defaultTN === 23 ? "selected" : ""}>23</option>
+            <option value="24" ${defaultTN === 24 ? "selected" : ""}>24</option>
+            <option value="25" ${defaultTN === 25 ? "selected" : ""}>25</option>
+            <option value="26" ${defaultTN === 26 ? "selected" : ""}>26</option>
+            <option value="27" ${defaultTN === 27 ? "selected" : ""}>27</option>
+            <option value="28" ${defaultTN === 28 ? "selected" : ""}>28</option>
+            <option value="29" ${defaultTN === 29 ? "selected" : ""}>29</option>
+            <option value="30" ${defaultTN === 30 ? "selected" : ""}>30</option>
           </select>
         </div>
         
@@ -5314,10 +4899,14 @@ export class SR2ActorSheet extends ActorSheet {
             <strong>Total TN Modifier: <span id="total-modifier">0</span></strong>
           </div>
         </div>
-        ${availablePools.length > 0 ? `
+        ${
+          availablePools.length > 0
+            ? `
         <div class="pool-dice-section">
           <label><strong>Pool Dice (Optional):</strong></label>
-          ${availablePools.map(pool => `
+          ${availablePools
+            .map(
+              (pool) => `
             <div class="pool-option">
               <label>
                 <input type="checkbox" name="pool-${pool.key}" value="${pool.key}" class="pool-checkbox">
@@ -5326,9 +4915,13 @@ export class SR2ActorSheet extends ActorSheet {
               <input type="number" name="pool-${pool.key}-dice" 
                      min="0" max="${pool.current}" value="0" disabled class="pool-dice-input">
             </div>
-          `).join('')}
+          `,
+            )
+            .join("")}
         </div>
-        ` : ''}
+        `
+            : ""
+        }
       </div>
     `;
 
@@ -5342,23 +4935,25 @@ export class SR2ActorSheet extends ActorSheet {
           callback: (html) => {
             const modifiers = this._calculateMeleeModifiers(html);
             this._performWeaponAttack(weapon, modifiers.total);
-          }
+          },
         },
         cancel: {
-          label: "Cancel"
-        }
+          label: "Cancel",
+        },
       },
       default: "attack",
       render: (html) => {
         // Add event listeners to update total modifier in real-time
         const updateTotal = () => {
           const modifiers = this._calculateMeleeModifiers(html);
-          html.find('#total-modifier').text(modifiers.total > 0 ? `+${modifiers.total}` : modifiers.total);
+          html
+            .find("#total-modifier")
+            .text(modifiers.total > 0 ? `+${modifiers.total}` : modifiers.total);
         };
 
-        html.find('select, input[type="checkbox"]').on('change', updateTotal);
+        html.find('select, input[type="checkbox"]').on("change", updateTotal);
         updateTotal(); // Initial calculation
-      }
+      },
     }).render(true);
   }
 
@@ -5370,10 +4965,16 @@ export class SR2ActorSheet extends ActorSheet {
     const opponentsInMelee = parseInt(html.find('[name="opponentsInMelee"]').val()) || 0;
     const reachAdvantage = parseInt(html.find('[name="reachAdvantage"]').val()) || 0;
     const multipleTargets = parseInt(html.find('[name="multipleTargets"]').val()) || 0;
-    const superiorPosition = html.find('[name="superiorPosition"]').is(':checked') ? -1 : 0;
-    const opponentProne = html.find('[name="opponentProne"]').is(':checked') ? -2 : 0;
+    const superiorPosition = html.find('[name="superiorPosition"]').is(":checked") ? -1 : 0;
+    const opponentProne = html.find('[name="opponentProne"]').is(":checked") ? -2 : 0;
 
-    const total = friendsInMelee + opponentsInMelee + reachAdvantage + multipleTargets + superiorPosition + opponentProne;
+    const total =
+      friendsInMelee +
+      opponentsInMelee +
+      reachAdvantage +
+      multipleTargets +
+      superiorPosition +
+      opponentProne;
 
     return {
       friendsInMelee,
@@ -5382,7 +4983,7 @@ export class SR2ActorSheet extends ActorSheet {
       multipleTargets,
       superiorPosition,
       opponentProne,
-      total
+      total,
     };
   }
 
@@ -5391,10 +4992,12 @@ export class SR2ActorSheet extends ActorSheet {
    */
   async _performWeaponAttack(weapon, tnModifier) {
     // Get the linked skill for this weapon
-    const linkedSkill = this._getWeaponSkill(weapon);
-    
+    const linkedSkill = sr2FindWeaponSkill(this.actor, weapon);
+
     if (!linkedSkill) {
-      ui.notifications.error(`No skill found for ${weapon.name}. Please link a skill to this weapon.`);
+      ui.notifications.error(
+        `No skill found for ${weapon.name}. Please link a skill to this weapon.`,
+      );
       return;
     }
 
@@ -5403,8 +5006,8 @@ export class SR2ActorSheet extends ActorSheet {
     const finalTN = Math.max(2, baseTN + tnModifier); // TN can't go below 2
 
     // Get skill rating
-    const skillRating = this._getSkillRating(linkedSkill);
-    
+    const skillRating = sr2GetEffectiveSkillRating(linkedSkill);
+
     if (skillRating === 0) {
       ui.notifications.error(`${linkedSkill.name} skill rating is 0. Cannot make attack.`);
       return;
@@ -5413,7 +5016,7 @@ export class SR2ActorSheet extends ActorSheet {
     // Create attack roll description
     let attackDescription = `${weapon.name} Attack`;
     if (tnModifier !== 0) {
-      attackDescription += ` (TN ${baseTN} ${tnModifier > 0 ? '+' : ''}${tnModifier} = ${finalTN})`;
+      attackDescription += ` (TN ${baseTN} ${tnModifier > 0 ? "+" : ""}${tnModifier} = ${finalTN})`;
     }
 
     // Roll the attack
@@ -5426,80 +5029,18 @@ export class SR2ActorSheet extends ActorSheet {
         <p><strong>Attacker:</strong> ${this.actor.name}</p>
         <p><strong>Skill:</strong> ${linkedSkill.name} (${skillRating})</p>
         <p><strong>Target Number:</strong> ${finalTN}</p>
-        ${tnModifier !== 0 ? `<p><strong>Modifiers:</strong> ${tnModifier > 0 ? '+' : ''}${tnModifier}</p>` : ''}
-        <p><strong>Damage:</strong> ${weapon.system.damage || 'Unknown'}</p>
-        ${weapon.system.reach !== undefined ? `<p><strong>Reach:</strong> ${weapon.system.reach}</p>` : ''}
-        <p><strong>Result:</strong> ${result.successes} success${result.successes !== 1 ? 'es' : ''}</p>
-        ${result.isCriticalFailure ? '<p><strong>Critical Failure!</strong></p>' : ''}
+        ${tnModifier !== 0 ? `<p><strong>Modifiers:</strong> ${tnModifier > 0 ? "+" : ""}${tnModifier}</p>` : ""}
+        <p><strong>Damage:</strong> ${weapon.system.damage || "Unknown"}</p>
+        ${weapon.system.reach !== undefined ? `<p><strong>Reach:</strong> ${weapon.system.reach}</p>` : ""}
+        <p><strong>Result:</strong> ${result.successes} success${result.successes !== 1 ? "es" : ""}</p>
+        ${result.isCriticalFailure ? "<p><strong>Critical Failure!</strong></p>" : ""}
       </div>
     `;
 
     ChatMessage.create({
       user: game.user.id,
       speaker: ChatMessage.getSpeaker({ actor: this.actor }),
-      content: chatContent
+      content: chatContent,
     });
-  }
-
-  /**
-   * Get the appropriate skill for a weapon
-   */
-  _getWeaponSkill(weapon) {
-    // First check if weapon has a linked skill
-    if (weapon.system.linkedSkill && weapon.system.linkedSkill.skillId) {
-      return this.actor.items.get(weapon.system.linkedSkill.skillId);
-    }
-
-    // Auto-detect skill based on weapon type/name
-    const weaponName = weapon.name.toLowerCase();
-    const skills = this.actor.items.filter(i => i.type === 'skill');
-
-    // Common weapon skill mappings
-    const skillMappings = {
-      'sword': 'Edged Weapons',
-      'knife': 'Edged Weapons',
-      'blade': 'Edged Weapons',
-      'katana': 'Edged Weapons',
-      'club': 'Clubs',
-      'staff': 'Pole Arms',
-      'spear': 'Pole Arms',
-      'whip': 'Whips',
-      'pistol': 'Pistols',
-      'rifle': 'Rifles',
-      'shotgun': 'Shotguns',
-      'smg': 'SMG',
-      'assault': 'Assault Rifles'
-    };
-
-    // Try to find matching skill
-    for (const [weaponType, skillName] of Object.entries(skillMappings)) {
-      if (weaponName.includes(weaponType)) {
-        const skill = skills.find(s => s.system.baseSkill === skillName);
-        if (skill) return skill;
-      }
-    }
-
-    // Default to first combat skill found
-    const combatSkills = ['Edged Weapons', 'Clubs', 'Pole Arms', 'Whips', 'Pistols', 'Rifles', 'Shotguns', 'SMG', 'Assault Rifles'];
-    for (const skillName of combatSkills) {
-      const skill = skills.find(s => s.system.baseSkill === skillName);
-      if (skill) return skill;
-    }
-
-    return null;
-  }
-
-  /**
-   * Get effective skill rating for a skill item
-   */
-  _getSkillRating(skill) {
-    if (!skill) return 0;
-    
-    const baseRating = skill.system.baseRating || 0;
-    const concRating = skill.system.concentrationRating || 0;
-    const specRating = skill.system.specializationRating || 0;
-    
-    // Return the highest rating available
-    return Math.max(baseRating, concRating, specRating);
   }
 }
