@@ -1,196 +1,181 @@
-<form class="{{cssClass}} {{actor.type}} flexcol" autocomplete="off">
-
-  {{!-- Spirit Header --}}
+<form class="{{cssClass}} {{actor.type}} flexcol sr2-entity-sheet" autocomplete="off">
   <header class="sheet-header">
-    <img class="profile-img" src="{{actor.img}}" data-edit="img" title="{{actor.name}}" height="80" width="80"/>
+    <img class="profile-img" src="{{actor.img}}" data-edit="img" title="{{actor.name}}" height="72" width="72"/>
     <div class="header-fields">
-      <h1 class="spiritname"><input name="name" type="text" value="{{actor.name}}" placeholder="Spirit Name"/></h1>
-      <div class="spirit-type">
-        <label>Type:</label>
-        <select name="system.spiritType" data-dtype="String">
-          <option value="" {{#unless system.spiritType}}selected{{/unless}}>Select Type</option>
-          <option value="elemental" {{#if (eq system.spiritType "elemental")}}selected{{/if}}>Elemental</option>
-          <option value="nature" {{#if (eq system.spiritType "nature")}}selected{{/if}}>Nature Spirit</option>
-          <option value="city" {{#if (eq system.spiritType "city")}}selected{{/if}}>City Spirit</option>
-          <option value="hearth" {{#if (eq system.spiritType "hearth")}}selected{{/if}}>Hearth Spirit</option>
-          <option value="ancestor" {{#if (eq system.spiritType "ancestor")}}selected{{/if}}>Ancestor Spirit</option>
-          <option value="task" {{#if (eq system.spiritType "task")}}selected{{/if}}>Task Spirit</option>
-          <option value="guidance" {{#if (eq system.spiritType "guidance")}}selected{{/if}}>Guidance Spirit</option>
-          <option value="plant" {{#if (eq system.spiritType "plant")}}selected{{/if}}>Plant Spirit</option>
-          <option value="beast" {{#if (eq system.spiritType "beast")}}selected{{/if}}>Beast Spirit</option>
-          <option value="water" {{#if (eq system.spiritType "water")}}selected{{/if}}>Water Elemental</option>
-          <option value="air" {{#if (eq system.spiritType "air")}}selected{{/if}}>Air Elemental</option>
-          <option value="earth" {{#if (eq system.spiritType "earth")}}selected{{/if}}>Earth Elemental</option>
-          <option value="fire" {{#if (eq system.spiritType "fire")}}selected{{/if}}>Fire Elemental</option>
-          <option value="man" {{#if (eq system.spiritType "man")}}selected{{/if}}>Man Spirit</option>
-          <option value="toxic" {{#if (eq system.spiritType "toxic")}}selected{{/if}}>Toxic Spirit</option>
-        </select>
-        <i class="{{spiritTypeIcon}}"></i>
+      <div class="sr2-header-title">
+        <h1 class="charname">
+          <input name="name" type="text" value="{{actor.name}}" placeholder="{{namePlaceholder}}"/>
+        </h1>
       </div>
-      <div class="spirit-summoner">
-        <label>Summoner:</label>
-        <input name="system.summoner" type="text" value="{{system.summoner}}" placeholder="Summoner Name"/>
-      </div>
-    </div>
-  </header>
-
-  {{!-- Sheet Tab Navigation --}}
-  <nav class="sheet-tabs tabs" data-group="primary">
-    <a class="item" data-tab="stats">Attributes</a>
-    <a class="item" data-tab="powers">Powers</a>
-    <a class="item" data-tab="notes">Notes</a>
-  </nav>
-
-  {{!-- Sheet Body --}}
-  <section class="sheet-body">
-
-    {{!-- Attributes Tab --}}
-    <div class="tab stats" data-group="primary" data-tab="stats">
-      <div class="spirit-stats">
-        <h3>Spirit Attributes</h3>
-        
-        <div class="attributes-grid">
-          <div class="attribute">
-            <label>Body</label>
-            <input type="number" name="system.attributes.body.value" value="{{system.attributes.body.value}}" 
-                   data-dtype="Number" min="{{system.attributes.body.min}}" max="{{system.attributes.body.max}}"/>
-          </div>
-          
-          <div class="attribute">
-            <label>Quickness</label>
-            <input type="number" name="system.attributes.quickness.value" value="{{system.attributes.quickness.value}}" 
-                   data-dtype="Number" min="{{system.attributes.quickness.min}}" max="{{system.attributes.quickness.max}}"/>
-          </div>
-          
-          <div class="attribute">
-            <label>Strength</label>
-            <input type="number" name="system.attributes.strength.value" value="{{system.attributes.strength.value}}" 
-                   data-dtype="Number" min="{{system.attributes.strength.min}}" max="{{system.attributes.strength.max}}"/>
-          </div>
-          
-          <div class="attribute">
-            <label>Charisma</label>
-            <input type="number" name="system.attributes.charisma.value" value="{{system.attributes.charisma.value}}" 
-                   data-dtype="Number" min="{{system.attributes.charisma.min}}" max="{{system.attributes.charisma.max}}"/>
-          </div>
-          
-          <div class="attribute">
-            <label>Intelligence</label>
-            <input type="number" name="system.attributes.intelligence.value" value="{{system.attributes.intelligence.value}}" 
-                   data-dtype="Number" min="{{system.attributes.intelligence.min}}" max="{{system.attributes.intelligence.max}}"/>
-          </div>
-          
-          <div class="attribute">
-            <label>Willpower</label>
-            <input type="number" name="system.attributes.willpower.value" value="{{system.attributes.willpower.value}}" 
-                   data-dtype="Number" min="{{system.attributes.willpower.min}}" max="{{system.attributes.willpower.max}}"/>
-          </div>
-          
-          <div class="attribute force-attribute">
-            <label>Force</label>
-            <input type="number" name="system.attributes.force.value" value="{{system.attributes.force.value}}" 
-                   data-dtype="Number" min="{{system.attributes.force.min}}" max="{{system.attributes.force.max}}"/>
-          </div>
-          
-          <div class="attribute">
-            <label>Reaction</label>
-            <input type="number" name="system.attributes.reaction.value" value="{{system.attributes.reaction.value}}" 
-                   data-dtype="Number" min="{{system.attributes.reaction.min}}" max="{{system.attributes.reaction.max}}"/>
+      <div class="sr2-header-resources">
+        <div class="resource sr2-sheet-resource">
+          <label class="resource-label">{{entityTypeLabel}}</label>
+          <div class="sr2-sheet-inline">
+            <select name="system.spiritType" data-dtype="String">
+              <option value="" {{#unless system.spiritType}}selected{{/unless}}>Select Type</option>
+              <option value="elemental" {{#if (eq system.spiritType "elemental")}}selected{{/if}}>Elemental</option>
+              <option value="nature" {{#if (eq system.spiritType "nature")}}selected{{/if}}>Nature Spirit</option>
+              <option value="city" {{#if (eq system.spiritType "city")}}selected{{/if}}>City Spirit</option>
+              <option value="hearth" {{#if (eq system.spiritType "hearth")}}selected{{/if}}>Hearth Spirit</option>
+              <option value="ancestor" {{#if (eq system.spiritType "ancestor")}}selected{{/if}}>Ancestor Spirit</option>
+              <option value="task" {{#if (eq system.spiritType "task")}}selected{{/if}}>Task Spirit</option>
+              <option value="guidance" {{#if (eq system.spiritType "guidance")}}selected{{/if}}>Guidance Spirit</option>
+              <option value="plant" {{#if (eq system.spiritType "plant")}}selected{{/if}}>Plant Spirit</option>
+              <option value="beast" {{#if (eq system.spiritType "beast")}}selected{{/if}}>Beast Spirit</option>
+              <option value="water" {{#if (eq system.spiritType "water")}}selected{{/if}}>Water Elemental</option>
+              <option value="air" {{#if (eq system.spiritType "air")}}selected{{/if}}>Air Elemental</option>
+              <option value="earth" {{#if (eq system.spiritType "earth")}}selected{{/if}}>Earth Elemental</option>
+              <option value="fire" {{#if (eq system.spiritType "fire")}}selected{{/if}}>Fire Elemental</option>
+              <option value="man" {{#if (eq system.spiritType "man")}}selected{{/if}}>Man Spirit</option>
+              <option value="toxic" {{#if (eq system.spiritType "toxic")}}selected{{/if}}>Toxic Spirit</option>
+            </select>
+            <i class="{{spiritTypeIcon}} sr2-sheet-icon"></i>
           </div>
         </div>
-
-        <div class="derived-stats">
-          <div class="derived-stat">
-            <label>Form:</label>
+        <div class="resource sr2-sheet-resource">
+          <label class="resource-label">{{controllerLabel}}</label>
+          <input name="system.summoner" type="text" value="{{system.summoner}}" placeholder="{{controllerLabel}}"/>
+        </div>
+        {{#if showSpiritControls}}
+          <div class="resource sr2-sheet-resource">
+            <label class="resource-label">Form</label>
             <select name="system.spiritForm" data-dtype="String">
               <option value="manifest" {{#if (eq system.spiritForm "manifest")}}selected{{/if}}>Manifest</option>
               <option value="astral" {{#if (eq system.spiritForm "astral")}}selected{{/if}}>Astral</option>
             </select>
           </div>
-          <div class="derived-stat">
-            <label>Initiative:</label>
-            <span class="initiative-value">{{initiative}}</span>
+        {{/if}}
+        <div class="resource sr2-sheet-resource">
+          <label class="resource-label">Initiative</label>
+          <span class="sr2-sheet-badge">{{initiative}}</span>
+        </div>
+        <div class="resource sr2-sheet-resource sr2-damage-resource">
+          <label class="resource-label">{{damageLabel}}</label>
+          <div class="sr2-inline-controls">
+            <input class="sr2-damage-input" type="number" name="system.health.value" value="{{system.health.value}}" data-dtype="Number" min="0" max="{{system.health.max}}"/>
+            <span>/ {{system.health.max}}</span>
+            <button type="button" class="heal-damage sr2-small-action" data-amount="1" title="Heal 1">
+              <i class="fas fa-heart"></i>
+            </button>
+            <button type="button" class="heal-damage sr2-small-action" data-amount="{{system.health.value}}" title="Heal All">
+              <i class="fas fa-plus-circle"></i>
+            </button>
           </div>
         </div>
+        {{#if showSpiritControls}}
+          <div class="resource sr2-sheet-resource">
+            <label class="resource-label">Services</label>
+            <div class="sr2-inline-controls">
+              <button type="button" class="use-service sr2-small-action" title="Use Service" {{#if (eq servicesRemaining 0)}}disabled{{/if}}>
+                <i class="fas fa-minus"></i>
+              </button>
+              <input type="number" name="system.services" value="{{system.services}}" data-dtype="Number" min="0" max="20"/>
+              <button type="button" class="add-service sr2-small-action" title="Add Service">
+                <i class="fas fa-plus"></i>
+              </button>
+            </div>
+          </div>
+        {{/if}}
+      </div>
+    </div>
+  </header>
 
-        <div class="condition-section">
-          <h4>Condition Monitor</h4>
-          <div class="damage-monitor">
-            <label>Spirit Damage:</label>
-            <div class="damage-track">
-              {{#times system.health.max}}
-                <div class="damage-box {{#if (lte @index ../system.health.value)}}damaged{{/if}}" 
-                     data-damage="{{@index}}"></div>
-              {{/times}}
-            </div>
-            <div class="damage-controls">
-              <input type="number" name="system.health.value" value="{{system.health.value}}" 
-                     data-dtype="Number" min="0" max="{{system.health.max}}" title="Current Damage"/>
-              <span>/ {{system.health.max}}</span>
-              <button type="button" class="heal-damage" data-amount="1" title="Heal 1 Damage">
-                <i class="fas fa-heart"></i>
-              </button>
-              <button type="button" class="heal-damage" data-amount="{{system.health.value}}" title="Full Heal">
-                <i class="fas fa-plus-circle"></i>
-              </button>
-            </div>
-          </div>
-        </div>
+  <nav class="sheet-tabs tabs" data-group="primary">
+    <a class="item" data-tab="main">Main</a>
+    <a class="item" data-tab="powers">{{powersLabel}}</a>
+    <a class="item" data-tab="notes">Notes</a>
+  </nav>
 
-        <div class="services-section">
-          <h4>Services</h4>
-          <div class="services-display">
-            <div class="services-counter">
-              <label>Services Remaining:</label>
-              <span class="services-value {{#if (eq servicesRemaining 0)}}no-services{{/if}}">{{servicesRemaining}}</span>
+  <section class="sheet-body">
+    <div class="tab main" data-group="primary" data-tab="main">
+      <div class="sr2-entity-grid">
+        <section class="sr2-sheet-panel">
+          <h3>{{entityLabel}} Attributes</h3>
+          <div class="sr2-sheet-attr-list">
+            <div class="sr2-sheet-attr-row">
+              <label>Body</label>
+              <input type="number" name="system.attributes.body.value" value="{{system.attributes.body.value}}" data-dtype="Number" min="{{system.attributes.body.min}}" max="{{system.attributes.body.max}}"/>
             </div>
-            <div class="services-controls">
-              <button type="button" class="use-service" title="Use Service" {{#if (eq servicesRemaining 0)}}disabled{{/if}}>
-                <i class="fas fa-minus"></i> Use Service
-              </button>
-              <button type="button" class="add-service" title="Add Service">
-                <i class="fas fa-plus"></i> Add Service
-              </button>
+            <div class="sr2-sheet-attr-row">
+              <label>Quickness</label>
+              <input type="number" name="system.attributes.quickness.value" value="{{system.attributes.quickness.value}}" data-dtype="Number" min="{{system.attributes.quickness.min}}" max="{{system.attributes.quickness.max}}"/>
+            </div>
+            <div class="sr2-sheet-attr-row">
+              <label>Strength</label>
+              <input type="number" name="system.attributes.strength.value" value="{{system.attributes.strength.value}}" data-dtype="Number" min="{{system.attributes.strength.min}}" max="{{system.attributes.strength.max}}"/>
+            </div>
+            <div class="sr2-sheet-attr-row">
+              <label>Charisma</label>
+              <input type="number" name="system.attributes.charisma.value" value="{{system.attributes.charisma.value}}" data-dtype="Number" min="{{system.attributes.charisma.min}}" max="{{system.attributes.charisma.max}}"/>
+            </div>
+            <div class="sr2-sheet-attr-row">
+              <label>Intelligence</label>
+              <input type="number" name="system.attributes.intelligence.value" value="{{system.attributes.intelligence.value}}" data-dtype="Number" min="{{system.attributes.intelligence.min}}" max="{{system.attributes.intelligence.max}}"/>
+            </div>
+            <div class="sr2-sheet-attr-row">
+              <label>Willpower</label>
+              <input type="number" name="system.attributes.willpower.value" value="{{system.attributes.willpower.value}}" data-dtype="Number" min="{{system.attributes.willpower.min}}" max="{{system.attributes.willpower.max}}"/>
+            </div>
+            <div class="sr2-sheet-attr-row">
+              <label>Force</label>
+              <input type="number" name="system.attributes.force.value" value="{{system.attributes.force.value}}" data-dtype="Number" min="{{system.attributes.force.min}}" max="{{system.attributes.force.max}}"/>
+            </div>
+            <div class="sr2-sheet-attr-row">
+              <label>Reaction</label>
+              <input type="number" name="system.attributes.reaction.value" value="{{system.attributes.reaction.value}}" data-dtype="Number" min="{{system.attributes.reaction.min}}" max="{{system.attributes.reaction.max}}"/>
             </div>
           </div>
-          <div class="services-input">
-            <label>Total Services:</label>
-            <input type="number" name="system.services" value="{{system.services}}" 
-                   data-dtype="Number" min="0" max="20"/>
+        </section>
+
+        <section class="sr2-sheet-panel">
+          <h3>Status</h3>
+          <div class="sr2-sheet-field-grid">
+            <div class="sr2-sheet-field">
+              <label>Initiative Formula</label>
+              <span class="sr2-sheet-badge">{{initiative}}</span>
+            </div>
+            <div class="sr2-sheet-field">
+              <label>{{damageLabel}}</label>
+              <span class="sr2-sheet-badge">{{system.health.value}} / {{system.health.max}}</span>
+            </div>
+            {{#if showSpiritControls}}
+              <div class="sr2-sheet-field">
+                <label>Current Form</label>
+                <span class="sr2-sheet-badge">{{system.spiritForm}}</span>
+              </div>
+              <div class="sr2-sheet-field">
+                <label>Services Remaining</label>
+                <span class="sr2-sheet-badge">{{servicesRemaining}}</span>
+              </div>
+            {{/if}}
           </div>
-        </div>
+        </section>
+
+        <section class="sr2-sheet-panel">
+          <h3>Overview</h3>
+          <div class="sr2-sheet-summary">
+            {{#if system.biography}}
+              {{system.biography}}
+            {{else}}
+              Add descriptive notes in the Notes tab.
+            {{/if}}
+          </div>
+        </section>
       </div>
     </div>
 
-    {{!-- Powers Tab --}}
     <div class="tab powers" data-group="primary" data-tab="powers">
-      <div class="powers-section">
-        <h3>Spirit Powers</h3>
-        <div class="powers-description">
-          <p>List the spirit's powers, abilities, and special characteristics. Include power descriptions, game mechanics, and any special rules.</p>
-        </div>
-        <textarea name="system.powers" rows="20" placeholder="Enter spirit powers and abilities here...
-
-Examples:
-• Materialization: Can become physical or astral at will
-• Concealment: +4 dice to stealth tests
-• Confusion: Target must make Willpower test or lose 1 action
-• Fear: Causes fear in targets (Willpower test to resist)
-• Guard: Protects a specific location or person
-• Search: Can locate specific objects or people
-• Movement: Enhanced movement capabilities
-
-Add specific power descriptions, dice pools, target numbers, and any special conditions or limitations.">{{system.powers}}</textarea>
-      </div>
+      <section class="sr2-sheet-panel sr2-sheet-panel--full">
+        <h3>{{entityLabel}} {{powersLabel}}</h3>
+        <textarea class="sr2-sheet-textarea" name="system.powers" rows="20" placeholder="List powers, abilities, and special rules.">{{system.powers}}</textarea>
+      </section>
     </div>
 
-    {{!-- Notes Tab --}}
     <div class="tab notes" data-group="primary" data-tab="notes">
-      <div class="biography-section">
-        <h3>Spirit Description</h3>
-        <textarea name="system.biography" rows="15" placeholder="Describe the spirit's appearance, personality, background, and any special characteristics or story elements...">{{system.biography}}</textarea>
-      </div>
+      <section class="sr2-sheet-panel sr2-sheet-panel--full">
+        <h3>{{descriptionLabel}}</h3>
+        <textarea class="sr2-sheet-textarea" name="system.biography" rows="20" placeholder="Describe appearance, behavior, and background.">{{system.biography}}</textarea>
+      </section>
     </div>
-
   </section>
 </form>

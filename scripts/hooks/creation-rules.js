@@ -3,6 +3,7 @@ import {
   sr2ComputeCreationNuyenBudgetBreakdown,
   sr2ComputeForcePointsSpent,
   sr2ComputeItemNuyenSpent,
+  sr2HasCreationLimits,
   sr2InferFocusBondCostForGearItem,
 } from "../sr2-rules.js";
 
@@ -17,17 +18,7 @@ function sr2IsSameUser(userId) {
 }
 
 function sr2IsCreationMode(actor) {
-  const completed = actor?.getFlag?.("shadowrun2e", "creationCompleted");
-  if (completed === true) return false;
-
-  const flagged = actor?.getFlag?.("shadowrun2e", "creationMode");
-  if (typeof flagged === "boolean") return flagged;
-
-  const hasCreationPoints =
-    (Number(actor?.system?.creation?.attributePoints) || 0) > 0 ||
-    (Number(actor?.system?.creation?.skillPoints) || 0) > 0 ||
-    (Number(actor?.system?.creation?.forcePoints) || 0) > 0;
-  return hasCreationPoints;
+  return sr2HasCreationLimits(actor?.system);
 }
 
 function sr2ClampCreationSpellForce(force) {
@@ -55,21 +46,6 @@ function sr2GetCreationItemForcePointCost({ type, name, system }) {
   return perItemCost > 0 ? perItemCost * quantity : 0;
 }
 
-function sr2ToBool(value) {
-  if (value === undefined) return undefined;
-  if (value === null) return false;
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  if (typeof value === "string") {
-    const v = value.trim().toLowerCase();
-    if (v === "true") return true;
-    if (v === "false") return false;
-    if (v === "1") return true;
-    if (v === "0") return false;
-  }
-  return Boolean(value);
-}
-
 export function registerCreationRuleHooks({
   areContactLevelsEnabled,
   areBuddiesDisabled,
@@ -87,62 +63,6 @@ export function registerCreationRuleHooks({
       ? getContactLevelsSummaryForLeader
       : () => null;
 
-  Hooks.on("preUpdateActor", function (actor, changes, options, userId) {
-    if (!sr2IsSameUser(userId)) return;
-    if (!SR2_CHARACTER_TYPES.includes(actor.type)) return;
-
-    const getProperty = globalThis.foundry?.utils?.getProperty;
-    const setProperty = globalThis.foundry?.utils?.setProperty;
-    if (typeof getProperty !== "function" || typeof setProperty !== "function") return;
-
-    const currentCompleted =
-      sr2ToBool(actor.getFlag?.("shadowrun2e", "creationCompleted")) === true;
-    const nextCompletedRaw = getProperty(changes, "flags.shadowrun2e.creationCompleted");
-    const nextCompleted = sr2ToBool(nextCompletedRaw);
-    const unsetCompleted =
-      getProperty(changes, "flags.shadowrun2e.-=creationCompleted") !== undefined;
-
-    const shouldLock = currentCompleted || nextCompleted === true;
-    if (!shouldLock) return;
-
-    if (unsetCompleted) {
-      try {
-        delete changes.flags?.shadowrun2e?.["-=creationCompleted"];
-      } catch (err) {
-        // Ignore.
-      }
-      setProperty(changes, "flags.shadowrun2e.creationCompleted", true);
-      if (currentCompleted)
-        ui.notifications.warn("Character Generation is already finalized and cannot be reopened.");
-    }
-    if (nextCompleted === false) {
-      setProperty(changes, "flags.shadowrun2e.creationCompleted", true);
-      if (currentCompleted)
-        ui.notifications.warn("Character Generation is already finalized and cannot be reopened.");
-    }
-
-    const unsetCreationMode =
-      getProperty(changes, "flags.shadowrun2e.-=creationMode") !== undefined;
-    if (unsetCreationMode) {
-      try {
-        delete changes.flags?.shadowrun2e?.["-=creationMode"];
-      } catch (err) {
-        // Ignore.
-      }
-      setProperty(changes, "flags.shadowrun2e.creationMode", false);
-    }
-
-    const nextCreationModeRaw = getProperty(changes, "flags.shadowrun2e.creationMode");
-    const nextCreationMode = sr2ToBool(nextCreationModeRaw);
-    if (nextCreationMode === true) {
-      setProperty(changes, "flags.shadowrun2e.creationMode", false);
-      if (currentCompleted)
-        ui.notifications.warn("Character Generation is locked off for this actor.");
-    } else if (nextCompleted === true && nextCreationModeRaw === undefined) {
-      setProperty(changes, "flags.shadowrun2e.creationMode", false);
-    }
-  });
-
   Hooks.on("preCreateActor", function (actor, data, options, userId) {
     if (!sr2IsSameUser(userId)) return;
     if (!contactLevelsEnabled()) return;
@@ -156,7 +76,6 @@ export function registerCreationRuleHooks({
     const leader = globalThis.game?.actors?.get(leaderId);
     if (!leader || leader.type !== "character") return;
     if (!sr2IsCreationMode(leader)) return;
-    if (leader.system?.creation?.resourcesFinalized) return;
 
     const charisma = Number(leader.system?.attributes?.charisma?.value) || 0;
     const linkedContacts =
@@ -242,7 +161,6 @@ export function registerCreationRuleHooks({
     const leader = globalThis.game?.actors?.get(leaderId);
     if (!leader || leader.type !== "character") return;
     if (!sr2IsCreationMode(leader)) return;
-    if (leader.system?.creation?.resourcesFinalized) return;
 
     const previousLeaderId = actor.system?.details?.leaderId || "";
     const isLeaderTransfer = typeof nextLeaderId === "string" && nextLeaderId !== previousLeaderId;
@@ -299,7 +217,6 @@ export function registerCreationRuleHooks({
     const actor = item?.parent;
     if (!actor || !SR2_CHARACTER_TYPES.includes(actor.type)) return;
     if (!sr2IsCreationMode(actor)) return;
-    if (actor.system?.creation?.resourcesFinalized) return;
 
     const budget = Number(actor.system?.creation?.startingNuyen) || 0;
     if (budget <= 0) return;
@@ -341,7 +258,6 @@ export function registerCreationRuleHooks({
     const actor = item?.parent;
     if (!actor || !SR2_CHARACTER_TYPES.includes(actor.type)) return;
     if (!sr2IsCreationMode(actor)) return;
-    if (actor.system?.creation?.resourcesFinalized) return;
 
     const budget = Number(actor.system?.creation?.startingNuyen) || 0;
     if (budget <= 0) return;

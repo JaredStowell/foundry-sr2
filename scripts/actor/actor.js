@@ -1,7 +1,12 @@
 /**
  * Extend the base Actor document to support Shadowrun 2E
  */
-import { sr2ComputeSpellLockAugmentationModifiers } from "../sr2-rules.js";
+import { sr2ComputeSpellLockAugmentationModifiers, sr2ParseFocusName } from "../sr2-rules.js";
+import {
+  sr2ComputeInstalledBiowareIndex,
+  sr2ComputeInstalledCyberwareEssenceLoss,
+  sr2ParseAugmentationModifierString,
+} from "../rules/augmentation-effects.js";
 
 export class SR2Actor extends Actor {
   /** @override */
@@ -69,19 +74,11 @@ export class SR2Actor extends Actor {
     const attrs = systemData.attributes;
     if (!attrs?.essence) return;
 
-    const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
-
     const baseEssence = Number(attrs.essence.max) || 6;
-    const installedCyberware = this.items.filter(
-      (i) => i.type === "cyberware" && i.system.installed,
-    );
-    const totalEssenceLoss = round2(
-      installedCyberware.reduce((total, cyber) => {
-        return total + (parseFloat(cyber.system.essence) || 0);
-      }, 0),
-    );
+    const totalEssenceLoss = sr2ComputeInstalledCyberwareEssenceLoss(this.items);
 
-    attrs.essence.value = round2(Math.max(0, baseEssence - totalEssenceLoss));
+    attrs.essence.value =
+      Math.round((Math.max(0, baseEssence - totalEssenceLoss) + Number.EPSILON) * 100) / 100;
   }
 
   /**
@@ -279,15 +276,15 @@ export class SR2Actor extends Actor {
       (i) =>
         i.type === "gear" &&
         i.system?.equipped &&
-        /^Power Focus\s+\d+$/i.test(String(i.name || "")),
+        sr2ParseFocusName(i.name)?.kind === "power focus",
     );
 
     if (powerFoci.length === 0) return 0;
 
     let highestRating = 0;
     for (const focus of powerFoci) {
-      const match = String(focus.name || "").match(/^Power Focus\s+(\d+)$/i);
-      const rating = match ? parseInt(match[1], 10) : 0;
+      const parsed = sr2ParseFocusName(focus.name);
+      const rating = parsed?.kind === "power focus" ? Number(parsed.rating) || 0 : 0;
       if (Number.isFinite(rating) && rating > highestRating) highestRating = rating;
     }
 
@@ -344,33 +341,22 @@ export class SR2Actor extends Actor {
         modifiers.INI += Number(aug.system.initiativeDice) || 0;
       }
 
-      const mods = aug.system.mods || "";
-      if (!mods) continue;
-
       // For adept powers, multiply by current level if it has levels
       let levelMultiplier = 1;
       if (aug.type === "adeptpower" && aug.system.hasLevels) {
         levelMultiplier = aug.system.currentLevel || 1;
       }
 
-      // Parse modifier string like "+1BOD,+2RCT" or "+1QCK,+1STR"
-      const modParts = mods.split(",");
-
-      for (const modPart of modParts) {
-        const trimmed = modPart.trim();
-        if (!trimmed) continue;
-
-        // Match pattern like "+1BOD" or "+2RCT"
-        const match = trimmed.match(/([+-]\d+)([A-Z]{3})/);
-        if (match) {
-          const baseValue = parseInt(match[1]);
-          const attribute = match[2];
-          const finalValue = baseValue * levelMultiplier;
-
-          if (modifiers.hasOwnProperty(attribute)) {
-            modifiers[attribute] += finalValue;
-          }
-        }
+      const parsedMods = sr2ParseAugmentationModifierString(aug.system.mods, {
+        multiplier: levelMultiplier,
+      });
+      if (aug.type === "cyberware") {
+        parsedMods.RCT = 0;
+        parsedMods.INI = 0;
+      }
+      for (const [attribute, value] of Object.entries(parsedMods)) {
+        if (!Object.prototype.hasOwnProperty.call(modifiers, attribute)) continue;
+        modifiers[attribute] += Number(value) || 0;
       }
     }
 

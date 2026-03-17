@@ -11,6 +11,7 @@ import { SR2SpiritSheet } from "./actor/spirit-sheet.js";
 import { SR2ICSheet } from "./actor/ic-sheet.js";
 import { SR2Item } from "./item/item.js";
 import { SR2ItemSheet } from "./item/item-sheet.js";
+import { SR2Combat } from "./combat/sr2-combat.js";
 import { SR2ItemBrowser } from "./item-browser.js";
 import { SR2GearPurchaseApp } from "./gear-purchase.js";
 import { SR2DataImporter } from "./data-importer.js";
@@ -22,6 +23,7 @@ import {
   sr2AreBuddiesDisabled,
   sr2AreContactLevelsEnabled,
   sr2BuildContactBiography,
+  sr2BuildBiowareItemData,
   sr2BuildCyberwareItemData,
   sr2BuildSpellItemData,
   sr2GetAllowedMetatypesForPriority,
@@ -42,6 +44,7 @@ import {
 import { registerConnectionFolderHooks } from "./hooks/connection-folders.js";
 import { registerCreationRuleHooks } from "./hooks/creation-rules.js";
 import { sr2ApplyCharacterPrioritiesOnCreate } from "./hooks/priority-bootstrap.js";
+import { registerChatCommandHooks } from "./hooks/chat-commands.js";
 import "./hotbar.js";
 import { sr2GetRacialAttributeBounds, sr2GetRacialTraits } from "./sr2-rules.js";
 
@@ -62,6 +65,7 @@ Hooks.once("init", async function () {
   // Assign custom classes and constants
   CONFIG.Actor.documentClass = SR2Actor;
   CONFIG.Item.documentClass = SR2Item;
+  CONFIG.Combat.documentClass = SR2Combat;
 
   // Ensure core Combat "Roll All" initiative works.
   if (CONFIG.Combat) {
@@ -235,6 +239,7 @@ registerActorCreateDialogHooks(sr2EnhanceActorCreateDialog);
 /* -------------------------------------------- */
 
 registerActorRuleHooks({ syncFreeLanguageSkills: sr2SyncFreeLanguageSkills });
+registerChatCommandHooks();
 
 /* -------------------------------------------- */
 /*  Follower Archetype Bootstrap                */
@@ -369,6 +374,20 @@ Hooks.on("createActor", async function (actor, options, userId) {
 
   if (cyberwareToCreate.length) {
     await actor.createEmbeddedDocuments("Item", cyberwareToCreate, { sr2SkipBudget: true });
+  }
+
+  const existingBiowareNames = new Set(
+    actor.items.filter((i) => i.type === "bioware").map((i) => sr2NormalizeCatalogName(i.name)),
+  );
+  const biowareToCreate = [];
+  for (const biowareName of archetype.bioware || []) {
+    const key = sr2NormalizeCatalogName(biowareName);
+    if (!key || existingBiowareNames.has(key)) continue;
+    biowareToCreate.push(await sr2BuildBiowareItemData(biowareName, { installed: true }));
+  }
+
+  if (biowareToCreate.length) {
+    await actor.createEmbeddedDocuments("Item", biowareToCreate, { sr2SkipBudget: true });
   }
 
   const existingSpellNames = new Set(
@@ -589,6 +608,20 @@ Hooks.on("createActor", async function (actor, options, userId) {
 
   if (cyberwareToCreate.length) {
     await actor.createEmbeddedDocuments("Item", cyberwareToCreate, { sr2SkipBudget: true });
+  }
+
+  const existingBiowareNames = new Set(
+    actor.items.filter((i) => i.type === "bioware").map((i) => sr2NormalizeCatalogName(i.name)),
+  );
+  const biowareToCreate = [];
+  for (const biowareName of archetype.bioware || []) {
+    const key = sr2NormalizeCatalogName(biowareName);
+    if (!key || existingBiowareNames.has(key)) continue;
+    biowareToCreate.push(await sr2BuildBiowareItemData(biowareName, { installed: true }));
+  }
+
+  if (biowareToCreate.length) {
+    await actor.createEmbeddedDocuments("Item", biowareToCreate, { sr2SkipBudget: true });
   }
 
   const existingSpellNames = new Set(

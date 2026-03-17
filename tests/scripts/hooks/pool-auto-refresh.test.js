@@ -92,4 +92,29 @@ describe("registerPoolAutoRefreshHooks", () => {
     await updateCombatHook({ started: true, combatant: { actor } }, { round: 1 });
     expect(actor.update).toHaveBeenCalled();
   });
+
+  it("refreshes pools when the SR2 encounter phase changes", async () => {
+    registerPoolAutoRefreshHooks();
+    const [updateCombatHook] = Hooks.__get("updateCombat");
+
+    const actor = {
+      isOwner: true,
+      system: {
+        pools: {
+          combat: { current: 0, max: 4 },
+        },
+      },
+      update: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await updateCombatHook(
+      { started: true, combatant: { actor } },
+      { flags: { shadowrun2e: { sr2: { currentPhase: 11 } } } },
+    );
+
+    expect(actor.update).toHaveBeenCalledWith(
+      { "system.pools.combat.current": 4 },
+      { sr2AutoRefreshPools: true },
+    );
+  });
 });

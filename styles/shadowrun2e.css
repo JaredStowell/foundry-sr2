@@ -2667,6 +2667,31 @@
   font-size: 12px;
 }
 
+.shadowrun2e .tab.main .sr2-main-pools .sr2-pools-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--cyber-border);
+}
+
+.shadowrun2e .tab.main .sr2-main-pools .sr2-pools-header h3 {
+  margin: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.shadowrun2e .tab.main .sr2-main-pools .sr2-pools-header .reset-all-pools {
+  margin-left: auto;
+  padding: 1px 6px;
+  font-size: 11px;
+}
+
+.shadowrun2e .tab.main .sr2-main-pools .sr2-pools-header .reset-all-pools i {
+  margin-right: 4px;
+}
+
 .shadowrun2e .tab.main .sr2-main-attributes h3[title] {
   cursor: help;
 }
@@ -2832,8 +2857,278 @@
   margin-top: 10px;
 }
 
+/* ===== ALT ACTOR SHEETS ===== */
+.shadowrun2e .sr2-sheet-resource {
+  min-width: 120px;
+}
+
+.shadowrun2e .sr2-sheet-resource input,
+.shadowrun2e .sr2-sheet-resource select {
+  min-width: 120px;
+}
+
+.shadowrun2e .sr2-sheet-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shadowrun2e .sr2-sheet-icon {
+  color: var(--cyber-accent-cyan);
+  font-size: 14px;
+}
+
+.shadowrun2e .sr2-entity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.shadowrun2e .sr2-entity-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.shadowrun2e .sr2-sheet-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shadowrun2e .sr2-sheet-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: var(--cyber-bg-secondary);
+  border: 1px solid var(--cyber-border);
+}
+
+.shadowrun2e .sr2-sheet-panel--full {
+  height: 100%;
+}
+
+.shadowrun2e .sr2-sheet-panel h3 {
+  margin: 0;
+  color: var(--cyber-accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--cyber-border);
+  padding-bottom: 6px;
+  font-size: 12px;
+}
+
+.shadowrun2e .sr2-sheet-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.shadowrun2e .sr2-sheet-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shadowrun2e .sr2-sheet-field--full {
+  grid-column: 1 / -1;
+}
+
+.shadowrun2e .sr2-sheet-field label {
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.shadowrun2e .sr2-sheet-field input,
+.shadowrun2e .sr2-sheet-field select {
+  width: 100%;
+  min-width: 0;
+}
+
+.shadowrun2e .sr2-sheet-attr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shadowrun2e .sr2-sheet-attr-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 80px;
+  gap: 8px;
+  align-items: center;
+}
+
+.shadowrun2e .sr2-sheet-attr-row label {
+  font-weight: 700;
+}
+
+.shadowrun2e .sr2-sheet-attr-row input {
+  width: 80px;
+  justify-self: end;
+  text-align: right;
+}
+
+.shadowrun2e .sr2-sheet-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--cyber-border-bright);
+  background: rgba(255, 255, 255, 0.04);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.shadowrun2e .sr2-sheet-badge.over-limit {
+  border-color: var(--cyber-accent-red);
+  color: var(--cyber-accent-red);
+}
+
+.shadowrun2e .sr2-sheet-summary {
+  min-height: 120px;
+  padding: 10px;
+  border: 1px solid var(--cyber-border);
+  background: rgba(255, 255, 255, 0.03);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.shadowrun2e .sr2-sheet-textarea {
+  width: 100%;
+  min-height: 180px;
+  flex: 1;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.shadowrun2e .sr2-sheet-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.shadowrun2e .sr2-sheet-toolbar h3 {
+  flex: 1 1 auto;
+}
+
+.shadowrun2e .sr2-sheet-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.shadowrun2e .sr2-sheet-actions .item-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px;
+  background: linear-gradient(135deg, var(--cyber-bg-secondary), var(--cyber-bg-tertiary));
+  color: var(--cyber-accent-cyan);
+  border: 1px solid var(--cyber-accent-cyan);
+  text-decoration: none;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.shadowrun2e .sr2-sheet-actions .item-control:hover {
+  color: var(--cyber-accent-magenta);
+  border-color: var(--cyber-accent-magenta);
+  box-shadow: var(--cyber-glow-magenta);
+}
+
+.shadowrun2e .sr2-sheet-list {
+  border: 1px solid var(--cyber-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.shadowrun2e .sr2-sheet-table-header,
+.shadowrun2e .sr2-sheet-list .item-row,
+.shadowrun2e .sr2-sheet-list .program-row {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+}
+
+.shadowrun2e .sr2-sheet-table-header {
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.shadowrun2e .sr2-sheet-list .item-row,
+.shadowrun2e .sr2-sheet-list .program-row {
+  border-top: 1px solid var(--cyber-border);
+}
+
+.shadowrun2e .sr2-sheet-item-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.shadowrun2e .sr2-sheet-item-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shadowrun2e .sr2-sheet-list input,
+.shadowrun2e .sr2-sheet-list select {
+  width: 100%;
+  min-width: 0;
+}
+
+.shadowrun2e .sr2-sheet-empty {
+  padding: 14px 10px;
+  color: var(--cyber-text-muted);
+  font-style: italic;
+}
+
+.shadowrun2e .sr2-vehicle-weapons .sr2-sheet-table-header,
+.shadowrun2e .sr2-vehicle-weapons .item-row {
+  grid-template-columns: minmax(0, 2.1fr) 110px 170px 70px;
+}
+
+.shadowrun2e .sr2-vehicle-mods .sr2-sheet-table-header,
+.shadowrun2e .sr2-vehicle-mods .item-row {
+  grid-template-columns: minmax(0, 2.1fr) 110px 120px 70px;
+}
+
+.shadowrun2e .sr2-vehicle-gear .sr2-sheet-table-header,
+.shadowrun2e .sr2-vehicle-gear .item-row {
+  grid-template-columns: minmax(0, 2.1fr) 100px 120px 70px;
+}
+
+.shadowrun2e .sr2-cyberdeck-programs .sr2-sheet-table-header,
+.shadowrun2e .sr2-cyberdeck-programs .program-row {
+  grid-template-columns: minmax(0, 2fr) 80px 140px 90px 100px 70px;
+}
+
+.shadowrun2e .sr2-cyberdeck-programs .program-toggle.loaded,
+.shadowrun2e .sr2-cyberdeck-programs .program-toggle.active {
+  border-color: var(--cyber-accent-green);
+  color: var(--cyber-accent-green);
+}
+
 @media (max-width: 900px) {
   .shadowrun2e .tab.main .sr2-main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shadowrun2e .sr2-entity-grid,
+  .shadowrun2e .sr2-entity-grid--two {
+    grid-template-columns: 1fr;
+  }
+
+  .shadowrun2e .sr2-sheet-field-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -5769,6 +6064,48 @@ header.window-header.flexrow.draggable.resizable {
 
 .target-number-dialog .pool-option:hover {
   background: var(--cyber-bg-tertiary);
+}
+
+.target-number-dialog .pool-dice-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.target-number-dialog .pool-dice-header label {
+  margin: 0;
+  flex: 1;
+}
+
+.target-number-dialog .pool-dice-header .reset-pool-dice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--cyber-border-bright);
+  color: var(--cyber-accent-cyan);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.target-number-dialog .pool-dice-header .reset-pool-dice:hover {
+  box-shadow: var(--cyber-glow-cyan);
+  text-shadow: var(--cyber-glow-cyan);
+}
+
+.target-number-dialog .pool-dice-header .reset-pool-dice i {
+  margin-right: 4px;
 }
 
 /* GM Pool Controls */

@@ -145,6 +145,15 @@ function createImportFixture(overrides = {}) {
         Rating: 5,
         BookPage: "SR2.???",
       },
+      {
+        Name: "Mana Bolt",
+        Drain: "(F/2)S",
+        Type: "M",
+        Duration: "I",
+        Class: "C",
+        Rating: 4,
+        BookPage: "SR2.151",
+      },
     ],
     powers: [
       {
@@ -233,7 +242,8 @@ describe("character importer helpers", () => {
     const knife = items.find((item) => item.name === "Knife");
     const powerFocus = items.find((item) => item.name === "Power Focus-2");
     const pistol = items.find((item) => item.name === "Ares Predator Heavy Pistol");
-    const sleep = items.find((item) => item.type === "spell");
+    const sleep = items.find((item) => item.type === "spell" && item.name.trim() === "Sleep");
+    const manaBolt = items.find((item) => item.type === "spell" && item.name === "Mana Bolt");
     const adeptPower = items.find((item) => item.type === "adeptpower");
 
     expect(baseSorcery.system.attribute).toBe("willpower");
@@ -263,8 +273,10 @@ describe("character importer helpers", () => {
 
     expect(sleep.system.category).toBe("combat");
     expect(sleep.system.type).toBe("mana");
+    expect(sleep.system.damage).toBe("M");
     expect(sleep.system.duration).toBe("instant");
     expect(sleep.system.description).toContain("Source: SR2.???");
+    expect(manaBolt.system.damage).toBe("S");
 
     expect(adeptPower.system.cost).toBe(2);
   });

@@ -19,7 +19,10 @@ import {
   sr2GetRacialAttributeBounds,
   sr2GetRacialModifiers,
   sr2GetRacialTraits,
+  sr2HasCreationLimits,
+  sr2InferCombatSpellDamageLevelFromName,
   sr2InferFocusBondCostForGearItem,
+  sr2InferSpellDamageLevelFromDrain,
   sr2InferSpellLockAugmentationModifiersFromSpellName,
   sr2IsPriorityLetter,
   sr2NormalizeContactLevel,
@@ -132,6 +135,23 @@ describe("sr2ComputeCreationLifestyleCost", () => {
   });
 });
 
+describe("sr2 combat spell damage helpers", () => {
+  it("infers combat spell damage from canonical spell names", () => {
+    expect(sr2InferCombatSpellDamageLevelFromName("Mana Bolt", { fallback: "M" })).toBe("S");
+    expect(sr2InferCombatSpellDamageLevelFromName("Mana Missile", { fallback: "S" })).toBe("M");
+    expect(sr2InferCombatSpellDamageLevelFromName("Sleep", { fallback: "S" })).toBe("M");
+    expect(sr2InferCombatSpellDamageLevelFromName("Unknown Combat Spell", { fallback: "M" })).toBe(
+      "M",
+    );
+  });
+
+  it("still supports extracting damage-level letters from drain codes", () => {
+    expect(sr2InferSpellDamageLevelFromDrain("[(F/2)+1]S")).toBe("S");
+    expect(sr2InferSpellDamageLevelFromDrain("(F/2)L")).toBe("L");
+    expect(sr2InferSpellDamageLevelFromDrain("[special]")).toBe("");
+  });
+});
+
 describe("sr2ComputeCreationNuyenBudgetBreakdown", () => {
   it("includes item, lifestyle, and extras costs", () => {
     const system = {
@@ -174,6 +194,44 @@ describe("sr2ComputeCreationNuyenBudgetBreakdown", () => {
     expect(breakdown.lifestyles).toHaveLength(2);
     expect(breakdown.lifestyleCost).toBe(11000);
     expect(breakdown.remainingNuyen).toBe(9000);
+  });
+});
+
+describe("sr2HasCreationLimits", () => {
+  it("treats any configured creation budget as active", () => {
+    expect(
+      sr2HasCreationLimits({
+        creation: {
+          attributePoints: 0,
+          skillPoints: 0,
+          forcePoints: 0,
+          startingNuyen: 5000,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      sr2HasCreationLimits({
+        creation: {
+          attributePoints: 5,
+          skillPoints: 0,
+          forcePoints: 0,
+          startingNuyen: 0,
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false when no creation budgets remain", () => {
+    expect(
+      sr2HasCreationLimits({
+        creation: {
+          attributePoints: 0,
+          skillPoints: 0,
+          forcePoints: 0,
+          startingNuyen: 0,
+        },
+      }),
+    ).toBe(false);
   });
 });
 
@@ -276,6 +334,11 @@ describe("sr2ParseFocusName", () => {
       kind: "spell lock",
       rating: 0,
       name: "Spell Lock",
+    });
+    expect(sr2ParseFocusName("Power Focus-2")).toEqual({
+      kind: "power focus",
+      rating: 2,
+      name: "Power Focus-2",
     });
     expect(sr2ParseFocusName("Spell Category Focus 3")).toEqual({
       kind: "spell type focus",

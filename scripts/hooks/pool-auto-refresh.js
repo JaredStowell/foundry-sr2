@@ -26,7 +26,8 @@ export function registerPoolAutoRefreshHooks() {
     const hasTurnChange =
       Object.prototype.hasOwnProperty.call(changed, "turn") ||
       Object.prototype.hasOwnProperty.call(changed, "round") ||
-      Object.prototype.hasOwnProperty.call(changed, "started");
+      Object.prototype.hasOwnProperty.call(changed, "started") ||
+      Boolean(foundry.utils.getProperty(changed, "flags.shadowrun2e.sr2.currentPhase"));
     if (!hasTurnChange) return;
 
     const combatant = combat?.combatant;

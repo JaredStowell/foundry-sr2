@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   sr2AreBuddiesDisabled,
+  sr2BuildBiowareItemData,
   sr2BuildContactBiographyFallback,
+  sr2BuildCyberwareItemData,
+  sr2BuildSpellItemData,
   sr2ExtractContactStoryFromGuide,
   sr2GetAllowedMetatypesForPriority,
   sr2GetContactLevelsSummaryForLeader,
@@ -169,12 +172,13 @@ describe("sr2ExtractContactStoryFromGuide", () => {
 });
 
 describe("sr2BuildContactBiographyFallback", () => {
-  it("summarizes source, skills, cyberware, and magic", () => {
+  it("summarizes source, skills, augmentations, and magic", () => {
     const biography = sr2BuildContactBiographyFallback({
       label: "Fixer",
       source: { book: "SR2", page: 206 },
       skills: [{ baseSkill: "Negotiation" }, { baseSkill: "Etiquette: Street" }],
       cyberware: ["Datajack"],
+      bioware: ["Cerebral Booster 1"],
       magic: { awakened: true, tradition: "hermetic" },
     });
 
@@ -182,7 +186,131 @@ describe("sr2BuildContactBiographyFallback", () => {
     expect(biography).toContain("Source: SR2, p. 206");
     expect(biography).toContain("Typical Skills: Negotiation, Etiquette: Street");
     expect(biography).toContain("Typical Cyberware: Datajack");
+    expect(biography).toContain("Typical Bioware: Cerebral Booster 1");
     expect(biography).toContain("Magical: Yes (hermetic)");
+  });
+});
+
+describe("augmentation catalog builders", () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn(async (url) => {
+      if (String(url).includes("cyberware.json")) {
+        return {
+          json: async () => ({
+            BODYWARE: [
+              {
+                Name: "Wired Reflexes 2",
+                EssCost: 3,
+                Cost: 165000,
+                StreetIndex: 1,
+                Mods: "+4RCT,+2INI",
+                BookPage: "sr2.249",
+              },
+            ],
+          }),
+        };
+      }
+
+      if (String(url).includes("bioware.json")) {
+        return {
+          json: async () => ({
+            STANDARD: [
+              {
+                Name: "Cerebral Booster 2",
+                BioIndex: "0.8",
+                Cost: "110000",
+                StreetIndex: "2.00",
+                Mods: "+2INT",
+                BookPage: "st.???",
+              },
+            ],
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+  });
+
+  it("builds normalized cyberware items from the catalog", async () => {
+    const itemData = await sr2BuildCyberwareItemData("Wired Reflexes 2");
+
+    expect(itemData).toMatchObject({
+      name: "Wired Reflexes 2",
+      type: "cyberware",
+      system: {
+        essence: 3,
+        price: 165000,
+        streetIndex: 1,
+        mods: "+4RCT,+2INI",
+        reactionBonus: 4,
+        initiativeDice: 2,
+        rating: 2,
+        installed: true,
+      },
+    });
+  });
+
+  it("builds normalized bioware items from the catalog", async () => {
+    const itemData = await sr2BuildBiowareItemData("Cerebral Booster 2");
+
+    expect(itemData).toMatchObject({
+      name: "Cerebral Booster 2",
+      type: "bioware",
+      system: {
+        bioIndex: 0.8,
+        price: 110000,
+        streetIndex: 2,
+        mods: "+2INT",
+        rating: 2,
+        installed: true,
+      },
+    });
+  });
+});
+
+describe("spell catalog builders", () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn(async (url) => {
+      if (String(url).includes("spells.json")) {
+        return {
+          json: async () => [
+            {
+              Name: "Analyze Device",
+              Class: "D",
+              Type: "P",
+              Duration: "S",
+              Drain: "[(F/2)+1]M",
+              Range: "Limited",
+              Target: "Object",
+              BookPage: "sr2.153",
+            },
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+  });
+
+  it("builds spell items with explicit range and target metadata from the catalog", async () => {
+    const itemData = await sr2BuildSpellItemData("Analyze Device", { force: 4 });
+
+    expect(itemData).toMatchObject({
+      name: "Analyze Device",
+      type: "spell",
+      system: {
+        range: "Limited",
+        target: "Object",
+        force: 4,
+      },
+    });
+  });
+
+  it("falls back to LOS range when a custom spell has no catalog metadata", async () => {
+    const itemData = await sr2BuildSpellItemData("Custom Test Spell");
+    expect(itemData.system.range).toBe("LOS");
+    expect(itemData.system.target).toBe("");
   });
 });
 

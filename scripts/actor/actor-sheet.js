@@ -7,20 +7,50 @@ import {
   sr2ComputeSkillRatingsFromAllocated,
   sr2Clamp,
   sr2FormatSignedModifier,
+  sr2HasCreationLimits,
   sr2GetRacialAttributeBounds,
   sr2GetRacialModifiers,
   sr2GetRacialTraits,
+  sr2InferCombatSpellDamageLevelFromName,
   sr2ParseFocusName,
   sr2InferFocusBondCostForGearItem,
   sr2NormalizeContactLevel,
   sr2SkillInferAllocatedRating,
 } from "../sr2-rules.js";
 import { sr2LogDebug } from "../utils/logger.js";
-import { sr2RollInitiativeToChat } from "../actions/initiative.js";
+import { rollEncounterInitiative } from "../actions/initiative.js";
 import { sr2PrepareSkillRoll } from "../actions/skill-roll.js";
+import { sr2BuildRangedModifierSummary } from "../rules/attack-modifiers.js";
+import {
+  sr2ComputeDamageResistanceTargetNumber,
+  sr2ApplyCalledShot,
+  sr2ComputeMeleeTargetNumbers,
+  sr2GetInjuryModifiers,
+  sr2GetRangeBand,
+  sr2ResolveMeleeDamage,
+  sr2ResolveMeleeOpposedTest,
+  sr2ResolveRangedCombat,
+} from "../rules/combat-resolution.js";
+import {
+  sr2ApplyWeaponAttackProfileToDamage,
+  sr2BuildWeaponAttackModifiers,
+} from "../rules/weapon-fire.js";
+import {
+  sr2ComputeDrainTargetNumber,
+  sr2ComputeDrainValueFromCode,
+} from "../rules/spellcasting.js";
+import {
+  sr2PrepareSpellResistanceTest,
+  sr2SummarizeDrainApplication,
+  sr2SummarizeCombatSpellDamage,
+  sr2SummarizeSpellEffectResolution,
+} from "../rules/spell-resolution.js";
+import {
+  sr2ComputeInstalledBiowareIndex,
+  sr2ComputeInstalledCyberwareEssenceLoss,
+} from "../rules/augmentation-effects.js";
 import {
   loadSkillsData,
-  SR2_DAMAGE_BOXES_BY_LEVEL,
   SR2_SPELL_CLASS_LABELS,
   sr2ApplyDamageToActor,
   sr2FindWeaponSkill,
@@ -36,8 +66,45 @@ import {
   sr2InferSpellResistFromType,
   sr2NormalizeSpellClass,
   sr2ParseDamageCode,
-  sr2StageDamageLevel,
 } from "./actor-sheet-helpers.js";
+
+function sr2GetSpellRangeLabel(spell) {
+  const explicitRange = String(spell?.system?.range || "").trim();
+  if (explicitRange) return explicitRange;
+  return sr2InferSpellRangeFromName(spell?.name);
+}
+
+function sr2GetSpellTargetLabel(spell) {
+  const explicitTarget = String(spell?.system?.target || "").trim();
+  if (explicitTarget) return explicitTarget;
+  return sr2InferSpellResistFromType(spell?.system?.type);
+}
+
+function sr2GetSpellResistanceAttributeKey(spell) {
+  const target = String(spell?.system?.target || "")
+    .trim()
+    .toLowerCase();
+
+  if (target.includes("willpower")) return "willpower";
+  if (target.includes("body")) return "body";
+  if (target.includes("intelligence")) return "intelligence";
+
+  if (target.includes("[r]") || target.includes("(r)")) {
+    const inferred = String(sr2InferSpellResistFromType(spell?.system?.type) || "")
+      .trim()
+      .toLowerCase();
+    return ["willpower", "body", "intelligence"].includes(inferred) ? inferred : "";
+  }
+
+  if (target) return "";
+
+  const fallback = String(sr2InferSpellResistFromType(spell?.system?.type) || "")
+    .trim()
+    .toLowerCase();
+  return ["willpower", "body", "intelligence"].includes(fallback) ? fallback : "";
+}
+
+const SR2_ALL_POOL_KEYS = ["combat", "spell", "hacking", "control", "task", "astral", "karma"];
 
 /**
  * Extend the basic ActorSheet with Shadowrun 2E specific functionality
@@ -94,17 +161,7 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Ensure shadowrun2e flags container exists for template bindings
     if (!context.flags.shadowrun2e) context.flags.shadowrun2e = {};
-
-    // Default: creation mode is enabled for characters created via priorities
-    if (context.flags.shadowrun2e.creationCompleted === true) {
-      context.flags.shadowrun2e.creationMode = false;
-    } else if (typeof context.flags.shadowrun2e.creationMode !== "boolean") {
-      const hasCreationPoints =
-        (context.system.creation?.attributePoints || 0) > 0 ||
-        (context.system.creation?.skillPoints || 0) > 0 ||
-        (context.system.creation?.forcePoints || 0) > 0;
-      context.flags.shadowrun2e.creationMode = hasCreationPoints;
-    }
+    context.isCreationMode = sr2HasCreationLimits(context.system);
 
     // Ensure health data structure exists with defaults
     if (!context.system.health) {
@@ -385,10 +442,15 @@ export class SR2ActorSheet extends ActorSheet {
       } else if (i.type === "bioware") {
         bioware.push(i);
       } else if (i.type === "spell") {
+        const explicitDamage = String(i.system?.damage || "")
+          .trim()
+          .toUpperCase();
         i.sr2Spell = {
-          range: sr2InferSpellRangeFromName(i.name),
-          resist: sr2InferSpellResistFromType(i.system?.type),
-          damage: sr2InferSpellDamageLevelFromDrain(i.system?.drain),
+          range: sr2GetSpellRangeLabel(i),
+          resist: sr2GetSpellTargetLabel(i),
+          damage: sr2InferCombatSpellDamageLevelFromName(i.name, {
+            fallback: explicitDamage || sr2InferSpellDamageLevelFromDrain(i.system?.drain),
+          }),
           drainDisplay: sr2FormatSpellDrain(i.system?.drain),
         };
         spells.push(i);
@@ -780,12 +842,7 @@ export class SR2ActorSheet extends ActorSheet {
     html.find(".sr2-adjust-contacts").click(this._onAdjustContacts.bind(this));
     html.find(".sr2-toggle-extra").click(this._onToggleExtra.bind(this));
 
-    // Creation resources finalization
-    html.find(".finalize-resources").click(this._onFinalizeResources.bind(this));
-    html.find(".unfinalize-resources").click(this._onUnfinalizeResources.bind(this));
-    html.find(".sr2-complete-creation").click(this._onCompleteCreation.bind(this));
-
-    // Lifestyle management (creation resources)
+    // Lifestyle management
     if (["character", "contact", "follower"].includes(this.actor.type)) {
       html.find(".sr2-lifestyle-add").click(this._onLifestyleAdd.bind(this));
       html.find(".sr2-lifestyle-delete").click(this._onLifestyleDelete.bind(this));
@@ -909,7 +966,7 @@ export class SR2ActorSheet extends ActorSheet {
   }
 
   /**
-   * Reset all pools to maximum (GM only)
+   * Reset all visible pools to their maximum values.
    */
   async _onResetAllPools(event) {
     event.preventDefault();
@@ -929,28 +986,6 @@ export class SR2ActorSheet extends ActorSheet {
           item.name.toLowerCase().includes("vehicle control rig")),
     );
 
-    // Build list of available pools for confirmation dialog
-    const availablePools = [];
-    if (true) availablePools.push("Combat");
-    if (isSpellcaster && magicAttribute > 0) availablePools.push("Magic");
-    if (hasCyberdeck) availablePools.push("Hacking");
-    if (hasControlRig) availablePools.push("Control");
-    if ((this.actor.system.pools.task?.max || 0) > 0) availablePools.push("Task");
-    if (isSpellcaster && magicAttribute > 0) availablePools.push("Astral");
-
-    // Confirm with GM before resetting
-    const confirmed = await Dialog.confirm({
-      title: "Reset All Pools",
-      content: `<p>Are you sure you want to reset all dice pools to maximum for <strong>${this.actor.name}</strong>?</p>
-                <p>This will restore the following pools to their maximum values:</p>
-                <p><em>${availablePools.join(", ")}</em></p>`,
-      yes: () => true,
-      no: () => false,
-      defaultYes: false,
-    });
-
-    if (!confirmed) return;
-
     // Build update data for available pools only
     const updateData = {};
     const poolData = this.actor.system.pools;
@@ -965,11 +1000,9 @@ export class SR2ActorSheet extends ActorSheet {
       { key: "astral", condition: isSpellcaster && magicAttribute > 0 },
     ];
 
-    const resetPools = [];
     poolTypes.forEach((poolType) => {
       if (poolType.condition && poolData[poolType.key]) {
         updateData[`system.pools.${poolType.key}.current`] = poolData[poolType.key].max;
-        resetPools.push(poolType.key);
       }
     });
 
@@ -978,28 +1011,6 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Show confirmation message
     ui.notifications.info(`All available dice pools reset to maximum for ${this.actor.name}`);
-
-    // Optional: Create chat message for transparency
-    ChatMessage.create({
-      user: game.user.id,
-      speaker: ChatMessage.getSpeaker({ actor: this.actor }),
-      content: `<div class="pool-reset-message">
-        <h3>🔄 Pools Reset</h3>
-        <p><strong>${this.actor.name}'s</strong> dice pools have been reset to maximum by the GM.</p>
-        <ul>
-          ${resetPools
-            .map((type) => {
-              const pool = poolData[type];
-              return pool && pool.max > 0
-                ? `<li>${type.charAt(0).toUpperCase() + type.slice(1)} Pool: ${pool.max}/${pool.max}</li>`
-                : "";
-            })
-            .filter((item) => item)
-            .join("")}
-        </ul>
-      </div>`,
-      whisper: [game.user.id], // Only visible to GM
-    });
   }
 
   /**
@@ -1241,18 +1252,7 @@ export class SR2ActorSheet extends ActorSheet {
   }
 
   _isCreationMode() {
-    const completed = this.actor.getFlag("shadowrun2e", "creationCompleted");
-    if (completed === true) return false;
-
-    const flag = this.actor.getFlag("shadowrun2e", "creationMode");
-    if (typeof flag === "boolean") return flag;
-
-    const creation = this.actor.system?.creation;
-    return Boolean(
-      (creation?.attributePoints || 0) > 0 ||
-      (creation?.skillPoints || 0) > 0 ||
-      (creation?.forcePoints || 0) > 0,
-    );
+    return sr2HasCreationLimits(this.actor.system);
   }
 
   _getSkillPointsSpentExcluding(excludeItemId) {
@@ -1408,11 +1408,6 @@ export class SR2ActorSheet extends ActorSheet {
     if (!this._isCreationMode()) return;
     if (Boolean(sr2GetSystemSetting("contactLevels", false))) return;
 
-    if (this.actor.system?.creation?.resourcesFinalized) {
-      ui.notifications.warn("Resources are finalized. Reopen resources to purchase extras.");
-      return;
-    }
-
     const delta = parseInt(event.currentTarget?.dataset?.delta, 10);
     if (!Number.isFinite(delta) || delta === 0) return;
 
@@ -1430,11 +1425,6 @@ export class SR2ActorSheet extends ActorSheet {
     event.stopPropagation();
 
     if (!this._isCreationMode()) return;
-
-    if (this.actor.system?.creation?.resourcesFinalized) {
-      ui.notifications.warn("Resources are finalized. Reopen resources to purchase extras.");
-      return;
-    }
 
     const extra = event.currentTarget?.dataset?.extra;
     const disableBuddies =
@@ -1595,160 +1585,6 @@ export class SR2ActorSheet extends ActorSheet {
     return this._sr2OpenActorCreateDialogWithDefaults({
       type: "ic",
     });
-  }
-
-  async _onFinalizeResources(event) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const budget = Number(this.actor.system?.creation?.startingNuyen) || 0;
-    if (budget <= 0) return;
-    if (this.actor.system?.creation?.resourcesFinalized) return;
-
-    const contactLevelsEnabled = Boolean(sr2GetSystemSetting("contactLevels", false));
-    const disableBuddies =
-      contactLevelsEnabled || Boolean(sr2GetSystemSetting("disableBuddies", false));
-
-    const budgetOptions = { disableBuddies };
-
-    if (contactLevelsEnabled) {
-      const charisma = Number(this.actor.system?.attributes?.charisma?.value) || 0;
-      const linkedContacts =
-        game?.actors?.filter(
-          (a) => a.type === "contact" && a.system?.details?.leaderId === this.actor.id,
-        ) ?? [];
-      budgetOptions.contactLevelsSummary = sr2ComputeContactLevelSummary(
-        linkedContacts.map((a) => ({
-          id: a.id,
-          sort: Number(a.sort) || 0,
-          contactLevel: a.system?.details?.contactLevel,
-        })),
-        charisma,
-      );
-
-      const over = budgetOptions.contactLevelsSummary?.over;
-      if (over?.extraContacts || over?.extraLevel2 || over?.extraLevel3) {
-        ui.notifications.error(
-          "Contact limits exceeded. Reduce contacts or contact levels before finalizing resources.",
-        );
-        return;
-      }
-    }
-
-    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(
-      this.actor.system,
-      this.actor.items,
-      budgetOptions,
-    );
-    if ((breakdown.remainingNuyen || 0) < 0) {
-      ui.notifications.error(
-        "Resource Budget exceeded. Reduce item/lifestyle/extras spending first.",
-      );
-      return;
-    }
-
-    const unspentNuyen = Math.max(0, Math.floor(breakdown.remainingNuyen || 0));
-    const startingCashFromUnspent = Math.floor(unspentNuyen / 10);
-
-    const roll = await new Roll("3d6").evaluate({ async: true });
-    const startingCashRoll = (Number(roll.total) || 0) * 1000;
-    const startingCashFinal = startingCashFromUnspent + startingCashRoll;
-
-    await this.actor.update({
-      "system.creation.resourcesFinalized": true,
-      "system.creation.unspentNuyen": unspentNuyen,
-      "system.creation.startingCashFromUnspent": startingCashFromUnspent,
-      "system.creation.startingCashRoll": startingCashRoll,
-      "system.creation.startingCashFinal": startingCashFinal,
-      "system.resources.nuyen": startingCashFinal,
-    });
-
-    ChatMessage.create({
-      speaker: ChatMessage.getSpeaker({ actor: this.actor }),
-      flavor: `${this.actor.name} finalizes starting cash`,
-      content: `<p>Unspent: ${unspentNuyen}¥ → ÷10 = ${startingCashFromUnspent}¥</p>
-                <p>Roll (3D6×1,000¥): ${startingCashRoll}¥</p>
-                <p><strong>Total Starting Cash:</strong> ${startingCashFinal}¥</p>`,
-    });
-
-    ui.notifications.info(`Resources finalized: ${startingCashFinal}¥ starting cash.`);
-  }
-
-  async _onUnfinalizeResources(event) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (!this.actor.system?.creation?.resourcesFinalized) return;
-
-    await this.actor.update({
-      "system.creation.resourcesFinalized": false,
-      "system.creation.unspentNuyen": 0,
-      "system.creation.startingCashFromUnspent": 0,
-      "system.creation.startingCashRoll": 0,
-      "system.creation.startingCashFinal": 0,
-      // During creation mode, nuyen is derived from the budget after finalization.
-      // While the budget is open, keep actual nuyen at 0 to avoid double-counting.
-      "system.resources.nuyen": 0,
-    });
-
-    ui.notifications.info("Resource budget reopened.");
-  }
-
-  async _onCompleteCreation(event) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const alreadyCompleted = this.actor.getFlag?.("shadowrun2e", "creationCompleted") === true;
-    if (alreadyCompleted) {
-      ui.notifications.warn("Character Generation is already finalized for this character.");
-      return;
-    }
-
-    const budgetNuyen = Number(this.actor.system?.creation?.startingNuyen) || 0;
-    const needsResourceFinalization =
-      budgetNuyen > 0 && this.actor.system?.creation?.resourcesFinalized !== true;
-
-    const message = `<p><strong>Finalize Character Generation?</strong></p>
-		      <p>This will permanently disable Character Generation for <strong>${this.actor.name}</strong>.</p>
-		      ${
-            needsResourceFinalization
-              ? `<p><strong>Resources will also be finalized</strong> (starting cash = unspent budget ÷ 10 + 3d6 × 1,000¥).</p>`
-              : ``
-          }
-		      <p>You will not be able to re-enter Character Generation or revert this.</p>`;
-
-    let confirmed = false;
-    if (globalThis.Dialog?.confirm) {
-      confirmed = await Dialog.confirm({
-        title: "Finalize Character Generation",
-        content: message,
-      });
-    } else {
-      confirmed = confirm(
-        "Finalize Character Generation? This will permanently disable Character Generation and cannot be undone.",
-      );
-    }
-
-    if (!confirmed) return;
-
-    if (needsResourceFinalization) {
-      await this._onFinalizeResources({
-        preventDefault: () => {},
-        stopPropagation: () => {},
-      });
-
-      if (this.actor.system?.creation?.resourcesFinalized !== true) {
-        // _onFinalizeResources displays its own error notifications when it can't finalize.
-        return;
-      }
-    }
-
-    await this.actor.update({
-      "flags.shadowrun2e.creationMode": false,
-      "flags.shadowrun2e.creationCompleted": true,
-    });
-
-    ui.notifications.info("Character Generation finalized. This cannot be undone.");
   }
 
   _getNormalizedLifestylesFromActor() {
@@ -2083,60 +1919,17 @@ export class SR2ActorSheet extends ActorSheet {
   _getAvailablePools(context = {}, rollActor = this.actor) {
     const pools = [];
     const poolData = rollActor.system.pools;
-    const magicAttribute = rollActor.system.attributes.magic?.value || 0;
-    const baseSkillName = String(context?.baseSkillName || "");
-    const rollType = String(context?.rollType || "").toLowerCase();
-    const excludeMagicPool = baseSkillName === "Conjuring";
-
-    // Check for cyberdeck and control rig
-    const hasCyberdeck = rollActor.items.some(
-      (item) => item.type === "cyberware" && item.name.toLowerCase().includes("cyberdeck"),
-    );
-
-    const hasControlRig = rollActor.items.some(
-      (item) =>
-        item.type === "cyberware" &&
-        (item.name.toLowerCase().includes("control rig") ||
-          item.name.toLowerCase().includes("vehicle control rig")),
-    );
-
-    const restrictToMagicPools = rollType === "spell" || rollType === "drain";
 
     // Define pool types with their visibility conditions
-    const poolTypes = restrictToMagicPools
-      ? [
-          { key: "karma", name: "Karma Pool", maxKey: "total", condition: true },
-          {
-            key: "spell",
-            name: "Magic Pool",
-            maxKey: "max",
-            condition: magicAttribute > 0 && !excludeMagicPool,
-          },
-        ]
-      : [
-          { key: "karma", name: "Karma Pool", maxKey: "total", condition: true },
-          { key: "combat", name: "Combat Pool", maxKey: "max", condition: true },
-          {
-            key: "spell",
-            name: "Magic Pool",
-            maxKey: "max",
-            condition: magicAttribute > 0 && !excludeMagicPool,
-          },
-          { key: "hacking", name: "Hacking Pool", maxKey: "max", condition: hasCyberdeck },
-          { key: "control", name: "Control Pool", maxKey: "max", condition: hasControlRig },
-          {
-            key: "task",
-            name: "Task Pool",
-            maxKey: "max",
-            condition: (poolData.task?.max || 0) > 0,
-          },
-          {
-            key: "astral",
-            name: "Astral Combat Pool",
-            maxKey: "max",
-            condition: magicAttribute > 0,
-          },
-        ];
+    const poolTypes = [
+      { key: "karma", name: "Karma Pool", maxKey: "total", condition: true },
+      { key: "combat", name: "Combat Pool", maxKey: "max", condition: true },
+      { key: "spell", name: "Magic Pool", maxKey: "max", condition: true },
+      { key: "hacking", name: "Hacking Pool", maxKey: "max", condition: true },
+      { key: "control", name: "Control Pool", maxKey: "max", condition: true },
+      { key: "task", name: "Task Pool", maxKey: "max", condition: true },
+      { key: "astral", name: "Astral Combat Pool", maxKey: "max", condition: true },
+    ];
 
     poolTypes.forEach((poolType) => {
       // Only add pools that meet their visibility condition
@@ -2184,6 +1977,12 @@ export class SR2ActorSheet extends ActorSheet {
     if (allowedPoolKeys) {
       availablePools = availablePools.filter((pool) => allowedPoolKeys.includes(pool.key));
     }
+    if (!availablePools.some((pool) => pool.key === "additional")) {
+      availablePools = [
+        ...availablePools,
+        { key: "additional", name: "Additional", isActorPool: false, isUnlimited: true },
+      ];
+    }
 
     const poolCaps =
       enrichedContext?.poolCaps && typeof enrichedContext.poolCaps === "object"
@@ -2191,6 +1990,20 @@ export class SR2ActorSheet extends ActorSheet {
         : {};
     const isRangedAttack =
       rollType === "attack" && weaponData && weaponData.system.weaponType === "ranged";
+    const rangedWoundModifier = isRangedAttack
+      ? sr2GetInjuryModifiers({
+          physicalBoxes: rollActor.system?.health?.physical?.value,
+          stunBoxes: rollActor.system?.health?.stun?.value,
+        }).targetNumber
+      : 0;
+    const autoRangedModifiers = isRangedAttack
+      ? {
+          recoilModifier: Number(enrichedContext?.autoRangedModifiers?.recoilModifier) || 0,
+          accessoriesModifier:
+            Number(enrichedContext?.autoRangedModifiers?.accessoriesModifier) || 0,
+          calledShotModifier: Number(enrichedContext?.autoRangedModifiers?.calledShotModifier) || 0,
+        }
+      : { recoilModifier: 0, accessoriesModifier: 0, calledShotModifier: 0 };
 
     const rangedModifiersSection = isRangedAttack
       ? `
@@ -2343,33 +2156,44 @@ export class SR2ActorSheet extends ActorSheet {
 	        ${
             availablePools.length > 0
               ? `
-	        <div class="pool-dice-section">
-	          <label><strong>Pool Dice (Optional):</strong></label>
-	          ${availablePools
-              .map(
-                (pool) => `
+        <div class="pool-dice-section">
+          <div class="pool-dice-header">
+            <label><strong>Pool Dice (Optional):</strong></label>
+            <button type="button" class="reset-pool-dice sr2-small-action" title="Reset pool dice allocation">
+              <i class="fas fa-sync-alt"></i> Reset
+            </button>
+          </div>
+          ${availablePools
+            .map(
+              (pool) => `
               ${(() => {
                 const cap = Number(poolCaps?.[pool.key]);
-                const maxDice = Number.isFinite(cap)
-                  ? Math.max(0, Math.min(pool.current, cap))
-                  : pool.current;
-                const hasDice = maxDice > 0;
+                const maxDice = pool.isUnlimited
+                  ? null
+                  : Number.isFinite(cap)
+                    ? Math.max(0, Math.min(pool.current, cap))
+                    : pool.current;
+                const hasDice = pool.isUnlimited || maxDice > 0;
                 const disabledAttr = hasDice ? "" : "disabled";
                 const tooltipAttr = hasDice ? "" : 'title="No dice available (pool is empty)"';
+                const poolLabel = pool.isUnlimited
+                  ? `${pool.name} (No limit)`
+                  : `${pool.name} (${pool.current}/${pool.max})`;
+                const maxAttr = pool.isUnlimited ? "" : `max="${maxDice}"`;
                 return `
 	            <div class="pool-option">
 	              <label>
 	                <input type="checkbox" name="pool-${pool.key}" value="${pool.key}" class="pool-checkbox" ${disabledAttr} ${tooltipAttr}>
-	                ${pool.name} (${pool.current}/${pool.max})
+	                ${poolLabel}
 	              </label>
 	              <input type="number" name="pool-${pool.key}-dice" 
-	                     min="0" max="${maxDice}" value="0" disabled class="pool-dice-input">
+	                     min="0" ${maxAttr} value="0" disabled class="pool-dice-input">
 	            </div>
                 `;
               })()}
 	          `,
-              )
-              .join("")}
+            )
+            .join("")}
 	        </div>
 	        `
               : ""
@@ -2400,7 +2224,7 @@ export class SR2ActorSheet extends ActorSheet {
             if (isChecked) {
               diceInput.prop("disabled", false);
               // Only default to 1 if the pool has dice available
-              if (pool && pool.current > 0) {
+              if (pool && (pool.isUnlimited || pool.current > 0)) {
                 diceInput.val(1);
               } else {
                 diceInput.val(0);
@@ -2414,27 +2238,58 @@ export class SR2ActorSheet extends ActorSheet {
           // Clamp pool dice inputs to their max values (prevents typing above available dice)
           html.find(".pool-dice-input").on("input change", function () {
             const rawMax = parseInt($(this).attr("max"), 10);
-            const max = Number.isFinite(rawMax) ? rawMax : 0;
+            const hasMax = Number.isFinite(rawMax);
 
             let rawValue = parseInt($(this).val(), 10);
             if (!Number.isFinite(rawValue)) rawValue = 0;
 
-            const clamped = Math.max(0, Math.min(rawValue, max));
+            const clamped = hasMax
+              ? Math.max(0, Math.min(rawValue, rawMax))
+              : Math.max(0, rawValue);
             if (String($(this).val()) !== String(clamped)) {
               $(this).val(clamped);
             }
           });
 
+          // Reset all pool dice allocations in this dialog
+          html.find(".reset-pool-dice").on("click", function () {
+            html.find(".pool-checkbox").prop("checked", false);
+            html.find(".pool-dice-input").prop("disabled", true).val(0);
+          });
+
           // Handle ranged modifier calculations
           if (isRangedAttack) {
             const updateTotalModifier = () => {
-              let totalModifier = 0;
-              html.find(".modifier-select").each(function () {
-                totalModifier += parseInt($(this).val()) || 0;
+              const modifierSummary = sr2BuildRangedModifierSummary({
+                baseTargetNumber: defaultTN,
+                recoilModifier:
+                  (parseInt(html.find('select[name="recoil-modifier"]').val()) || 0) +
+                  autoRangedModifiers.recoilModifier,
+                visibilityModifier:
+                  parseInt(html.find('select[name="visibility-modifier"]').val()) || 0,
+                coverModifier: parseInt(html.find('select[name="cover-modifier"]').val()) || 0,
+                multipleTargetsModifier:
+                  parseInt(html.find('select[name="multiple-targets-modifier"]').val()) || 0,
+                targetMovementModifier:
+                  parseInt(html.find('select[name="target-movement-modifier"]').val()) || 0,
+                attackerMeleeModifier:
+                  parseInt(html.find('select[name="attacker-melee-modifier"]').val()) || 0,
+                attackerMovementModifier:
+                  parseInt(html.find('select[name="attacker-movement-modifier"]').val()) || 0,
+                accessoriesModifier:
+                  (parseInt(html.find('select[name="accessories-modifier"]').val()) || 0) +
+                  autoRangedModifiers.accessoriesModifier,
+                otherModifier: parseInt(html.find('select[name="other-modifier"]').val()) || 0,
+                woundModifier: rangedWoundModifier,
+                calledShotModifier: autoRangedModifiers.calledShotModifier,
               });
               html
                 .find("#total-tn-modifier")
-                .text(totalModifier >= 0 ? `+${totalModifier}` : `${totalModifier}`);
+                .text(
+                  modifierSummary.totalModifier >= 0
+                    ? `+${modifierSummary.totalModifier}`
+                    : `${modifierSummary.totalModifier}`,
+                );
             };
 
             html.find(".modifier-select").change(updateTotalModifier);
@@ -2457,65 +2312,34 @@ export class SR2ActorSheet extends ActorSheet {
                 let modifierDetails = [];
 
                 if (isRangedAttack) {
-                  const recoilMod =
-                    parseInt(html.find('select[name="recoil-modifier"]').val()) || 0;
-                  const visibilityMod =
-                    parseInt(html.find('select[name="visibility-modifier"]').val()) || 0;
-                  const coverMod = parseInt(html.find('select[name="cover-modifier"]').val()) || 0;
-                  const multipleTargetsMod =
-                    parseInt(html.find('select[name="multiple-targets-modifier"]').val()) || 0;
-                  const targetMovementMod =
-                    parseInt(html.find('select[name="target-movement-modifier"]').val()) || 0;
-                  const attackerMeleeMod =
-                    parseInt(html.find('select[name="attacker-melee-modifier"]').val()) || 0;
-                  const attackerMovementMod =
-                    parseInt(html.find('select[name="attacker-movement-modifier"]').val()) || 0;
-                  const accessoriesMod =
-                    parseInt(html.find('select[name="accessories-modifier"]').val()) || 0;
-                  const otherMod = parseInt(html.find('select[name="other-modifier"]').val()) || 0;
+                  const modifierSummary = sr2BuildRangedModifierSummary({
+                    baseTargetNumber,
+                    recoilModifier:
+                      (parseInt(html.find('select[name="recoil-modifier"]').val()) || 0) +
+                      autoRangedModifiers.recoilModifier,
+                    visibilityModifier:
+                      parseInt(html.find('select[name="visibility-modifier"]').val()) || 0,
+                    coverModifier: parseInt(html.find('select[name="cover-modifier"]').val()) || 0,
+                    multipleTargetsModifier:
+                      parseInt(html.find('select[name="multiple-targets-modifier"]').val()) || 0,
+                    targetMovementModifier:
+                      parseInt(html.find('select[name="target-movement-modifier"]').val()) || 0,
+                    attackerMeleeModifier:
+                      parseInt(html.find('select[name="attacker-melee-modifier"]').val()) || 0,
+                    attackerMovementModifier:
+                      parseInt(html.find('select[name="attacker-movement-modifier"]').val()) || 0,
+                    accessoriesModifier:
+                      (parseInt(html.find('select[name="accessories-modifier"]').val()) || 0) +
+                      autoRangedModifiers.accessoriesModifier,
+                    otherModifier: parseInt(html.find('select[name="other-modifier"]').val()) || 0,
+                    woundModifier: rangedWoundModifier,
+                    calledShotModifier: autoRangedModifiers.calledShotModifier,
+                  });
 
-                  tnModifier =
-                    recoilMod +
-                    visibilityMod +
-                    coverMod +
-                    multipleTargetsMod +
-                    targetMovementMod +
-                    attackerMeleeMod +
-                    attackerMovementMod +
-                    accessoriesMod +
-                    otherMod;
-
-                  // Build modifier details for display
-                  if (recoilMod !== 0)
-                    modifierDetails.push(`Recoil: ${recoilMod >= 0 ? "+" : ""}${recoilMod}`);
-                  if (visibilityMod !== 0)
-                    modifierDetails.push(
-                      `Visibility: ${visibilityMod >= 0 ? "+" : ""}${visibilityMod}`,
-                    );
-                  if (coverMod !== 0)
-                    modifierDetails.push(`Cover: ${coverMod >= 0 ? "+" : ""}${coverMod}`);
-                  if (multipleTargetsMod !== 0)
-                    modifierDetails.push(
-                      `Multiple Targets: ${multipleTargetsMod >= 0 ? "+" : ""}${multipleTargetsMod}`,
-                    );
-                  if (targetMovementMod !== 0)
-                    modifierDetails.push(
-                      `Target Movement: ${targetMovementMod >= 0 ? "+" : ""}${targetMovementMod}`,
-                    );
-                  if (attackerMeleeMod !== 0)
-                    modifierDetails.push(
-                      `Attacker in Melee: ${attackerMeleeMod >= 0 ? "+" : ""}${attackerMeleeMod}`,
-                    );
-                  if (attackerMovementMod !== 0)
-                    modifierDetails.push(
-                      `Attacker Movement: ${attackerMovementMod >= 0 ? "+" : ""}${attackerMovementMod}`,
-                    );
-                  if (accessoriesMod !== 0)
-                    modifierDetails.push(
-                      `Accessories: ${accessoriesMod >= 0 ? "+" : ""}${accessoriesMod}`,
-                    );
-                  if (otherMod !== 0)
-                    modifierDetails.push(`Other: ${otherMod >= 0 ? "+" : ""}${otherMod}`);
+                  tnModifier = modifierSummary.totalModifier;
+                  modifierDetails = modifierSummary.parts.map(
+                    (part) => `${part.label}: ${part.value >= 0 ? "+" : ""}${part.value}`,
+                  );
                 }
 
                 const finalTargetNumber = Math.max(2, baseTargetNumber + tnModifier);
@@ -2530,10 +2354,15 @@ export class SR2ActorSheet extends ActorSheet {
 
                   if (checkbox.is(":checked")) {
                     const diceUsed = parseInt(diceInput.val()) || 0;
-                    // Validate that we don't use more dice than available
-                    const cap = Number(poolCaps?.[pool.key]);
-                    const maxFromCap = Number.isFinite(cap) ? cap : Infinity;
-                    const actualDiceUsed = Math.min(diceUsed, pool.current, maxFromCap);
+                    let actualDiceUsed = 0;
+                    if (pool.isUnlimited) {
+                      actualDiceUsed = Math.max(0, diceUsed);
+                    } else {
+                      // Validate that we don't use more dice than available
+                      const cap = Number(poolCaps?.[pool.key]);
+                      const maxFromCap = Number.isFinite(cap) ? cap : Infinity;
+                      actualDiceUsed = Math.min(diceUsed, pool.current, maxFromCap);
+                    }
                     if (actualDiceUsed > 0) {
                       totalPoolDice += actualDiceUsed;
                       poolsUsed.push({ pool: pool, dice: actualDiceUsed });
@@ -2772,8 +2601,11 @@ export class SR2ActorSheet extends ActorSheet {
       const spellClassLabel = spellClass ? SR2_SPELL_CLASS_LABELS[spellClass] || spellClass : "";
 
       const targets = Array.from(game.user?.targets ?? []);
-      const resistAttributeLabel = sr2InferSpellResistFromType(spell.system?.type);
-      const resistAttributeKey = resistAttributeLabel ? resistAttributeLabel.toLowerCase() : "";
+      const resistAttributeKey = sr2GetSpellResistanceAttributeKey(spell);
+      const casterWoundModifier = sr2GetInjuryModifiers({
+        physicalBoxes: this.actor.system?.health?.physical?.value,
+        stunBoxes: this.actor.system?.health?.stun?.value,
+      }).targetNumber;
       let defaultCastTargetNumber = 4;
       if (targets.length === 1 && resistAttributeKey) {
         const targetActor = targets[0]?.actor;
@@ -2784,6 +2616,7 @@ export class SR2ActorSheet extends ActorSheet {
           defaultCastTargetNumber = sr2Clamp(resistAttributeValue, 2, 30);
         }
       }
+      defaultCastTargetNumber = sr2Clamp(defaultCastTargetNumber + casterWoundModifier, 2, 30);
 
       const focusPools = [];
       const equippedGear = this.actor.items.filter((i) => i.type === "gear" && i.system?.equipped);
@@ -2832,12 +2665,75 @@ export class SR2ActorSheet extends ActorSheet {
       );
       if (!castResult?.rolled) return;
 
+      const casterSuccesses = Number(castResult.rollResult?.successes) || 0;
+      let spellResolution = null;
+      let combatSpellDamage = null;
+      let combatSpellApplied = false;
+
+      if (targets.length === 1 && resistAttributeKey && casterSuccesses > 0) {
+        const targetActor = targets[0]?.actor || null;
+        const targetAttributeValue =
+          Number(targetActor?.system?.attributes?.[resistAttributeKey]?.value) || 0;
+        const resistanceTest = sr2PrepareSpellResistanceTest({
+          spellType: spell.system?.type,
+          spellForce: force,
+          targetAttributeValue,
+        });
+
+        if (targetActor && resistanceTest.dicePool > 0) {
+          const resistanceResult = await this._showTargetNumberDialog(
+            resistanceTest.dicePool,
+            `${targetActor.name} Spell Resistance vs ${spell.name}`,
+            "spell-resistance",
+            resistanceTest.targetNumber,
+            null,
+            {
+              rollActor: targetActor,
+              allowedPoolKeys: SR2_ALL_POOL_KEYS,
+            },
+          );
+
+          if (resistanceResult?.rolled) {
+            spellResolution = sr2SummarizeSpellEffectResolution({
+              casterSuccesses,
+              targetSuccesses: Number(resistanceResult.rollResult?.successes) || 0,
+              resisted: true,
+              spellType: spell.system?.type,
+            });
+
+            if (spellClass === "C") {
+              const explicitDamage = String(spell.system?.damage || "")
+                .trim()
+                .toUpperCase();
+              const baseSpellDamageLevel = sr2InferCombatSpellDamageLevelFromName(spell.name, {
+                fallback: explicitDamage || sr2InferSpellDamageLevelFromDrain(spell.system?.drain),
+              });
+              combatSpellDamage = sr2SummarizeCombatSpellDamage({
+                baseDamageLevel: baseSpellDamageLevel,
+                netSuccesses: spellResolution.netSuccesses,
+                minimumEffect: spellResolution.minimumEffect,
+              });
+              if (combatSpellDamage.finalDamageLevel && combatSpellDamage.boxes > 0) {
+                const combatSpellDamageType = /stun/i.test(String(spell.name || ""))
+                  ? "stun"
+                  : "physical";
+                combatSpellApplied = await sr2ApplyDamageToActor(
+                  targetActor,
+                  combatSpellDamageType,
+                  combatSpellDamage.boxes,
+                );
+              }
+            }
+          }
+        }
+      }
+
       // Calculate drain
       const misfireDrainMod = castResult.rollResult?.isCriticalFailure ? 2 : 0;
-      const drainValue = Math.max(
-        2,
-        this._calculateDrain(spell.system.drain, force) + misfireDrainMod,
-      );
+      const drainValue = sr2ComputeDrainTargetNumber({
+        modifiedForce: sr2ComputeDrainValueFromCode(spell.system.drain, force),
+        criticalMisfire: Boolean(misfireDrainMod),
+      });
       const drainPool = Number(this.actor.system.attributes.willpower.value) || 0;
 
       // Show TN selection dialog and roll drain resistance
@@ -2871,50 +2767,50 @@ export class SR2ActorSheet extends ActorSheet {
       );
       if (!drainResult?.rolled) return;
 
-      const baseDrainLevel = sr2InferSpellDamageLevelFromDrain(spell.system.drain) || "";
-      const drainRollSuccesses = Number(drainResult?.rollResult?.successes) || 0;
-      if (!baseDrainLevel) return;
-
-      // SR2: Every 2 successes stages Drain down 1 level.
-      const drainStageDown = Math.floor(drainRollSuccesses / 2);
-      const levels = ["L", "M", "S", "D"];
-      const baseIndex = levels.indexOf(baseDrainLevel);
-      if (baseIndex < 0) return;
-      const finalIndex = Math.max(-1, baseIndex - drainStageDown);
-      if (finalIndex < 0) return; // Staged below Light: no Drain.
-
-      const drainBoxesByLevel = { L: 1, M: 3, S: 6, D: 10 };
-      const finalLevel = levels[finalIndex];
-      const drainBoxes = drainBoxesByLevel[finalLevel] ?? 0;
-      if (drainBoxes <= 0) return;
-
-      const isPhysicalDrain = force > magicRating;
-      const damageType = isPhysicalDrain ? "physical" : "stun";
-      const otherType = isPhysicalDrain ? "stun" : "physical";
-
-      const currentPrimary = Number(this.actor.system?.health?.[damageType]?.value) || 0;
-      const currentOther = Number(this.actor.system?.health?.[otherType]?.value) || 0;
-      const maxPrimary = Number(this.actor.system?.health?.[damageType]?.max) || 10;
-      const maxOther = Number(this.actor.system?.health?.[otherType]?.max) || 10;
-
-      let nextPrimary = currentPrimary + drainBoxes;
-      let carry = 0;
-
-      // SR2: excess Stun carries into Physical (overflow handling is limited by current 10-box tracks).
-      if (damageType === "stun" && nextPrimary > maxPrimary) {
-        carry = nextPrimary - maxPrimary;
-        nextPrimary = maxPrimary;
+      const drainResolution = sr2SummarizeDrainApplication({
+        baseDrainLevel: sr2InferSpellDamageLevelFromDrain(spell.system.drain) || "",
+        modifiedForce: sr2ComputeDrainValueFromCode(spell.system.drain, force),
+        criticalMisfire: Boolean(misfireDrainMod),
+        resistanceSuccesses: Number(drainResult?.rollResult?.successes) || 0,
+        spellForce: force,
+        casterMagic: magicRating,
+      });
+      if (drainResolution.applied && drainResolution.boxes > 0) {
+        await sr2ApplyDamageToActor(this.actor, drainResolution.damageType, drainResolution.boxes);
       }
 
-      const updateData = {
-        [`system.health.${damageType}.value`]: Math.max(0, Math.min(maxPrimary, nextPrimary)),
-      };
-      if (carry > 0) {
-        const nextOther = Math.max(0, Math.min(maxOther, currentOther + carry));
-        updateData[`system.health.${otherType}.value`] = nextOther;
-      }
+      if (spellResolution) {
+        const targetActor = targets[0]?.actor || null;
+        const combatDamageText = combatSpellDamage?.finalDamageLevel
+          ? `<p><strong>Combat Spell Damage:</strong> ${combatSpellDamage.finalDamageLevel} (${combatSpellDamage.boxes} boxes)${combatSpellApplied ? "" : " (not applied)"}</p>`
+          : "";
+        const effectText =
+          spellResolution.result === "resisted"
+            ? "Target resisted the spell."
+            : spellResolution.minimumEffect
+              ? "Target resists, but the spell takes minimum effect."
+              : spellResolution.result === "success"
+                ? `Spell takes effect with ${spellResolution.netSuccesses} net successes.`
+                : "Spell miscast.";
 
-      await this.actor.update(updateData);
+        await ChatMessage.create({
+          user: game.user.id,
+          speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+          content: `
+            <div class="sr2-combat-resolution">
+              <h3>Spell Resolution: ${spell.name}</h3>
+              ${targetActor ? `<p><strong>Target:</strong> ${targetActor.name}</p>` : ""}
+              <p><strong>Effect:</strong> ${effectText}</p>
+              ${combatDamageText}
+              <p><strong>Drain:</strong> ${
+                drainResolution.applied && drainResolution.finalLevel
+                  ? `${drainResolution.finalLevel} ${drainResolution.damageType === "physical" ? "Physical" : "Stun"} (${drainResolution.boxes} boxes)`
+                  : "No Drain"
+              }</p>
+            </div>
+          `,
+        });
+      }
     } catch (error) {
       console.error("SR2E | Failed to cast spell", error);
       ui.notifications.error("Spell casting failed (see console).");
@@ -2937,6 +2833,12 @@ export class SR2ActorSheet extends ActorSheet {
     const weaponId = event.currentTarget.dataset.itemId;
     const weapon = this.actor.items.get(weaponId);
     if (!weapon) return;
+    const requestedAttackType = String(event.currentTarget.dataset.rollType || "attack");
+    const weaponAttackModifiers = sr2BuildWeaponAttackModifiers({
+      actor: this.actor,
+      weapon,
+      requestedAttackType,
+    });
 
     const isRanged = weapon.system.weaponType === "ranged";
     const { skillRating, skillName, rollDescription } = sr2GetWeaponSkillData(this.actor, weapon, {
@@ -2960,7 +2862,10 @@ export class SR2ActorSheet extends ActorSheet {
       if (!isRanged) return;
       if (!weapon.system.ammo || weapon.system.ammo.current <= 0) return;
 
-      const newAmmo = weapon.system.ammo.current - 1;
+      const newAmmo = Math.max(
+        0,
+        (Number(weapon.system.ammo.current) || 0) - weaponAttackModifiers.profile.ammoConsumed,
+      );
       await weapon.update({ "system.ammo.current": newAmmo });
       if (newAmmo === 0) ui.notifications.warn(`${weapon.name} is out of ammunition!`);
     };
@@ -2975,8 +2880,9 @@ export class SR2ActorSheet extends ActorSheet {
         4,
         weapon,
         {
-          allowedPoolKeys: ["combat", "karma"],
+          allowedPoolKeys: SR2_ALL_POOL_KEYS,
           poolCaps: { combat: dicePool },
+          autoRangedModifiers: weaponAttackModifiers,
         },
       );
       if (!attackResult?.rolled) return;
@@ -2988,6 +2894,11 @@ export class SR2ActorSheet extends ActorSheet {
           <div class="sr2-combat-resolution">
             <h3>${attackType}: ${weapon.name}</h3>
             <p><strong>Damage Code:</strong> ${weapon.system.damage || "1L"}</p>
+            ${
+              isRanged && weaponAttackModifiers.profile.modeUsed !== "SS"
+                ? `<p><strong>Fire Mode:</strong> ${weaponAttackModifiers.profile.modeUsed} (${weaponAttackModifiers.profile.ammoConsumed} round${weaponAttackModifiers.profile.ammoConsumed === 1 ? "" : "s"})</p>`
+                : ""
+            }
             <p><em>Target exactly one token to auto-resolve damage/resistance.</em></p>
           </div>
         `,
@@ -3030,25 +2941,18 @@ export class SR2ActorSheet extends ActorSheet {
           const longMax = Number(rangeData.long) || 0;
           const extremeMax = Number(rangeData.extreme) || 0;
 
-          if (minRange > 0 && distance < minRange) {
-            baseTargetNumber = 9;
-            rangeLabel = `Below Minimum (${minRange}+)`;
-          } else if (distance <= shortMax) {
-            baseTargetNumber = 4;
-            rangeLabel = "Short";
-          } else if (distance <= mediumMax) {
-            baseTargetNumber = 5;
-            rangeLabel = "Medium";
-          } else if (distance <= longMax) {
-            baseTargetNumber = 6;
-            rangeLabel = "Long";
-          } else if (distance <= extremeMax) {
-            baseTargetNumber = 9;
-            rangeLabel = "Extreme";
-          } else {
-            baseTargetNumber = 9;
-            rangeLabel = "Out of Range";
-          }
+          const rangeBand = sr2GetRangeBand({
+            distance,
+            rangeData: {
+              min: minRange,
+              short: shortMax,
+              medium: mediumMax,
+              long: longMax,
+              extreme: extremeMax,
+            },
+          });
+          baseTargetNumber = rangeBand.targetNumber;
+          rangeLabel = rangeBand.label;
         }
       } catch (err) {
         // If range data fails, fall back to TN 4.
@@ -3073,8 +2977,9 @@ export class SR2ActorSheet extends ActorSheet {
         baseTargetNumber,
         weapon,
         {
-          allowedPoolKeys: ["combat", "karma"],
+          allowedPoolKeys: SR2_ALL_POOL_KEYS,
           poolCaps: { combat: dicePool },
+          autoRangedModifiers: weaponAttackModifiers,
         },
       );
       if (!attackResult?.rolled) return;
@@ -3097,6 +3002,10 @@ export class SR2ActorSheet extends ActorSheet {
         await consumeAmmo();
         return;
       }
+      const adjustedDamage = sr2ApplyWeaponAttackProfileToDamage(
+        parsed,
+        weaponAttackModifiers.profile,
+      );
 
       const armorRatings = sr2GetArmorRatings(targetActor);
       const rangeType = String(weapon.system.rangeType || "");
@@ -3105,7 +3014,10 @@ export class SR2ActorSheet extends ActorSheet {
         /grenade|missile|rocket/i.test(String(weapon.name || ""));
       const armorValue = usesImpactArmor ? armorRatings.impact : armorRatings.ballistic;
 
-      const resistTargetNumber = Math.max(2, parsed.power - armorValue);
+      const resistTargetNumber = sr2ComputeDamageResistanceTargetNumber({
+        power: adjustedDamage.power,
+        armor: armorValue,
+      });
       const bodyDice = sr2GetModifiedAttribute(targetActor, "body");
 
       const resistResult = await this._showTargetNumberDialog(
@@ -3116,7 +3028,7 @@ export class SR2ActorSheet extends ActorSheet {
         null,
         {
           rollActor: targetActor,
-          allowedPoolKeys: ["combat", "karma"],
+          allowedPoolKeys: SR2_ALL_POOL_KEYS,
         },
       );
       if (!resistResult?.rolled) return;
@@ -3125,46 +3037,46 @@ export class SR2ActorSheet extends ActorSheet {
       const defenderCombatPoolSuccesses =
         Number(resistResult.rollResult?.successesBySource?.combat) || 0;
 
-      const cleanMiss = defenderCombatPoolSuccesses > attackerSuccesses;
-      let finalLevel = null;
-      let boxes = 0;
-
-      if (!cleanMiss) {
-        const net = attackerSuccesses - defenderSuccesses;
-        const stages = Math.floor(Math.abs(net) / 2);
-        const stageDelta = net > 0 ? stages : net < 0 ? -stages : 0;
-        finalLevel = sr2StageDamageLevel(parsed.level, stageDelta);
-        if (finalLevel) boxes = SR2_DAMAGE_BOXES_BY_LEVEL[finalLevel] ?? 0;
-      }
+      const rangedResolution = sr2ResolveRangedCombat({
+        attackerSuccesses,
+        defenderSuccesses,
+        defenderCombatPoolSuccesses,
+        baseDamageLevel: adjustedDamage.level,
+      });
 
       let applied = false;
-      if (finalLevel && boxes > 0) {
+      if (rangedResolution.finalLevel && rangedResolution.boxes > 0) {
         try {
-          applied = await sr2ApplyDamageToActor(targetActor, parsed.damageType, boxes);
+          applied = await sr2ApplyDamageToActor(
+            targetActor,
+            adjustedDamage.damageType,
+            rangedResolution.boxes,
+          );
         } catch (error) {
           console.error("SR2E | Failed to apply ranged damage", error);
         }
       }
 
-      const resultLabel = cleanMiss
+      const resultLabel = rangedResolution.cleanMiss
         ? `Clean miss (defender Combat Pool successes ${defenderCombatPoolSuccesses} > attacker ${attackerSuccesses}).`
-        : finalLevel
-          ? `${finalLevel} ${parsed.damageType === "stun" ? "Stun" : "Physical"} (${boxes} boxes)`
+        : rangedResolution.finalLevel
+          ? `${rangedResolution.finalLevel} ${adjustedDamage.damageType === "stun" ? "Stun" : "Physical"} (${rangedResolution.boxes} boxes)`
           : "No damage";
 
       await ChatMessage.create({
         user: game.user.id,
         speaker: ChatMessage.getSpeaker({ actor: this.actor }),
         content: `
-          <div class="sr2-combat-resolution">
-            <h3>Ranged Combat: ${this.actor.name} → ${targetActor.name}</h3>
-            <p><strong>Weapon:</strong> ${weapon.name} (${weapon.system.damage || "1L"})</p>
-            ${rangeText ? `<p><strong>Range:</strong> ${rangeText}</p>` : ""}
-            <p><strong>Attack successes:</strong> ${attackerSuccesses}</p>
-            <p><strong>Resistance TN:</strong> ${resistTargetNumber} (= ${parsed.power} - ${armorValue})</p>
-            <p><strong>Resistance successes:</strong> ${defenderSuccesses} (Combat Pool-only: ${defenderCombatPoolSuccesses})</p>
-            <p><strong>Result:</strong> ${resultLabel}${finalLevel && boxes > 0 ? (applied ? "" : " (not applied)") : ""}</p>
-          </div>
+            <div class="sr2-combat-resolution">
+              <h3>Ranged Combat: ${this.actor.name} → ${targetActor.name}</h3>
+              <p><strong>Weapon:</strong> ${weapon.name} (${weapon.system.damage || "1L"})</p>
+              <p><strong>Fire Mode:</strong> ${weaponAttackModifiers.profile.modeUsed} (${weaponAttackModifiers.profile.ammoConsumed} round${weaponAttackModifiers.profile.ammoConsumed === 1 ? "" : "s"})</p>
+              ${rangeText ? `<p><strong>Range:</strong> ${rangeText}</p>` : ""}
+              <p><strong>Attack successes:</strong> ${attackerSuccesses}</p>
+              <p><strong>Resistance TN:</strong> ${resistTargetNumber} (= ${adjustedDamage.power} - ${armorValue})</p>
+              <p><strong>Resistance successes:</strong> ${defenderSuccesses} (Combat Pool-only: ${defenderCombatPoolSuccesses})</p>
+              <p><strong>Result:</strong> ${resultLabel}${rangedResolution.finalLevel && rangedResolution.boxes > 0 ? (applied ? "" : " (not applied)") : ""}</p>
+            </div>
         `,
       });
 
@@ -3208,8 +3120,29 @@ export class SR2ActorSheet extends ActorSheet {
       (Number(defenderWeapon?.system?.reach) || 0);
     const reachDelta = attackerReach - defenderReach;
 
-    const attackerMeleeTN = Math.max(2, 4 - reachDelta);
-    const defenderMeleeTN = Math.max(2, 4 + reachDelta);
+    const meleeTargetNumbers = sr2ComputeMeleeTargetNumbers({
+      attackerReach,
+      defenderReach,
+    });
+    const attackerWoundModifier = sr2GetInjuryModifiers({
+      physicalBoxes: this.actor.system?.health?.physical?.value,
+      stunBoxes: this.actor.system?.health?.stun?.value,
+    }).targetNumber;
+    const defenderWoundModifier = sr2GetInjuryModifiers({
+      physicalBoxes: targetActor.system?.health?.physical?.value,
+      stunBoxes: targetActor.system?.health?.stun?.value,
+    }).targetNumber;
+    const meleeCalledShotRequested = requestedAttackType.startsWith("called-shot");
+    const attackerMeleeTN = Math.max(
+      2,
+      meleeTargetNumbers.attackerTargetNumber +
+        attackerWoundModifier +
+        (meleeCalledShotRequested ? 4 : 0),
+    );
+    const defenderMeleeTN = Math.max(
+      2,
+      meleeTargetNumbers.defenderTargetNumber + defenderWoundModifier,
+    );
 
     const attackerSubtitle = dicePool > 0 ? `${skillName} (${rollDescription})` : "Defaulting";
     const reachNote =
@@ -3222,7 +3155,7 @@ export class SR2ActorSheet extends ActorSheet {
       attackerMeleeTN,
       weapon,
       {
-        allowedPoolKeys: ["combat", "karma"],
+        allowedPoolKeys: SR2_ALL_POOL_KEYS,
         poolCaps: { combat: dicePool },
       },
     );
@@ -3236,7 +3169,7 @@ export class SR2ActorSheet extends ActorSheet {
       defenderWeapon,
       {
         rollActor: targetActor,
-        allowedPoolKeys: ["combat", "karma"],
+        allowedPoolKeys: SR2_ALL_POOL_KEYS,
         poolCaps: { combat: defenderSkillRating },
       },
     );
@@ -3245,28 +3178,47 @@ export class SR2ActorSheet extends ActorSheet {
     const attackerSuccesses = Number(attackerTest.rollResult?.successes) || 0;
     const defenderSuccesses = Number(defenderTest.rollResult?.successes) || 0;
 
-    const attackerHits = attackerSuccesses >= defenderSuccesses;
+    const meleeOpposed = sr2ResolveMeleeOpposedTest({
+      attackerSuccesses,
+      defenderSuccesses,
+    });
+    const attackerHits = meleeOpposed.attackerHits;
     const hitterActor = attackerHits ? this.actor : targetActor;
     const hitActor = attackerHits ? targetActor : this.actor;
     const hitterWeapon = attackerHits ? weapon : defenderWeapon;
     const hitterWeaponName = attackerHits ? weapon.name : defenderWeaponName;
-    const hitterSuccesses = attackerHits ? attackerSuccesses : defenderSuccesses;
-    const otherSuccesses = attackerHits ? defenderSuccesses : attackerSuccesses;
-    const stageUp = Math.floor(Math.max(0, hitterSuccesses - otherSuccesses) / 2);
+    const stageUp = meleeOpposed.stageUp;
 
     const hitterStrength = sr2GetModifiedAttribute(hitterActor, "strength");
     const rawDamageCode = hitterWeapon ? hitterWeapon.system.damage || "" : "(STR)M Stun";
-    const parsed = sr2ParseDamageCode(rawDamageCode, { strength: hitterStrength });
+    let parsed = sr2ParseDamageCode(rawDamageCode, { strength: hitterStrength });
     if (!parsed) {
       await resolveErrorChat(
         `Cannot auto-resolve: unparseable melee damage code <strong>${rawDamageCode}</strong>.`,
       );
       return;
     }
+    if (meleeCalledShotRequested && attackerHits) {
+      const meleeCalledShot = sr2ApplyCalledShot({
+        baseTargetNumber: attackerMeleeTN,
+        baseDamageLevel: parsed.level,
+        enabled: true,
+        mode: requestedAttackType.includes("subtarget") ? "sub-target" : "damage",
+      });
+      parsed = {
+        ...parsed,
+        level:
+          meleeCalledShot.finalDamageLevel && meleeCalledShot.damageLevelIncreased
+            ? meleeCalledShot.finalDamageLevel
+            : parsed.level,
+      };
+    }
 
-    const stagedLevel = sr2StageDamageLevel(parsed.level, stageUp) || parsed.level;
     const armorRatings = sr2GetArmorRatings(hitActor);
-    const resistTargetNumber = Math.max(2, parsed.power - armorRatings.impact);
+    const resistTargetNumber = sr2ComputeDamageResistanceTargetNumber({
+      power: parsed.power,
+      armor: armorRatings.impact,
+    });
     const bodyDice = sr2GetModifiedAttribute(hitActor, "body");
 
     const resistResult = await this._showTargetNumberDialog(
@@ -3277,27 +3229,29 @@ export class SR2ActorSheet extends ActorSheet {
       null,
       {
         rollActor: hitActor,
-        allowedPoolKeys: ["combat", "karma"],
+        allowedPoolKeys: SR2_ALL_POOL_KEYS,
       },
     );
     if (!resistResult?.rolled) return;
 
     const resistSuccesses = Number(resistResult.rollResult?.successes) || 0;
-    const stageDown = Math.floor(resistSuccesses / 2);
-    const finalLevel = sr2StageDamageLevel(stagedLevel, -stageDown);
-    const boxes = finalLevel ? (SR2_DAMAGE_BOXES_BY_LEVEL[finalLevel] ?? 0) : 0;
+    const meleeResolution = sr2ResolveMeleeDamage({
+      baseDamageLevel: parsed.level,
+      opposedStageUp: stageUp,
+      resistanceSuccesses: resistSuccesses,
+    });
 
     let applied = false;
-    if (finalLevel && boxes > 0) {
+    if (meleeResolution.finalLevel && meleeResolution.boxes > 0) {
       try {
-        applied = await sr2ApplyDamageToActor(hitActor, parsed.damageType, boxes);
+        applied = await sr2ApplyDamageToActor(hitActor, parsed.damageType, meleeResolution.boxes);
       } catch (error) {
         console.error("SR2E | Failed to apply melee damage", error);
       }
     }
 
-    const resultLabel = finalLevel
-      ? `${finalLevel} ${parsed.damageType === "stun" ? "Stun" : "Physical"} (${boxes} boxes)`
+    const resultLabel = meleeResolution.finalLevel
+      ? `${meleeResolution.finalLevel} ${parsed.damageType === "stun" ? "Stun" : "Physical"} (${meleeResolution.boxes} boxes)`
       : "No damage";
 
     await ChatMessage.create({
@@ -3309,10 +3263,10 @@ export class SR2ActorSheet extends ActorSheet {
           <p><strong>Attacker successes:</strong> ${attackerSuccesses}</p>
           <p><strong>Defender successes:</strong> ${defenderSuccesses}</p>
           <p><strong>Hit:</strong> ${hitterActor.name} (${hitterWeaponName})</p>
-          <p><strong>Damage staged up:</strong> +${stageUp} level(s) → ${stagedLevel}</p>
+          <p><strong>Damage staged up:</strong> +${stageUp} level(s) → ${meleeResolution.stagedLevel}</p>
           <p><strong>Resistance TN:</strong> ${resistTargetNumber} (= ${parsed.power} - ${armorRatings.impact})</p>
           <p><strong>Resistance successes:</strong> ${resistSuccesses}</p>
-          <p><strong>Result:</strong> ${resultLabel}${finalLevel && boxes > 0 ? (applied ? "" : " (not applied)") : ""}</p>
+          <p><strong>Result:</strong> ${resultLabel}${meleeResolution.finalLevel && meleeResolution.boxes > 0 ? (applied ? "" : " (not applied)") : ""}</p>
         </div>
       `,
     });
@@ -3518,7 +3472,16 @@ export class SR2ActorSheet extends ActorSheet {
     try {
       if (isInstalling) {
         // Check if installing this cyberware would reduce essence below 0.1
-        const currentEssence = round2(this.actor.system.attributes.essence.value || 6);
+        const baseEssence = round2(this.actor.system.attributes.essence.max || 6);
+        const derivedEssence = round2(
+          baseEssence - sr2ComputeInstalledCyberwareEssenceLoss(this.actor.items),
+        );
+        const currentEssence = round2(
+          Math.min(
+            derivedEssence,
+            Number(this.actor.system.attributes.essence.value) || baseEssence,
+          ),
+        );
         const remainingEssence = round2(currentEssence - essenceCost);
 
         if (remainingEssence < 0.1) {
@@ -3599,12 +3562,9 @@ export class SR2ActorSheet extends ActorSheet {
     try {
       if (isInstalling) {
         // Calculate current Bio Index usage
-        const installedBioware = this.actor.items.filter(
-          (i) => i.type === "bioware" && i.system.installed && i._id !== itemId,
-        );
-        const currentBioIndex = installedBioware.reduce((total, bio) => {
-          return total + (parseFloat(bio.system.bioIndex) || 0);
-        }, 0);
+        const currentBioIndex = sr2ComputeInstalledBiowareIndex(this.actor.items, {
+          excludeItemId: itemId,
+        });
 
         // Bio Index limit is typically equal to Essence (rounded down)
         const essenceValue = Math.floor(this.actor.system.attributes.essence.value || 6);
@@ -3670,34 +3630,6 @@ export class SR2ActorSheet extends ActorSheet {
       checkbox.checked = !!item.system.installed;
       this.render(false);
     }
-  }
-
-  /**
-   * Calculate drain value from drain code
-   */
-  _calculateDrain(drainCode, force) {
-    if (!drainCode) return 4;
-
-    // Parse drain codes like "(F/2)M", "[(F/2)+1]S", etc.
-    let drainValue = 4; // Default
-
-    try {
-      // Replace F with force value
-      let formula = drainCode.replace(/F/g, force.toString());
-
-      // Remove brackets and damage level indicators
-      formula = formula.replace(/[\[\]LMSD]/g, "");
-      formula = formula.replace(/[^0-9+\-*/().]/g, "");
-
-      // Evaluate arithmetic safely (no arbitrary code execution).
-      const computed = sr2SafeEvalArithmetic(formula);
-      if (!Number.isFinite(computed)) throw new Error("Invalid drain formula");
-      drainValue = Math.max(2, Math.floor(computed));
-    } catch (error) {
-      console.warn(`Could not parse drain code: ${drainCode}`, error);
-    }
-
-    return drainValue;
   }
 
   /**
@@ -3932,14 +3864,14 @@ export class SR2ActorSheet extends ActorSheet {
   }
 
   /**
-   * Roll initiative to chat using the actor's current derived initiative terms.
+   * Roll initiative through the active Encounter using the actor's token in the current scene.
    */
   async _onInitiativeRoll(event) {
     event.preventDefault();
     event.stopPropagation();
 
     try {
-      await sr2RollInitiativeToChat(this.actor);
+      await rollEncounterInitiative({ actor: this.actor });
     } catch (error) {
       console.error("SR2E | Error rolling initiative:", error);
       ui.notifications.error("Failed to roll initiative (see console).");
@@ -4515,15 +4447,7 @@ export class SR2ActorSheet extends ActorSheet {
       }
     }
 
-    const creationModeOverride = actorUpdates["flags.shadowrun2e.creationMode"];
-    let creationMode = this._isCreationMode();
-    if (creationModeOverride !== undefined) {
-      if (typeof creationModeOverride === "boolean") creationMode = creationModeOverride;
-      else if (typeof creationModeOverride === "string")
-        creationMode = creationModeOverride === "true";
-      else creationMode = Boolean(creationModeOverride);
-    }
-
+    const creationMode = this._isCreationMode();
     const totalSkillPoints = Number(this.actor.system.creation?.skillPoints) || 0;
     const totalAttributePoints = Number(this.actor.system.creation?.attributePoints) || 0;
     const totalForcePoints = Number(this.actor.system.creation?.forcePoints) || 0;
@@ -4796,6 +4720,14 @@ export class SR2ActorSheet extends ActorSheet {
   async _showMeleeCombatDialog(weapon, defaultTN = 4) {
     //Dean
     const availablePools = this._getAvailablePools();
+    if (!availablePools.some((pool) => pool.key === "additional")) {
+      availablePools.push({
+        key: "additional",
+        name: "Additional",
+        isActorPool: false,
+        isUnlimited: true,
+      });
+    }
     const dialogContent = `
       <div class="melee-combat-dialog">
         <h3>Melee Combat Modifiers for ${weapon.name}</h3>
@@ -4903,18 +4835,34 @@ export class SR2ActorSheet extends ActorSheet {
           availablePools.length > 0
             ? `
         <div class="pool-dice-section">
-          <label><strong>Pool Dice (Optional):</strong></label>
+          <div class="pool-dice-header">
+            <label><strong>Pool Dice (Optional):</strong></label>
+            <button type="button" class="reset-pool-dice sr2-small-action" title="Reset pool dice allocation">
+              <i class="fas fa-sync-alt"></i> Reset
+            </button>
+          </div>
           ${availablePools
             .map(
               (pool) => `
+              ${(() => {
+                const hasDice = pool.isUnlimited || pool.current > 0;
+                const disabledAttr = hasDice ? "" : "disabled";
+                const tooltipAttr = hasDice ? "" : 'title="No dice available (pool is empty)"';
+                const poolLabel = pool.isUnlimited
+                  ? `${pool.name} (No limit)`
+                  : `${pool.name} (${pool.current}/${pool.max})`;
+                const maxAttr = pool.isUnlimited ? "" : `max="${pool.current}"`;
+                return `
             <div class="pool-option">
               <label>
-                <input type="checkbox" name="pool-${pool.key}" value="${pool.key}" class="pool-checkbox">
-                ${pool.name} (${pool.current}/${pool.max})
+                <input type="checkbox" name="pool-${pool.key}" value="${pool.key}" class="pool-checkbox" ${disabledAttr} ${tooltipAttr}>
+                ${poolLabel}
               </label>
               <input type="number" name="pool-${pool.key}-dice" 
-                     min="0" max="${pool.current}" value="0" disabled class="pool-dice-input">
+                     min="0" ${maxAttr} value="0" disabled class="pool-dice-input">
             </div>
+                `;
+              })()}
           `,
             )
             .join("")}
@@ -4943,6 +4891,12 @@ export class SR2ActorSheet extends ActorSheet {
       },
       default: "attack",
       render: (html) => {
+        // Reset all pool dice allocations in this dialog
+        html.find(".reset-pool-dice").on("click", function () {
+          html.find(".pool-checkbox").prop("checked", false);
+          html.find(".pool-dice-input").prop("disabled", true).val(0);
+        });
+
         // Add event listeners to update total modifier in real-time
         const updateTotal = () => {
           const modifiers = this._calculateMeleeModifiers(html);

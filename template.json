@@ -791,7 +791,8 @@
       "bodyLocation": "",
       "reactionBonus": 0,
       "initiativeDice": 0,
-      "streetIndex": 1.0
+      "streetIndex": 1.0,
+      "mods": ""
     },
     "bioware": {
       "templates": ["base"],

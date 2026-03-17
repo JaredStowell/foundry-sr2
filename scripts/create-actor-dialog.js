@@ -6,6 +6,20 @@ import {
   sr2GetAllowedMetatypesForPriority,
 } from "./actor-creation.js";
 
+export function sr2GetActorTypeLabel(type) {
+  const labels = {
+    character: "Character",
+    contact: "Contact",
+    follower: "Follower",
+    cyberdeck: "Cyberdeck",
+    vehicle: "Vehicle",
+    spirit: "Spirit",
+    critter: "Critter",
+    ic: "IC",
+  };
+  return labels[type] || (type ? type.charAt(0).toUpperCase() + type.slice(1) : "");
+}
+
 export function sr2ParseDelimitedPair(rawValue, fallbackRightToLeft = false) {
   if (rawValue === undefined || rawValue === null) return [0, 0];
   const parts = rawValue.toString().split("/");
@@ -63,6 +77,11 @@ export function sr2EnhanceActorCreateDialog(app, html) {
     optionValues.includes("vehicle") &&
     optionValues.includes("spirit");
   if (!isSR2ActorCreateDialog) return;
+
+  typeSelect.find("option").each((_, el) => {
+    if (!el.value) return;
+    el.textContent = sr2GetActorTypeLabel(el.value);
+  });
 
   // Avoid injecting multiple times on re-renders
   if (form.find(".sr2-create-extras").length) return;
@@ -289,9 +308,9 @@ export function sr2EnhanceActorCreateDialog(app, html) {
           <input type="hidden" class="sr2-cyberdeck-template-field" name="system.bookPage" data-dtype="String" disabled />
         </div>
         <div class="sr2-create-spirit-details">
-          <h3>Spirit</h3>
+          <h3 class="sr2-spirit-details-title">Spirit</h3>
           <div class="form-group">
-            <label>Spirit Type</label>
+            <label class="sr2-spirit-type-label">Spirit Type</label>
             <div class="form-fields">
               <select name="system.spiritType" class="sr2-spirit-type-select">${spiritTypeOptionsHtml}</select>
             </div>
@@ -437,6 +456,7 @@ export function sr2EnhanceActorCreateDialog(app, html) {
       vehicle: "Vehicle",
       cyberdeck: "Cyberdeck",
       spirit: "Spirit",
+      critter: "Critter",
       ic: "IC",
     };
 
@@ -778,7 +798,8 @@ export function sr2EnhanceActorCreateDialog(app, html) {
     const showArchetype = type === "follower" || type === "contact";
     const showVehicle = type === "vehicle";
     const showCyberdeck = type === "cyberdeck";
-    const showSpirit = type === "spirit";
+    const showSpirit = type === "spirit" || type === "critter";
+    const spiritLabel = type === "critter" ? "Critter" : "Spirit";
 
     prioritiesSection.toggle(showPriorities);
     prioritiesSection.find("select").prop("disabled", !showPriorities);
@@ -800,6 +821,8 @@ export function sr2EnhanceActorCreateDialog(app, html) {
     cyberdeckSection.find("select, input").prop("disabled", true);
     cyberdeckTemplateSelect.prop("disabled", !showCyberdeck);
 
+    spiritSection.find(".sr2-spirit-details-title").text(spiritLabel);
+    spiritSection.find(".sr2-spirit-type-label").text(`${spiritLabel} Type`);
     spiritSection.toggle(showSpirit);
     spiritSection.find("select").prop("disabled", !showSpirit);
 

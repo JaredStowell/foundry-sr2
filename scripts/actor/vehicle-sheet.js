@@ -6,9 +6,9 @@ export class SR2VehicleSheet extends ActorSheet {
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       classes: ["shadowrun2e", "sheet", "actor", "vehicle"],
-      width: 700,
-      height: 600,
-      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "stats" }],
+      width: 980,
+      height: 720,
+      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "main" }],
     });
   }
 

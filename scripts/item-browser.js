@@ -3,10 +3,16 @@
  * Allows browsing and adding items from JSON data files
  */
 import {
+  sr2InferCombatSpellDamageLevelFromName,
   sr2ComputeContactLevelSummary,
   sr2ComputeCreationNuyenBudgetBreakdown,
+  sr2HasCreationLimits,
   sr2InferFocusBondCostForGearItem,
 } from "./sr2-rules.js";
+import {
+  sr2BuildCatalogAugmentationRecord,
+  sr2BuildAugmentationSystemData,
+} from "./rules/augmentation-effects.js";
 
 export class SR2ItemBrowser extends Application {
   static _itemsCache = new Map();
@@ -212,16 +218,7 @@ export class SR2ItemBrowser extends Application {
 
     for (const [category, categoryItems] of Object.entries(data)) {
       for (const item of categoryItems) {
-        items.push({
-          name: item.Name,
-          category: category,
-          essence: item.EssCost,
-          cost: item.Cost,
-          streetIndex: item.StreetIndex,
-          mods: item.Mods || "",
-          bookPage: item.BookPage,
-          type: "cyberware",
-        });
+        items.push(sr2BuildCatalogAugmentationRecord({ type: "cyberware", category, item }));
       }
     }
 
@@ -236,16 +233,7 @@ export class SR2ItemBrowser extends Application {
 
     for (const [category, categoryItems] of Object.entries(data)) {
       for (const item of categoryItems) {
-        items.push({
-          name: item.Name,
-          category: category,
-          bioIndex: parseFloat(item.BioIndex),
-          cost: item.Cost,
-          streetIndex: item.StreetIndex,
-          mods: item.Mods || "",
-          bookPage: item.BookPage,
-          type: "bioware",
-        });
+        items.push(sr2BuildCatalogAugmentationRecord({ type: "bioware", category, item }));
       }
     }
 
@@ -286,13 +274,16 @@ export class SR2ItemBrowser extends Application {
       const name = spell.Name.trim();
       const spellType = spell.Type;
       const drain = spell.Drain;
+      const range = String(spell.Range || "").trim();
+      const target = String(spell.Target || "").trim();
 
       items.push({
         name,
         category: spell.Class,
-        range: this._inferSpellRange(name),
-        resist: this._inferSpellResist(spellType),
-        damage: this._inferSpellDamageLevelFromDrain(drain),
+        range: range || this._inferSpellRange(name),
+        resist: target || this._inferSpellResist(spellType),
+        target,
+        damage: spell.Damage || sr2InferCombatSpellDamageLevelFromName(name, { fallback: "M" }),
         drain,
         drainDisplay: this._formatSpellDrain(drain),
         spellType,
@@ -314,20 +305,14 @@ export class SR2ItemBrowser extends Application {
   _inferSpellResist(spellType) {
     switch (String(spellType || "").toUpperCase()) {
       case "M":
+      case "MANA":
         return "Willpower";
       case "P":
+      case "PHYSICAL":
         return "Body";
       default:
         return "";
     }
-  }
-
-  _inferSpellDamageLevelFromDrain(rawDrain) {
-    const drain = String(rawDrain || "")
-      .trim()
-      .toUpperCase();
-    const match = drain.match(/([LMSD])\s*$/);
-    return match ? match[1] : "";
   }
 
   _formatSpellDrain(rawDrain) {
@@ -563,30 +548,39 @@ export class SR2ItemBrowser extends Application {
 
     switch (this.itemType) {
       case "cyberware":
-        return {
-          ...baseData,
-          essence: itemData.essence,
+        return sr2BuildAugmentationSystemData({
+          type: "cyberware",
+          name: itemData.name,
+          category: itemData.category,
+          bookPage: itemData.bookPage,
+          cost: cost.value ?? itemData.cost,
           streetIndex: itemData.streetIndex,
+          essence: itemData.essence,
           mods: itemData.mods,
           installed: false,
-          rating: 0,
-        };
+        });
 
       case "bioware":
-        return {
-          ...baseData,
-          bioIndex: itemData.bioIndex,
+        return sr2BuildAugmentationSystemData({
+          type: "bioware",
+          name: itemData.name,
+          category: itemData.category,
+          bookPage: itemData.bookPage,
+          cost: cost.value ?? itemData.cost,
           streetIndex: itemData.streetIndex,
+          bioIndex: itemData.bioIndex,
           mods: itemData.mods,
           installed: false,
-          rating: 0,
-        };
+        });
 
       case "spell":
         return {
           ...baseData,
           drain: itemData.drain,
+          damage: itemData.damage || sr2InferCombatSpellDamageLevelFromName(itemData.name),
           type: itemData.spellType,
+          range: itemData.range || this._inferSpellRange(itemData.name),
+          target: itemData.target || itemData.resist || this._inferSpellResist(itemData.spellType),
           duration: itemData.duration,
           class: itemData.category,
           force: 1,
@@ -718,28 +712,11 @@ export class SR2ItemBrowser extends Application {
 
   _isCreationBudgetActive(actor) {
     if (!actor) return false;
-
-    const completed = actor.getFlag?.("shadowrun2e", "creationCompleted");
-    if (completed === true) return false;
-
-    const flag = actor.getFlag?.("shadowrun2e", "creationMode");
-    let creationMode = false;
-    if (typeof flag === "boolean") {
-      creationMode = flag;
-    } else {
-      const creation = actor.system?.creation;
-      creationMode = Boolean(
-        (creation?.attributePoints || 0) > 0 ||
-        (creation?.skillPoints || 0) > 0 ||
-        (creation?.forcePoints || 0) > 0,
-      );
-    }
-    if (!creationMode) return false;
+    if (!sr2HasCreationLimits(actor.system)) return false;
 
     const startingNuyen = Number(actor.system?.creation?.startingNuyen) || 0;
     if (startingNuyen <= 0) return false;
-
-    return !actor.system?.creation?.resourcesFinalized;
+    return true;
   }
 
   _getCreationBudgetRemaining(actor) {

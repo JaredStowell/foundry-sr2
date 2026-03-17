@@ -2,7 +2,11 @@
  * Data Importer for Shadowrun 2E
  * Loads items from JSON files into Foundry compendiums
  */
-import { sr2InferFocusBondCostForGearItem } from "./sr2-rules.js";
+import {
+  sr2InferCombatSpellDamageLevelFromName,
+  sr2InferFocusBondCostForGearItem,
+} from "./sr2-rules.js";
+import { sr2BuildAugmentationSystemData } from "./rules/augmentation-effects.js";
 import { sr2LogDebug } from "./utils/logger.js";
 
 export class SR2DataImporter {
@@ -88,17 +92,19 @@ export class SR2DataImporter {
             type: "cyberware",
             img: "systems/shadowrun2e/icons/cyberware.svg",
             system: {
-              description: `Category: ${category}\nSource: ${item.BookPage}`,
-              essence: item.EssCost,
-              cost: item.Cost,
-              streetIndex: item.StreetIndex,
-              mods: item.Mods || "",
-              installed: false,
-              rating: 0,
-              bodyLocation: category.toLowerCase(),
+              ...sr2BuildAugmentationSystemData({
+                type: "cyberware",
+                name: item.Name,
+                category,
+                bookPage: item.BookPage,
+                cost: item.Cost,
+                streetIndex: item.StreetIndex,
+                essence: item.EssCost,
+                mods: item.Mods,
+                installed: false,
+              }),
               quantity: 1,
               weight: 0,
-              price: item.Cost,
             },
           };
           items.push(itemData);
@@ -144,17 +150,19 @@ export class SR2DataImporter {
             type: "bioware",
             img: "systems/shadowrun2e/icons/bioware.svg",
             system: {
-              description: `Category: ${category}\nSource: ${item.BookPage}`,
-              bioIndex: parseFloat(item.BioIndex),
-              cost: item.Cost,
-              streetIndex: item.StreetIndex,
-              mods: item.Mods || "",
-              installed: false,
-              rating: 0,
-              bodyLocation: category.toLowerCase(),
+              ...sr2BuildAugmentationSystemData({
+                type: "bioware",
+                name: item.Name,
+                category,
+                bookPage: item.BookPage,
+                cost: item.Cost,
+                streetIndex: item.StreetIndex,
+                bioIndex: item.BioIndex,
+                mods: item.Mods,
+                installed: false,
+              }),
               quantity: 1,
               weight: 0,
-              price: item.Cost,
             },
           };
           items.push(itemData);
@@ -199,8 +207,10 @@ export class SR2DataImporter {
             class: spell.Class,
             force: 1,
             category: spell.Class.toLowerCase(),
-            range: "touch",
-            damage: "M",
+            range: String(spell.Range || "").trim() || "LOS",
+            target: String(spell.Target || "").trim(),
+            damage:
+              spell.Damage || sr2InferCombatSpellDamageLevelFromName(spell.Name, { fallback: "M" }),
             quantity: 1,
             weight: 0,
             price: 0,

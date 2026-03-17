@@ -6,9 +6,9 @@ export class SR2SpiritSheet extends ActorSheet {
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       classes: ["shadowrun2e", "sheet", "actor", "spirit"],
-      width: 600,
-      height: 500,
-      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "stats" }],
+      width: 920,
+      height: 680,
+      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "main" }],
     });
   }
 
@@ -35,6 +35,8 @@ export class SR2SpiritSheet extends ActorSheet {
    * Organize and classify data for Spirit sheets.
    */
   _prepareSpiritData(context) {
+    const isCritter = this.actor.type === "critter";
+
     // Initiative display (SR2: Reaction + initiative dice)
     const dice = Number.isFinite(Number(context.system?.initiative?.dice))
       ? Number(context.system.initiative.dice)
@@ -49,6 +51,15 @@ export class SR2SpiritSheet extends ActorSheet {
 
     // Services remaining display
     context.servicesRemaining = Math.max(0, context.system.services);
+    context.isCritter = isCritter;
+    context.entityLabel = isCritter ? "Critter" : "Spirit";
+    context.entityTypeLabel = isCritter ? "Critter Type" : "Spirit Type";
+    context.namePlaceholder = isCritter ? "Critter Name" : "Spirit Name";
+    context.controllerLabel = isCritter ? "Handler" : "Summoner";
+    context.damageLabel = isCritter ? "Condition" : "Spirit Damage";
+    context.powersLabel = isCritter ? "Abilities" : "Powers";
+    context.descriptionLabel = isCritter ? "Critter Description" : "Spirit Description";
+    context.showSpiritControls = !isCritter;
   }
 
   /**

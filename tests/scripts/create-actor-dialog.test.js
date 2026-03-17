@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { sr2InferVehicleType, sr2ParseDelimitedPair } from "../../scripts/create-actor-dialog.js";
+import {
+  sr2GetActorTypeLabel,
+  sr2InferVehicleType,
+  sr2ParseDelimitedPair,
+} from "../../scripts/create-actor-dialog.js";
 
 describe("sr2ParseDelimitedPair", () => {
   it("parses slash-delimited numeric values", () => {
@@ -25,5 +29,16 @@ describe("sr2InferVehicleType", () => {
   it("detects watercraft and falls back to ground", () => {
     expect(sr2InferVehicleType({ name: "Harbor Patrol Boat", Notes: "" })).toBe("water");
     expect(sr2InferVehicleType({ name: "GMC Bulldog", Notes: "Cargo van" })).toBe("ground");
+  });
+});
+
+describe("sr2GetActorTypeLabel", () => {
+  it("uses explicit labels for type names that do not title-case correctly", () => {
+    expect(sr2GetActorTypeLabel("critter")).toBe("Critter");
+    expect(sr2GetActorTypeLabel("ic")).toBe("IC");
+  });
+
+  it("falls back to title-casing unknown types", () => {
+    expect(sr2GetActorTypeLabel("mystery")).toBe("Mystery");
   });
 });

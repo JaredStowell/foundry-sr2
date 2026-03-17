@@ -6,9 +6,9 @@ export class SR2CyberdeckSheet extends ActorSheet {
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       classes: ["shadowrun2e", "sheet", "actor", "cyberdeck"],
-      width: 600,
-      height: 500,
-      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "deck" }],
+      width: 960,
+      height: 720,
+      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "main" }],
     });
   }
 

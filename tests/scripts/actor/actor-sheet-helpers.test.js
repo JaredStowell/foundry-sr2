@@ -65,7 +65,9 @@ describe("actor-sheet helper spell utilities", () => {
     expect(sr2InferSpellRangeFromName("Treat Touch")).toBe("Touch");
     expect(sr2InferSpellRangeFromName("Manabolt")).toBe("LOS");
     expect(sr2InferSpellResistFromType("M")).toBe("Willpower");
+    expect(sr2InferSpellResistFromType("mana")).toBe("Willpower");
     expect(sr2InferSpellResistFromType("p")).toBe("Body");
+    expect(sr2InferSpellResistFromType("physical")).toBe("Body");
     expect(sr2InferSpellDamageLevelFromDrain("[Force/2]S")).toBe("S");
     expect(sr2FormatSpellDrain("[Force/2]S")).toBe("Force/2 S");
     expect(sr2NormalizeSpellClass("manipulation")).toBe("M");

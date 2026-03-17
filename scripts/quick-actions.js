@@ -2,7 +2,7 @@
  * Shadowrun 2E - Token Quick Actions
  * Shows a small action popup when the user controls a token.
  */
-import { sr2GetInitiativeTerms, sr2RollInitiativeToChat } from "./actions/initiative.js";
+import { rollEncounterInitiative, sr2GetInitiativeTerms } from "./actions/initiative.js";
 import { sr2ExecuteActorItemAction } from "./actions/item-actions.js";
 
 let sr2QuickActionsApp = null;
@@ -370,7 +370,7 @@ export class SR2QuickActionsPopup extends Application {
     if (!actor) return;
 
     try {
-      await sr2RollInitiativeToChat(actor);
+      await rollEncounterInitiative({ actor, token: this.token });
     } catch (error) {
       console.error("SR2E | Error rolling initiative from quick actions:", error);
       ui.notifications.error("Failed to roll initiative (see console).");

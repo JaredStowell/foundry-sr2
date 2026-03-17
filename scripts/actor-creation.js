@@ -1,4 +1,9 @@
-import { sr2ComputeContactLevelSummary, sr2IsPriorityLetter } from "./sr2-rules.js";
+import {
+  sr2InferCombatSpellDamageLevelFromName,
+  sr2ComputeContactLevelSummary,
+  sr2IsPriorityLetter,
+} from "./sr2-rules.js";
+import { sr2BuildAugmentationSystemData } from "./rules/augmentation-effects.js";
 
 /* -------------------------------------------- */
 /*  Actor Creation Helpers                      */
@@ -182,7 +187,7 @@ export async function sr2SyncFreeLanguageSkills(actor) {
 
 export const SR2_FOLLOWER_ARCHETYPES = {
   // Source reference: `ARCHETYPES.md` (OCR dump from SR2 archetype section).
-  // NOTE: We currently apply only attributes + skills + magic flags. Cyberware/bioware/spells/gear are TODO.
+  // NOTE: We currently apply attributes + skills + magic flags + augmentations + spells. Gear is still TODO.
 
   bodyguard: {
     label: "Bodyguard",
@@ -1306,6 +1311,8 @@ export function sr2NormalizeCatalogName(name) {
 
 let sr2CyberwareCatalogIndex = null;
 let sr2CyberwareCatalogIndexPromise = null;
+let sr2BiowareCatalogIndex = null;
+let sr2BiowareCatalogIndexPromise = null;
 
 async function sr2LoadCyberwareCatalogIndex() {
   if (sr2CyberwareCatalogIndex) return sr2CyberwareCatalogIndex;
@@ -1330,6 +1337,31 @@ async function sr2LoadCyberwareCatalogIndex() {
       });
   }
   return sr2CyberwareCatalogIndexPromise;
+}
+
+async function sr2LoadBiowareCatalogIndex() {
+  if (sr2BiowareCatalogIndex) return sr2BiowareCatalogIndex;
+  if (!sr2BiowareCatalogIndexPromise) {
+    sr2BiowareCatalogIndexPromise = fetch("/systems/shadowrun2e/data/bioware.json")
+      .then((response) => response.json())
+      .then((data) => {
+        const map = new Map();
+        for (const [category, items] of Object.entries(data || {})) {
+          for (const item of items || []) {
+            const key = sr2NormalizeCatalogName(item?.Name);
+            if (!key) continue;
+            if (!map.has(key)) map.set(key, { category, item });
+          }
+        }
+        sr2BiowareCatalogIndex = map;
+        return map;
+      })
+      .catch((error) => {
+        sr2BiowareCatalogIndexPromise = null;
+        throw error;
+      });
+  }
+  return sr2BiowareCatalogIndexPromise;
 }
 
 let sr2SpellsCatalogIndex = null;
@@ -1365,17 +1397,9 @@ export async function sr2BuildCyberwareItemData(name, { installed = true } = {})
     type: "cyberware",
     img: "systems/shadowrun2e/icons/cyberware.svg",
     system: {
-      description: "",
-      essence: 0,
-      cost: 0,
-      streetIndex: 1.0,
-      mods: "",
-      installed,
-      rating: 0,
-      bodyLocation: "",
+      ...sr2BuildAugmentationSystemData({ type: "cyberware", name: trimmedName, installed }),
       quantity: 1,
       weight: 0,
-      price: 0,
     },
   };
 
@@ -1393,17 +1417,19 @@ export async function sr2BuildCyberwareItemData(name, { installed = true } = {})
       type: "cyberware",
       img: "systems/shadowrun2e/icons/cyberware.svg",
       system: {
-        description: `Category: ${category}\nSource: ${item.BookPage || ""}`.trim(),
-        essence: item.EssCost ?? 0,
-        cost: item.Cost ?? 0,
-        streetIndex: item.StreetIndex ?? 1.0,
-        mods: item.Mods || "",
-        installed,
-        rating: 0,
-        bodyLocation: String(category || "").toLowerCase(),
+        ...sr2BuildAugmentationSystemData({
+          type: "cyberware",
+          name: item.Name || trimmedName,
+          category,
+          bookPage: item.BookPage,
+          cost: item.Cost,
+          streetIndex: item.StreetIndex,
+          essence: item.EssCost,
+          mods: item.Mods,
+          installed,
+        }),
         quantity: 1,
         weight: 0,
-        price: item.Cost ?? 0,
       },
     };
   } catch (err) {
@@ -1412,8 +1438,57 @@ export async function sr2BuildCyberwareItemData(name, { installed = true } = {})
   }
 }
 
+export async function sr2BuildBiowareItemData(name, { installed = true } = {}) {
+  const trimmedName = String(name || "").trim();
+  const fallback = {
+    name: trimmedName || "Bioware",
+    type: "bioware",
+    img: "systems/shadowrun2e/icons/bioware.svg",
+    system: {
+      ...sr2BuildAugmentationSystemData({ type: "bioware", name: trimmedName, installed }),
+      quantity: 1,
+      weight: 0,
+    },
+  };
+
+  if (!trimmedName) return fallback;
+
+  try {
+    const index = await sr2LoadBiowareCatalogIndex();
+    const entry = index?.get(sr2NormalizeCatalogName(trimmedName));
+    if (!entry?.item) return fallback;
+
+    const item = entry.item;
+    const category = entry.category || "";
+    return {
+      name: String(item.Name || trimmedName).trim(),
+      type: "bioware",
+      img: "systems/shadowrun2e/icons/bioware.svg",
+      system: {
+        ...sr2BuildAugmentationSystemData({
+          type: "bioware",
+          name: item.Name || trimmedName,
+          category,
+          bookPage: item.BookPage,
+          cost: item.Cost,
+          streetIndex: item.StreetIndex,
+          bioIndex: item.BioIndex,
+          mods: item.Mods,
+          installed,
+        }),
+        quantity: 1,
+        weight: 0,
+      },
+    };
+  } catch (err) {
+    console.warn("SR2E | Failed to load bioware catalog for archetype item:", trimmedName, err);
+    return fallback;
+  }
+}
+
 export async function sr2BuildSpellItemData(name, { force = 1 } = {}) {
   const trimmedName = String(name || "").trim();
+  const inferredRange = /\btouch\b/i.test(trimmedName) ? "Touch" : "LOS";
   const fallback = {
     name: trimmedName || "Spell",
     type: "spell",
@@ -1426,8 +1501,9 @@ export async function sr2BuildSpellItemData(name, { force = 1 } = {}) {
       class: "",
       force: Math.max(1, Number(force) || 1),
       category: "c",
-      range: "touch",
-      damage: "M",
+      range: inferredRange,
+      target: "",
+      damage: sr2InferCombatSpellDamageLevelFromName(trimmedName, { fallback: "M" }),
       quantity: 1,
       weight: 0,
       price: 0,
@@ -1453,8 +1529,11 @@ export async function sr2BuildSpellItemData(name, { force = 1 } = {}) {
         class: spell.Class || "",
         force: Math.max(1, Number(force) || 1),
         category: String(spell.Class || "c").toLowerCase(),
-        range: "touch",
-        damage: "M",
+        range: String(spell.Range || "").trim() || inferredRange,
+        target: String(spell.Target || "").trim(),
+        damage:
+          spell.Damage ||
+          sr2InferCombatSpellDamageLevelFromName(spell.Name || trimmedName, { fallback: "M" }),
         quantity: 1,
         weight: 0,
         price: 0,
@@ -1581,6 +1660,13 @@ export function sr2BuildContactBiographyFallback(archetype) {
     : [];
   if (cyberware.length) {
     lines.push(`Typical Cyberware: ${cyberware.join(", ")}`);
+  }
+
+  const bioware = Array.isArray(archetype.bioware)
+    ? archetype.bioware.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  if (bioware.length) {
+    lines.push(`Typical Bioware: ${bioware.join(", ")}`);
   }
 
   const awakened = Boolean(archetype.magic?.awakened || archetype.magic?.physicalAdept);

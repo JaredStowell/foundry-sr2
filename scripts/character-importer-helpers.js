@@ -1,4 +1,5 @@
 import {
+  sr2InferCombatSpellDamageLevelFromName,
   sr2ComputeSkillRatingsFromAllocated,
   sr2GetRacialAttributeBounds,
   sr2GetRacialTraits,
@@ -767,6 +768,8 @@ export function sr2BuildImportedItemData(data, options = {}) {
   for (const spell of Array.isArray(data?.spells) ? data.spells : []) {
     const name = getImportedStringField(spell, "Name");
     if (!name) continue;
+    const importedRange = getImportedStringField(spell, "Range");
+    const importedTarget = getImportedStringField(spell, "Target");
     items.push({
       name,
       type: "spell",
@@ -774,10 +777,11 @@ export function sr2BuildImportedItemData(data, options = {}) {
       system: {
         category: inferImportedSpellCategory(spell?.Class),
         type: inferImportedSpellType(spell?.Type),
-        range: "touch",
-        damage: "M",
-        duration: inferImportedSpellDuration(spell?.Duration),
+        range: importedRange || (/\btouch\b/i.test(name) ? "Touch" : "LOS"),
+        target: importedTarget,
         drain: getImportedStringField(spell, "Drain") || "2",
+        damage: sr2InferCombatSpellDamageLevelFromName(name, { fallback: "M" }),
+        duration: inferImportedSpellDuration(spell?.Duration),
         force: sr2ParseImportedInteger(spell?.Rating, 1),
         class: getImportedStringField(spell, "Class") || "C",
         description: buildImportedSpellDescription(spell),

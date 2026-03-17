@@ -222,6 +222,15 @@ export function sr2ComputeCreationLifestyleCost(lifestyleKey, months) {
   };
 }
 
+export function sr2HasCreationLimits(system) {
+  return (
+    (Number(system?.creation?.attributePoints) || 0) > 0 ||
+    (Number(system?.creation?.skillPoints) || 0) > 0 ||
+    (Number(system?.creation?.forcePoints) || 0) > 0 ||
+    (Number(system?.creation?.startingNuyen) || 0) > 0
+  );
+}
+
 export function sr2ComputeCreationNuyenBudgetBreakdown(system, items, options = {}) {
   const budgetNuyen = Number(system?.creation?.startingNuyen) || 0;
   const itemCost = sr2ComputeItemNuyenSpent(items);
@@ -422,7 +431,7 @@ export function sr2ParseFocusName(name) {
   }
 
   const match = itemName.match(
-    /^(Specific Spell Focus|Spell Type Focus|Spell Category Focus|Spirit Focus|Power Focus|Weapon Focus)\s+(\d+)$/i,
+    /^(Specific Spell Focus|Spell Type Focus|Spell Category Focus|Spirit Focus|Power Focus|Weapon Focus)(?:\s*-\s*|\s+)(\d+)$/i,
   );
   if (!match) return null;
 
@@ -467,6 +476,48 @@ export function sr2FormatSignedModifier(value) {
   const num = Number(value) || 0;
   if (num === 0) return "0";
   return num > 0 ? `+${num}` : `${num}`;
+}
+
+export function sr2InferSpellDamageLevelFromDrain(drainCode) {
+  const drain = String(drainCode || "")
+    .trim()
+    .toUpperCase();
+  const match = drain.match(/([LMSD])\s*$/);
+  return match ? match[1] : "";
+}
+
+const SR2_COMBAT_SPELL_DAMAGE_BY_NAME = Object.freeze({
+  // SR2 combat spell damage levels from the spell descriptions table.
+  fireball: "S",
+  hellblast: "D",
+  "mana bolt": "S",
+  manabolt: "S",
+  "mana dart": "L",
+  manadart: "L",
+  "mana missile": "M",
+  manamissile: "M",
+  manaball: "M",
+  "power bolt": "S",
+  powerbolt: "S",
+  "power dart": "L",
+  powerdart: "L",
+  "power missile": "M",
+  powermissile: "M",
+  powerball: "M",
+  ram: "S",
+  sleep: "M",
+});
+
+export function sr2InferCombatSpellDamageLevelFromName(spellName, options = {}) {
+  const key = String(spellName || "")
+    .trim()
+    .toLowerCase();
+  const fallback = String(options?.fallback ?? "").toUpperCase();
+  if (!key) return fallback;
+  if (!Object.prototype.hasOwnProperty.call(SR2_COMBAT_SPELL_DAMAGE_BY_NAME, key)) {
+    return fallback;
+  }
+  return SR2_COMBAT_SPELL_DAMAGE_BY_NAME[key];
 }
 
 export function sr2CountSpellLocksPurchased(items) {

@@ -85,88 +85,70 @@ describe("registerCreationRuleHooks", () => {
     registerCreationRuleHooks();
     registerCreationRuleHooks();
 
-    expect(Hooks.on).toHaveBeenCalledTimes(11);
+    expect(Hooks.on).toHaveBeenCalledTimes(10);
   });
 
-  it("locks completed creation actors against reopening", () => {
-    registerCreationRuleHooks();
-    const [lockCompletionHook] = Hooks.__get("preUpdateActor");
+  it("ignores legacy creation flags and derives chargen limits from system.creation data", () => {
+    registerCreationRuleHooks({
+      areContactLevelsEnabled: () => true,
+    });
+    const [preCreateActorHook] = Hooks.__get("preCreateActor");
 
-    const actor = {
-      type: "character",
+    const leader = createCreationActor({
+      id: "leader-1",
       getFlag: vi.fn((scope, key) => {
         if (scope !== "shadowrun2e") return undefined;
         if (key === "creationCompleted") return true;
         if (key === "creationMode") return false;
         return undefined;
       }),
-    };
-    const changes = {
-      flags: {
-        shadowrun2e: {
-          creationCompleted: false,
-          creationMode: true,
+      system: {
+        attributes: {
+          charisma: { value: 0 },
+          magic: { value: 1 },
+        },
+        resources: {
+          lifestyle: "street",
+        },
+        creation: {
+          attributePoints: 0,
+          skillPoints: 0,
+          forcePoints: 0,
+          startingNuyen: 5000,
+          extras: {
+            contacts: 0,
+            buddy: 0,
+            gang: 0,
+            followers: 0,
+          },
         },
       },
-    };
-
-    lockCompletionHook(actor, changes, {}, "U1");
-
-    expect(foundry.utils.getProperty(changes, "flags.shadowrun2e.creationCompleted")).toBe(true);
-    expect(foundry.utils.getProperty(changes, "flags.shadowrun2e.creationMode")).toBe(false);
-    expect(ui.notifications.warn).toHaveBeenCalled();
-  });
-
-  it("prevents unsetting completion/creation flags once locked", () => {
-    registerCreationRuleHooks();
-    const [lockCompletionHook] = Hooks.__get("preUpdateActor");
-
-    const actor = createCreationActor({
-      type: "character",
-      getFlag: vi.fn((scope, key) => {
-        if (scope !== "shadowrun2e") return undefined;
-        if (key === "creationCompleted") return true;
-        if (key === "creationMode") return false;
-        return undefined;
-      }),
     });
-    const changes = {
-      flags: {
-        shadowrun2e: {
-          "-=creationCompleted": null,
-          "-=creationMode": null,
-        },
-      },
-    };
-
-    lockCompletionHook(actor, changes, {}, "U1");
-
-    expect(
-      foundry.utils.getProperty(changes, "flags.shadowrun2e.-=creationCompleted"),
-    ).toBeUndefined();
-    expect(foundry.utils.getProperty(changes, "flags.shadowrun2e.-=creationMode")).toBeUndefined();
-    expect(foundry.utils.getProperty(changes, "flags.shadowrun2e.creationCompleted")).toBe(true);
-    expect(foundry.utils.getProperty(changes, "flags.shadowrun2e.creationMode")).toBe(false);
-  });
-
-  it("does not modify flags when actor is not yet locked", () => {
-    registerCreationRuleHooks();
-    const [lockCompletionHook] = Hooks.__get("preUpdateActor");
-
-    const actor = createCreationActor({
-      getFlag: vi.fn((scope, key) => {
-        if (scope !== "shadowrun2e") return undefined;
-        if (key === "creationCompleted") return false;
-        if (key === "creationMode") return true;
-        return undefined;
-      }),
+    game.actors.__set(leader);
+    game.actors.__set({
+      id: "contact-a",
+      type: "contact",
+      sort: 1,
+      system: { details: { leaderId: "leader-1", contactLevel: 1 } },
     });
-    const changes = { flags: { shadowrun2e: { creationMode: true } } };
+    game.actors.__set({
+      id: "contact-b",
+      type: "contact",
+      sort: 2,
+      system: { details: { leaderId: "leader-1", contactLevel: 1 } },
+    });
 
-    lockCompletionHook(actor, changes, {}, "U1");
-    expect(
-      foundry.utils.getProperty(changes, "flags.shadowrun2e.creationCompleted"),
-    ).toBeUndefined();
+    const result = preCreateActorHook(
+      { type: "contact" },
+      { type: "contact", system: { details: { leaderId: "leader-1", contactLevel: 1 } } },
+      {},
+      "U1",
+    );
+
+    expect(result).toBe(false);
+    expect(ui.notifications.error).toHaveBeenCalledWith(
+      "Too many contacts (max extra contacts is 3× Charisma, plus two free).",
+    );
   });
 
   it("blocks contact creation when charisma-based contact cap is exceeded", () => {
@@ -335,7 +317,7 @@ describe("registerCreationRuleHooks", () => {
       areBuddiesDisabled: () => true,
     });
     const preUpdateActorHooks = Hooks.__get("preUpdateActor");
-    const budgetGuardHook = preUpdateActorHooks[1];
+    const budgetGuardHook = preUpdateActorHooks[0];
 
     const actor = {
       type: "character",
@@ -381,7 +363,7 @@ describe("registerCreationRuleHooks", () => {
       getContactLevelsSummaryForLeader: contactSummaryForLeader,
     });
     const preUpdateActorHooks = Hooks.__get("preUpdateActor");
-    const contactUpdateHook = preUpdateActorHooks[1];
+    const contactUpdateHook = preUpdateActorHooks[0];
 
     const leader = createCreationActor({
       id: "leader-1",
@@ -436,7 +418,7 @@ describe("registerCreationRuleHooks", () => {
       getContactLevelsSummaryForLeader: contactSummaryForLeader,
     });
     const preUpdateActorHooks = Hooks.__get("preUpdateActor");
-    const contactUpdateHook = preUpdateActorHooks[1];
+    const contactUpdateHook = preUpdateActorHooks[0];
 
     const leader = createCreationActor({ id: "leader-2" });
     game.actors.__set(leader);
@@ -481,7 +463,7 @@ describe("registerCreationRuleHooks", () => {
       }),
     });
     const preUpdateActorHooks = Hooks.__get("preUpdateActor");
-    const contactUpdateHook = preUpdateActorHooks[1];
+    const contactUpdateHook = preUpdateActorHooks[0];
 
     game.actors.__set(createCreationActor({ id: "leader-1" }));
     const actor = createContactActor();
@@ -916,21 +898,21 @@ describe("registerCreationRuleHooks", () => {
 
   it("ignores hook processing when updates come from another user or skip budget flag", () => {
     registerCreationRuleHooks();
-    const [preUpdateActorLock] = Hooks.__get("preUpdateActor");
+    const [preUpdateActorHook] = Hooks.__get("preUpdateActor");
     const preUpdateItemHooks = Hooks.__get("preUpdateItem");
 
     const actor = createCreationActor();
     const lockChanges = {
-      flags: {
-        shadowrun2e: {
-          creationCompleted: false,
+      system: {
+        creation: {
+          extras: {
+            buddy: 1,
+          },
         },
       },
     };
-    preUpdateActorLock(actor, lockChanges, {}, "OTHER");
-    expect(foundry.utils.getProperty(lockChanges, "flags.shadowrun2e.creationCompleted")).toBe(
-      false,
-    );
+    preUpdateActorHook(actor, lockChanges, {}, "OTHER");
+    expect(foundry.utils.getProperty(lockChanges, "system.creation.extras.buddy")).toBe(1);
 
     const item = {
       type: "gear",

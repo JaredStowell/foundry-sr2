@@ -100,50 +100,17 @@
 
 			    {{!-- Main Tab --}}
 				    <div class="tab main" data-group="primary" data-tab="main">
-				      {{#if flags.shadowrun2e.creationCompleted}}
-				        {{#unless system.creation.resourcesFinalized}}
-				          {{#if (gt system.creation.startingNuyen 0)}}
-				            <div class="sr2-creation-banner">
-				              <div class="sr2-creation-banner__row">
-				                <div class="sr2-creation-banner__text">
-				                  <strong>Starting cash not finalized.</strong>
-				                  Finalize Starting Cash to roll (3d6 × 1,000¥) and convert your unspent resource budget (÷ 10) into nuyen.
-				                </div>
-				                <button type="button" class="sr2-small-action finalize-resources">Finalize Starting Cash</button>
-				              </div>
-				              <div class="sr2-creation-banner__note">Starting cash: (unspent budget ÷ 10) + (3d6 × 1,000¥).</div>
-				            </div>
-				          {{/if}}
-				        {{/unless}}
-				      {{/if}}
-				      {{#if flags.shadowrun2e.creationMode}}
-				        <div class="sr2-creation-banner">
-				          <div class="sr2-creation-banner__row">
-				            <div class="sr2-creation-banner__text">
-				              <strong>Character Generation is active.</strong>
-				              Finalizing will permanently disable Character Generation changes for this character.
-				            </div>
-				            {{#if (gt creationResources.budgetNuyen 0)}}
-				              {{#if system.creation.resourcesFinalized}}
-				                <button type="button" class="sr2-small-action unfinalize-resources">Reopen Resources</button>
-				              {{else}}
-				                <button type="button" class="sr2-small-action finalize-resources">Finalize Resources</button>
-				              {{/if}}
-				            {{/if}}
-				            <button type="button" class="sr2-complete-creation">Finalize Character Generation</button>
+				      {{#if isCreationMode}}
+				        {{#if (gt creationResources.budgetNuyen 0)}}
+				          <div class="sr2-points-row {{#if (lt creationResources.remainingNuyen 0)}}over-limit{{/if}}">
+				            <strong>Resource Budget (¥)</strong>:
+				            <span>{{creationResources.totalCost}}</span>
+				            <span>/</span>
+				            <span>{{creationResources.budgetNuyen}}</span>
+				            <span class="sr2-points-remaining">(Remaining: {{creationResources.remainingNuyen}})</span>
 				          </div>
-				          {{#if (gt creationResources.budgetNuyen 0)}}
-				            <div class="sr2-points-row sr2-creation-banner__budget {{#if (lt creationResources.remainingNuyen 0)}}over-limit{{/if}}">
-				              <strong>Resource Budget (¥)</strong>:
-			              <span>{{creationResources.totalCost}}</span>
-			              <span>/</span>
-			              <span>{{creationResources.budgetNuyen}}</span>
-			              <span class="sr2-points-remaining">(Remaining: {{creationResources.remainingNuyen}})</span>
-			            </div>
-			            <div class="sr2-creation-banner__note">Starting cash: (unspent budget ÷ 10) + (3d6 × 1,000¥).</div>
-			          {{/if}}
-			        </div>
-			      {{/if}}
+				        {{/if}}
+				      {{/if}}
 			      <div class="sr2-main-grid">
 		        <section class="sr2-main-col sr2-main-attributes">
 		          <h3{{#if racialSummary}} title="{{racialSummary}}"{{/if}}>Attributes</h3>
@@ -226,7 +193,12 @@
 	          </div>
 		        </section>
 		        <section class="sr2-main-col sr2-main-pools">
-		          <h3>Dice Pools</h3>
+		          <div class="sr2-pools-header">
+		            <h3>Dice Pools</h3>
+		            <button type="button" class="reset-all-pools sr2-small-action" title="Reset all pools to maximum">
+		              <i class="fas fa-sync-alt"></i> Reset
+		            </button>
+		          </div>
 		          <div class="sr2-pools-list">
 		            <div class="sr2-pool-row">
 		              <label>Combat Pool</label>
@@ -305,14 +277,6 @@
 		              </div>
 		            </div>
 		          </div>
-	
-		          {{#if @root.isGM}}
-		          <div class="gm-pool-controls">
-		            <button class="reset-all-pools" title="Reset all pools to maximum (GM only)">
-		              <i class="fas fa-sync-alt"></i> Reset All Pools
-		            </button>
-		          </div>
-		          {{/if}}
 		        </section>
 			        <section class="sr2-main-col sr2-main-details">
 			          <h3>Details</h3>
@@ -1227,11 +1191,11 @@
 
 		          <div class="sr2-connections-section">
 		            <div class="sr2-section-header">
-		              {{#if flags.shadowrun2e.creationMode}}
+		              {{#if isCreationMode}}
                     {{#if sr2Settings.contactLevels}}
 		                <h4 class="{{#if connectionOver.contacts}}over-limit{{/if}}">{{connectionCounts.contacts}}/{{connectionLimits.contacts}} Contacts</h4>
 		                <div class="sr2-section-actions">
-		                  <button type="button" class="sr2-small-action sr2-add-contact" title="Add Contact" {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+		                  <button type="button" class="sr2-small-action sr2-add-contact" title="Add Contact">
 		                    <i class="fas fa-plus"></i>
 		                    Add Contact
 		                  </button>
@@ -1239,15 +1203,15 @@
                     {{else}}
 		                <h4 class="{{#if connectionOver.contacts}}over-limit{{/if}}">{{connectionCounts.contacts}}/{{connectionLimits.contacts}} Contacts</h4>
 		                <div class="sr2-section-actions">
-		                  <button type="button" class="sr2-small-action sr2-adjust-contacts" data-delta="-1" title="Remove Contact" {{#if (lte connectionLimits.contacts 2)}}disabled{{/if}} {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+		                  <button type="button" class="sr2-small-action sr2-adjust-contacts" data-delta="-1" title="Remove Contact" {{#if (lte connectionLimits.contacts 2)}}disabled{{/if}}>
 		                    <i class="fas fa-minus"></i>
 		                  </button>
-			                  <button type="button" class="sr2-small-action sr2-adjust-contacts" data-delta="1" title="Purchase Contact (¥5,000)" {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+			                  <button type="button" class="sr2-small-action sr2-adjust-contacts" data-delta="1" title="Purchase Contact (¥5,000)">
 			                    <i class="fas fa-plus"></i>
 			                    Purchase Contact ¥5,000
 			                  </button>
                       {{#unless sr2Settings.disableBuddies}}
-		                    <button type="button" class="sr2-small-action sr2-toggle-extra" data-extra="buddy" title="{{#if creationExtrasPurchased.buddy}}Unpurchase Buddy{{else}}Purchase Buddy (¥10,000){{/if}}" {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+		                    <button type="button" class="sr2-small-action sr2-toggle-extra" data-extra="buddy" title="{{#if creationExtrasPurchased.buddy}}Unpurchase Buddy{{else}}Purchase Buddy (¥10,000){{/if}}">
 		                      {{#if creationExtrasPurchased.buddy}}
 		                        Unpurchase Buddy
 		                      {{else}}
@@ -1267,7 +1231,7 @@
 		                </div>
 		              {{/if}}
 		            </div>
-                {{#if flags.shadowrun2e.creationMode}}
+                {{#if isCreationMode}}
                   {{#if sr2Settings.contactLevels}}
                     <div class="sr2-cost-breakdown">
                       <div>Extra Contacts: {{contactLevelsSummary.counts.extraContacts}}/{{contactLevelsSummary.counts.maxExtraContacts}} (¥5,000 each)</div>
@@ -1294,12 +1258,12 @@
 			            <div class="sr2-section-header">
 			              <h4>Gang/Tribe</h4>
 			              <div class="sr2-section-actions">
-			                <button type="button" class="sr2-small-action sr2-add-gang-member" data-archetype="gangMember" title="Add Gang/Tribe Member" {{#if flags.shadowrun2e.creationMode}} {{#unless creationExtrasPurchased.gang}}disabled{{/unless}} {{#if system.creation.resourcesFinalized}}disabled{{/if}} {{/if}}>
+			                <button type="button" class="sr2-small-action sr2-add-gang-member" data-archetype="gangMember" title="Add Gang/Tribe Member" {{#if isCreationMode}} {{#unless creationExtrasPurchased.gang}}disabled{{/unless}} {{/if}}>
 			                  <i class="fas fa-plus"></i>
 			                  Add Member
 			                </button>
-			                {{#if flags.shadowrun2e.creationMode}}
-			                  <button type="button" class="sr2-small-action sr2-toggle-extra" data-extra="gang" title="{{#if creationExtrasPurchased.gang}}Unpurchase Gang/Tribe{{else}}Purchase Gang/Tribe (¥50,000){{/if}}" {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+			                {{#if isCreationMode}}
+			                  <button type="button" class="sr2-small-action sr2-toggle-extra" data-extra="gang" title="{{#if creationExtrasPurchased.gang}}Unpurchase Gang/Tribe{{else}}Purchase Gang/Tribe (¥50,000){{/if}}">
 			                    {{#if creationExtrasPurchased.gang}}
 			                      Unpurchase Gang/Tribe
 			                    {{else}}
@@ -1325,14 +1289,14 @@
 
 			          <div class="sr2-connections-section">
 			            <div class="sr2-section-header">
-			              {{#if flags.shadowrun2e.creationMode}}
+			              {{#if isCreationMode}}
 			                <h4 class="{{#if connectionOver.followers}}over-limit{{/if}}">{{connectionCounts.followers}}/{{connectionLimits.followers}} Followers</h4>
 			                <div class="sr2-section-actions">
-			                  <button type="button" class="sr2-small-action sr2-add-follower" title="Add Follower" {{#unless creationExtrasPurchased.followers}}disabled{{/unless}} {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+			                  <button type="button" class="sr2-small-action sr2-add-follower" title="Add Follower" {{#unless creationExtrasPurchased.followers}}disabled{{/unless}}>
 			                    <i class="fas fa-plus"></i>
 			                    Add Follower
 			                  </button>
-			                  <button type="button" class="sr2-small-action sr2-toggle-extra" data-extra="followers" title="{{#if creationExtrasPurchased.followers}}Unpurchase Followers{{else}}Purchase Followers (¥200,000){{/if}}" {{#if system.creation.resourcesFinalized}}disabled{{/if}}>
+			                  <button type="button" class="sr2-small-action sr2-toggle-extra" data-extra="followers" title="{{#if creationExtrasPurchased.followers}}Unpurchase Followers{{else}}Purchase Followers (¥200,000){{/if}}">
 			                    {{#if creationExtrasPurchased.followers}}
 			                      Unpurchase Followers
 			                    {{else}}

@@ -45,7 +45,10 @@
     "Drain": "[(F/2)+3]D",
     "Type": "P",
     "Duration": "I",
-    "Class": "C"
+    "Class": "C",
+    "Damage": "S",
+    "Range": "LOS",
+    "Target": "Body (R)"
   },
   {
     "BookPage": "sr2.???",
@@ -69,7 +72,10 @@
     "Drain": "[(F/2)+6]D",
     "Type": "P",
     "Duration": "I",
-    "Class": "C"
+    "Class": "C",
+    "Damage": "D",
+    "Range": "LOS",
+    "Target": "Body (R)"
   },
   {
     "BookPage": "sr2.???",
@@ -85,7 +91,10 @@
     "Drain": "(F/2)S",
     "Type": "M",
     "Duration": "I",
-    "Class": "C"
+    "Class": "C",
+    "Damage": "S",
+    "Range": "LOS",
+    "Target": "Willpower (R)"
   },
   {
     "BookPage": "sr2.???",
@@ -101,7 +110,10 @@
     "Drain": "(F/2)L",
     "Type": "M",
     "Duration": "I",
-    "Class": "C"
+    "Class": "C",
+    "Damage": "L",
+    "Range": "LOS",
+    "Target": "Willpower (R)"
   },
   {
     "BookPage": "sr2.151",
@@ -109,7 +121,10 @@
     "Drain": "(F/2)M",
     "Type": "M",
     "Duration": "I",
-    "Class": "C"
+    "Class": "C",
+    "Damage": "M",
+    "Range": "LOS",
+    "Target": "Willpower (R)"
   },
   {
     "BookPage": "sr2.151",
@@ -117,7 +132,10 @@
     "Drain": "(F/2)S",
     "Type": "M",
     "Duration": "I",
-    "Class": "C"
+    "Class": "C",
+    "Damage": "M",
+    "Range": "LOS",
+    "Target": "Willpower (R)"
   },
   {
     "BookPage": "sr2.???",
@@ -133,7 +151,10 @@
     "Drain": "[(F/2)+1]S",
     "Type": "P",
     "Duration": "I",
-    "Class": "C"
+    "Class": "C",
+    "Damage": "S",
+    "Range": "LOS",
+    "Target": "Body (R)"
   },
   {
     "BookPage": "sr2.151",
@@ -141,7 +162,10 @@
     "Drain": "[(F/2)+1]L",
     "Type": "P",
     "Duration": "I",
-    "Class": "C"
+    "Class": "C",
+    "Damage": "L",
+    "Range": "LOS",
+    "Target": "Body (R)"
   },
   {
     "BookPage": "sr2.151",
@@ -149,7 +173,10 @@
     "Drain": "[(F/2)+1]M",
     "Type": "P",
     "Duration": "I",
-    "Class": "C"
+    "Class": "C",
+    "Damage": "M",
+    "Range": "LOS",
+    "Target": "Body (R)"
   },
   {
     "BookPage": "sr2.151",
@@ -157,7 +184,10 @@
     "Drain": "[(F/2)+1]S",
     "Type": "P",
     "Duration": "I",
-    "Class": "C"
+    "Class": "C",
+    "Damage": "M",
+    "Range": "LOS",
+    "Target": "Body (R)"
   },
   {
     "BookPage": "sr2.???",
@@ -173,7 +203,10 @@
     "Drain": "[(F/2)+1]S",
     "Type": "P",
     "Duration": "I",
-    "Class": "C"
+    "Class": "C",
+    "Damage": "S",
+    "Range": "LOS",
+    "Target": "Object Resistance Table"
   },
   {
     "BookPage": "sr2.???",
@@ -221,7 +254,10 @@
     "Drain": "[(F/2)-1]S",
     "Type": "M",
     "Duration": "I",
-    "Class": "C"
+    "Class": "C",
+    "Damage": "M",
+    "Range": "LOS",
+    "Target": "Willpower (R)"
   },
   {
     "BookPage": "sr2.???",
@@ -317,7 +353,9 @@
     "Drain": "[(F/2)+1]M",
     "Type": "P",
     "Duration": "S",
-    "Class": "D"
+    "Class": "D",
+    "Range": "Limited",
+    "Target": "Object"
   },
   {
     "BookPage": "sr2.???",
@@ -333,7 +371,9 @@
     "Drain": "(F/2)S",
     "Type": "M",
     "Duration": "S",
-    "Class": "D"
+    "Class": "D",
+    "Range": "Limited",
+    "Target": "Willpower [R]"
   },
   {
     "BookPage": "sr2.???",
@@ -373,7 +413,9 @@
     "Drain": "(F/2)M",
     "Type": "M",
     "Duration": "S",
-    "Class": "D"
+    "Class": "D",
+    "Range": "Limited",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.???",
@@ -405,7 +447,9 @@
     "Drain": "(F/2)M",
     "Type": "M",
     "Duration": "S",
-    "Class": "D"
+    "Class": "D",
+    "Range": "Limited",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.???",
@@ -421,7 +465,9 @@
     "Drain": "[(F/2)+1]S",
     "Type": "P",
     "Duration": "S",
-    "Class": "D"
+    "Class": "D",
+    "Range": "Limited",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.???",
@@ -445,7 +491,9 @@
     "Drain": "[(F/2)+1]M",
     "Type": "M",
     "Duration": "S",
-    "Class": "D"
+    "Class": "D",
+    "Range": "Limited",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.???",
@@ -461,7 +509,9 @@
     "Drain": "(F/2)L",
     "Type": "M",
     "Duration": "S",
-    "Class": "D"
+    "Class": "D",
+    "Range": "Limited",
+    "Target": "See above"
   },
   {
     "BookPage": "sr2.153",
@@ -469,7 +519,9 @@
     "Drain": "(F/2)L",
     "Type": "M",
     "Duration": "S",
-    "Class": "D"
+    "Class": "D",
+    "Range": "Limited",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.153",
@@ -477,7 +529,9 @@
     "Drain": "[(F/2)-1]L",
     "Type": "M",
     "Duration": "S",
-    "Class": "D"
+    "Class": "D",
+    "Range": "Limited",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.???",
@@ -501,7 +555,9 @@
     "Drain": "[(F/2)+1]M",
     "Type": "P",
     "Duration": "S",
-    "Class": "D"
+    "Class": "D",
+    "Range": "Limited",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.???",
@@ -621,7 +677,9 @@
     "Drain": "[(F/2)+2]D",
     "Type": "M",
     "Duration": "S",
-    "Class": "D"
+    "Class": "D",
+    "Range": "Touch",
+    "Target": "4 [R]"
   },
   {
     "BookPage": "sr2.???",
@@ -637,7 +695,9 @@
     "Drain": "[(F/2)+1]M",
     "Type": "P",
     "Duration": "S",
-    "Class": "D"
+    "Class": "D",
+    "Range": "Self",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.???",
@@ -741,7 +801,9 @@
     "Drain": "(F/2)L",
     "Type": "P",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "Toxin strength"
   },
   {
     "BookPage": "sr2.159",
@@ -749,7 +811,9 @@
     "Drain": "(F/2)M",
     "Type": "P",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "Toxin strength"
   },
   {
     "BookPage": "sr2.159",
@@ -757,7 +821,9 @@
     "Drain": "(F/2)S",
     "Type": "P",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "Toxin strength"
   },
   {
     "BookPage": "sr2.159",
@@ -765,7 +831,9 @@
     "Drain": "(F/2)D",
     "Type": "P",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "Toxin strength"
   },
   {
     "BookPage": "sr2.???",
@@ -837,7 +905,9 @@
     "Drain": "(F/2)L",
     "Type": "P",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "Virulence"
   },
   {
     "BookPage": "sr2.159",
@@ -845,7 +915,9 @@
     "Drain": "(F/2)M",
     "Type": "P",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "Virulence"
   },
   {
     "BookPage": "sr2.159",
@@ -853,7 +925,9 @@
     "Drain": "(F/2)S",
     "Type": "P",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "Virulence"
   },
   {
     "BookPage": "sr2.159",
@@ -861,7 +935,9 @@
     "Drain": "(F/2)D",
     "Type": "P",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "Virulence"
   },
   {
     "BookPage": "sr2.159",
@@ -869,7 +945,9 @@
     "Drain": "[(F/2)+1]L",
     "Type": "P",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "10 - Essence [R]"
   },
   {
     "BookPage": "sr2.159",
@@ -877,7 +955,9 @@
     "Drain": "[(F/2)+1]M",
     "Type": "P",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "10 - Essence [R]"
   },
   {
     "BookPage": "sr2.159",
@@ -885,7 +965,9 @@
     "Drain": "[(F/2)+1]S",
     "Type": "P",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "10 - Essence [R]"
   },
   {
     "BookPage": "sr2.159",
@@ -893,7 +975,9 @@
     "Drain": "[(F/2)+1]D",
     "Type": "P",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "10 - Essence [R]"
   },
   {
     "BookPage": "sr2.???",
@@ -957,7 +1041,9 @@
     "Drain": "[(F/2)-2]L",
     "Type": "P",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "Toxin strength"
   },
   {
     "BookPage": "sr2.159",
@@ -965,7 +1051,9 @@
     "Drain": "[(F/2)-2]M",
     "Type": "P",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "Toxin strength"
   },
   {
     "BookPage": "sr2.159",
@@ -973,7 +1061,9 @@
     "Drain": "[(F/2)-2]S",
     "Type": "P",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "Toxin strength"
   },
   {
     "BookPage": "sr2.159",
@@ -981,7 +1071,9 @@
     "Drain": "[(F/2)-2]D",
     "Type": "P",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "Toxin strength"
   },
   {
     "BookPage": "sr2.???",
@@ -1029,7 +1121,9 @@
     "Drain": "(F/2)(Wound Level)",
     "Type": "M",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "10 - Essence"
   },
   {
     "BookPage": "sr2.???",
@@ -1077,7 +1171,9 @@
     "Drain": "[(F/2)+1]L",
     "Type": "M",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "2 x affected Attribute"
   },
   {
     "BookPage": "sr2.159",
@@ -1085,7 +1181,9 @@
     "Drain": "[(F/2)+1]M",
     "Type": "M",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "2 x affected Attribute"
   },
   {
     "BookPage": "sr2.159",
@@ -1093,7 +1191,9 @@
     "Drain": "[(F/2)+1]S",
     "Type": "M",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "2 x affected Attribute"
   },
   {
     "BookPage": "sr2.159",
@@ -1101,7 +1201,9 @@
     "Drain": "[(F/2)+1]D",
     "Type": "M",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "2 x affected Attribute"
   },
   {
     "BookPage": "sr2.159",
@@ -1109,7 +1211,9 @@
     "Drain": "[(F/2)+3]L",
     "Type": "P",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "2 x affected Attribute"
   },
   {
     "BookPage": "sr2.159",
@@ -1117,7 +1221,9 @@
     "Drain": "[(F/2)+3]M",
     "Type": "P",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "2 x affected Attribute"
   },
   {
     "BookPage": "sr2.159",
@@ -1125,7 +1231,9 @@
     "Drain": "[(F/2)+3]S",
     "Type": "P",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "2 x affected Attribute"
   },
   {
     "BookPage": "sr2.159",
@@ -1133,7 +1241,9 @@
     "Drain": "[(F/2)+3]D",
     "Type": "P",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "2 x affected Attribute"
   },
   {
     "BookPage": "sr2.???",
@@ -1165,7 +1275,9 @@
     "Drain": "(F/2)M",
     "Type": "M",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "2 x Reaction"
   },
   {
     "BookPage": "sr2.???",
@@ -1173,7 +1285,9 @@
     "Drain": "(F/2)S",
     "Type": "M",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "2 x Reaction"
   },
   {
     "BookPage": "sr2.???",
@@ -1181,7 +1295,9 @@
     "Drain": "(F/2)D",
     "Type": "M",
     "Duration": "S",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "2 x Reaction"
   },
   {
     "BookPage": "sr2.???",
@@ -1325,7 +1441,9 @@
     "Drain": "(F/2)(Wound Level)",
     "Type": "M",
     "Duration": "P",
-    "Class": "H"
+    "Class": "H",
+    "Range": "Touch",
+    "Target": "8 - Essence"
   },
   {
     "BookPage": "sr2.???",
@@ -1421,7 +1539,9 @@
     "Drain": "[(F/2)+2]M",
     "Type": "P",
     "Duration": "S",
-    "Class": "I"
+    "Class": "I",
+    "Range": "LOS",
+    "Target": "Intelligence (R)"
   },
   {
     "BookPage": "sr2.155",
@@ -1429,7 +1549,9 @@
     "Drain": "[(F/2)+2]S",
     "Type": "P",
     "Duration": "S",
-    "Class": "I"
+    "Class": "I",
+    "Range": "LOS",
+    "Target": "Intelligence (R)"
   },
   {
     "BookPage": "sr2.155",
@@ -1437,7 +1559,9 @@
     "Drain": "(F/2)S",
     "Type": "M",
     "Duration": "S",
-    "Class": "I"
+    "Class": "I",
+    "Range": "LOS",
+    "Target": "Willpower (R)"
   },
   {
     "BookPage": "sr2.???",
@@ -1485,7 +1609,9 @@
     "Drain": "[(F/2)+1]L",
     "Type": "M",
     "Duration": "S",
-    "Class": "I"
+    "Class": "I",
+    "Range": "LOS",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.???",
@@ -1541,7 +1667,9 @@
     "Drain": "[(F/2)+1]M",
     "Type": "P",
     "Duration": "S",
-    "Class": "I"
+    "Class": "I",
+    "Range": "Touch",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.156",
@@ -1549,7 +1677,9 @@
     "Drain": "(F/2)M",
     "Type": "M",
     "Duration": "S",
-    "Class": "I"
+    "Class": "I",
+    "Range": "Touch",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.156",
@@ -1557,7 +1687,9 @@
     "Drain": "(F/2)L",
     "Type": "M",
     "Duration": "S",
-    "Class": "I"
+    "Class": "I",
+    "Range": "Touch",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.???",
@@ -1645,7 +1777,9 @@
     "Drain": "[(F/2)+1]L",
     "Type": "M",
     "Duration": "S",
-    "Class": "I"
+    "Class": "I",
+    "Range": "LOS",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.156",
@@ -1653,7 +1787,9 @@
     "Drain": "[(F/2)+1]S",
     "Type": "M",
     "Duration": "S",
-    "Class": "I"
+    "Class": "I",
+    "Range": "LOS",
+    "Target": "Willpower (R)"
   },
   {
     "BookPage": "sr2.???",
@@ -1749,7 +1885,9 @@
     "Drain": "[(F/2)+2]M",
     "Type": "P",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "Limited",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.???",
@@ -1773,7 +1911,9 @@
     "Drain": "[(F/2)+2]S",
     "Type": "P",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "Limited",
+    "Target": "6"
   },
   {
     "BookPage": "sr2.???",
@@ -1901,7 +2041,9 @@
     "Drain": "[(F/2)+2]S",
     "Type": "M",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "Willpower (R)"
   },
   {
     "BookPage": "sr2.???",
@@ -1917,7 +2059,9 @@
     "Drain": "[(F/2)+2]M",
     "Type": "M",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "Willpower (R)"
   },
   {
     "BookPage": "sr2.???",
@@ -1933,7 +2077,9 @@
     "Drain": "[(F/2)+2]D",
     "Type": "M",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "Limited",
+    "Target": "Willpower [R]"
   },
   {
     "BookPage": "sr2.???",
@@ -2053,7 +2199,10 @@
     "Drain": "[(F/2)+1]D",
     "Type": "P",
     "Duration": "I",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "4",
+    "Damage": "M"
   },
   {
     "BookPage": "sr2.???",
@@ -2069,7 +2218,10 @@
     "Drain": "[(F/2)+1]S",
     "Type": "P",
     "Duration": "I",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "4",
+    "Damage": "M"
   },
   {
     "BookPage": "sr2.???",
@@ -2149,7 +2301,9 @@
     "Drain": "(F/2)S",
     "Type": "P",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "Touch",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.158",
@@ -2157,7 +2311,9 @@
     "Drain": "[(F/2)+1]S",
     "Type": "P",
     "Duration": "I",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.158",
@@ -2165,7 +2321,10 @@
     "Drain": "[(F/2)+2]D",
     "Type": "P",
     "Duration": "P",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "4",
+    "Damage": "M"
   },
   {
     "BookPage": "sr2.???",
@@ -2197,7 +2356,9 @@
     "Drain": "[(F/2)+1]L",
     "Type": "P",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.157",
@@ -2205,7 +2366,9 @@
     "Drain": "[(F/2)+1]M",
     "Type": "P",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.???",
@@ -2221,7 +2384,9 @@
     "Drain": "[(F/2)+2]M",
     "Type": "P",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "4"
   },
   {
     "BookPage": "sr2.???",
@@ -2277,7 +2442,9 @@
     "Drain": "[(F/2)+2]M",
     "Type": "P",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "6"
   },
   {
     "BookPage": "sr2.???",
@@ -2293,7 +2460,9 @@
     "Drain": "[(F/2)+1]S",
     "Type": "M",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "Limited",
+    "Target": "6"
   },
   {
     "BookPage": "sr2.???",
@@ -2461,7 +2630,10 @@
     "Drain": "[(F/2)+1]S",
     "Type": "P",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "4 [R]",
+    "Damage": "L"
   },
   {
     "BookPage": "sr2.???",
@@ -2597,7 +2769,9 @@
     "Drain": "[(F/2)+2]M",
     "Type": "P",
     "Duration": "S",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "See above"
   },
   {
     "BookPage": "sr2.???",
@@ -2653,7 +2827,10 @@
     "Drain": "[(F/2)+1]M",
     "Type": "P",
     "Duration": "I",
-    "Class": "M"
+    "Class": "M",
+    "Range": "LOS",
+    "Target": "4",
+    "Damage": "M"
   },
   {
     "BookPage": "sr2.???",

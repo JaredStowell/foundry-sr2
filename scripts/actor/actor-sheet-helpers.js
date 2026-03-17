@@ -30,8 +30,10 @@ export function sr2InferSpellRangeFromName(spellName) {
 export function sr2InferSpellResistFromType(spellType) {
   switch (String(spellType || "").toUpperCase()) {
     case "M":
+    case "MANA":
       return "Willpower";
     case "P":
+    case "PHYSICAL":
       return "Body";
     default:
       return "";

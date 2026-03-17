@@ -6,9 +6,9 @@ export class SR2ICSheet extends ActorSheet {
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       classes: ["shadowrun2e", "sheet", "actor", "ic", "spirit"],
-      width: 600,
-      height: 500,
-      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "stats" }],
+      width: 920,
+      height: 680,
+      tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "main" }],
     });
   }
 
@@ -39,6 +39,7 @@ export class SR2ICSheet extends ActorSheet {
       ? Number(context.system.initiative.base)
       : Number(context.system?.attributes?.reaction?.value) || 0;
     context.initiative = `${dice}d6+${base}`;
+    context.namePlaceholder = "IC Name";
   }
 
   /** @override */
