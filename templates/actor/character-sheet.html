@@ -63,6 +63,14 @@
 		                <span class="sr2-weight-value">{{totalWeightDisplay}} kg</span>
 		              </div>
 		            </div>
+		            <div class="resource sr2-earned-karma-resource">
+		              <label class="resource-label">Earned Karma</label>
+		              <div class="sr2-inline-controls">
+		                <button type="button" class="karma-earned-adjust sr2-damage-adjust sr2-small-action" data-adjust="-1" title="Decrease Earned Karma">-</button>
+		                <input class="sr2-damage-input sr2-karma-earned-input" type="number" name="system.karma.earned" value="{{safeNumber system.karma.earned 0}}" data-dtype="Number" min="0"/>
+		                <button type="button" class="karma-earned-adjust sr2-damage-adjust sr2-small-action" data-adjust="1" title="Increase Earned Karma">+</button>
+		              </div>
+		            </div>
 		          {{/if}}
 	          {{#if (eq actor.type "contact")}}
 	            {{#if sr2Settings.contactLevels}}
@@ -101,6 +109,22 @@
 			    {{!-- Main Tab --}}
 				    <div class="tab main" data-group="primary" data-tab="main">
 				      {{#if isCreationMode}}
+				        <div class="sr2-creation-banner">
+				          <div class="sr2-creation-banner__row">
+				            <div class="sr2-creation-banner__text">
+				              <strong>Character creation is active.</strong>
+				              Complete creation to convert leftover resources into starting cash and clear priority-based creation budgets.
+				            </div>
+				            {{#if (eq actor.type "character")}}
+				              <button type="button" class="sr2-complete-creation">Complete Creation</button>
+				            {{/if}}
+				          </div>
+				          <div class="sr2-creation-banner__note">
+				            Finalization converts unspent Resources at 10:1, rolls 3D6 × 1,000¥, and sets the starting Karma Pool from metatype.
+				          </div>
+				        </div>
+				      {{/if}}
+				      {{#if isCreationMode}}
 				        {{#if (gt creationResources.budgetNuyen 0)}}
 				          <div class="sr2-points-row {{#if (lt creationResources.remainingNuyen 0)}}over-limit{{/if}}">
 				            <strong>Resource Budget (¥)</strong>:
@@ -126,42 +150,42 @@
 	          <div class="sr2-attr-list">
 	            <div class="sr2-attr-row">
 	              <label>Body</label>
-	              <input type="number" name="system.attributes.body.value" value="{{system.attributes.body.value}}" data-dtype="Number" min="{{system.attributes.body.min}}" max="{{system.attributes.body.max}}"/>
+	              <input type="number" name="system.attributes.body.value" value="{{system.attributes.body.value}}" data-dtype="Number"{{#if isCreationMode}} min="{{system.attributes.body.min}}" max="{{system.attributes.body.max}}"{{/if}}/>
 	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="body" title="Roll Body">
 	                <i class="fas fa-dice-d6"></i>
 	              </button>
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Quickness</label>
-	              <input type="number" name="system.attributes.quickness.value" value="{{system.attributes.quickness.value}}" data-dtype="Number" min="{{system.attributes.quickness.min}}" max="{{system.attributes.quickness.max}}"/>
+	              <input type="number" name="system.attributes.quickness.value" value="{{system.attributes.quickness.value}}" data-dtype="Number"{{#if isCreationMode}} min="{{system.attributes.quickness.min}}" max="{{system.attributes.quickness.max}}"{{/if}}/>
 	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="quickness" title="Roll Quickness">
 	                <i class="fas fa-dice-d6"></i>
 	              </button>
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Strength</label>
-	              <input type="number" name="system.attributes.strength.value" value="{{system.attributes.strength.value}}" data-dtype="Number" min="{{system.attributes.strength.min}}" max="{{system.attributes.strength.max}}"/>
+	              <input type="number" name="system.attributes.strength.value" value="{{system.attributes.strength.value}}" data-dtype="Number"{{#if isCreationMode}} min="{{system.attributes.strength.min}}" max="{{system.attributes.strength.max}}"{{/if}}/>
 	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="strength" title="Roll Strength">
 	                <i class="fas fa-dice-d6"></i>
 	              </button>
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Charisma</label>
-	              <input type="number" name="system.attributes.charisma.value" value="{{system.attributes.charisma.value}}" data-dtype="Number" min="{{system.attributes.charisma.min}}" max="{{system.attributes.charisma.max}}"/>
+	              <input type="number" name="system.attributes.charisma.value" value="{{system.attributes.charisma.value}}" data-dtype="Number"{{#if isCreationMode}} min="{{system.attributes.charisma.min}}" max="{{system.attributes.charisma.max}}"{{/if}}/>
 	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="charisma" title="Roll Charisma">
 	                <i class="fas fa-dice-d6"></i>
 	              </button>
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Intelligence</label>
-	              <input type="number" name="system.attributes.intelligence.value" value="{{system.attributes.intelligence.value}}" data-dtype="Number" min="{{system.attributes.intelligence.min}}" max="{{system.attributes.intelligence.max}}"/>
+	              <input type="number" name="system.attributes.intelligence.value" value="{{system.attributes.intelligence.value}}" data-dtype="Number"{{#if isCreationMode}} min="{{system.attributes.intelligence.min}}" max="{{system.attributes.intelligence.max}}"{{/if}}/>
 	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="intelligence" title="Roll Intelligence">
 	                <i class="fas fa-dice-d6"></i>
 	              </button>
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Willpower</label>
-	              <input type="number" name="system.attributes.willpower.value" value="{{system.attributes.willpower.value}}" data-dtype="Number" min="{{system.attributes.willpower.min}}" max="{{system.attributes.willpower.max}}"/>
+	              <input type="number" name="system.attributes.willpower.value" value="{{system.attributes.willpower.value}}" data-dtype="Number"{{#if isCreationMode}} min="{{system.attributes.willpower.min}}" max="{{system.attributes.willpower.max}}"{{/if}}/>
 	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="willpower" title="Roll Willpower">
 	                <i class="fas fa-dice-d6"></i>
 	              </button>
@@ -178,7 +202,7 @@
 	            </div>
 	            <div class="sr2-attr-row">
 	              <label>Magic</label>
-	              <input type="number" name="system.attributes.magic.value" value="{{system.attributes.magic.value}}" data-dtype="Number" readonly/>
+	              <input type="number" name="system.attributes.magic.value" value="{{system.attributes.magic.value}}" data-dtype="Number" {{#if isCreationMode}}readonly{{/if}}/>
 	              <button type="button" class="attribute-roll sr2-small-action" data-attribute="magic" title="Roll Magic">
 	                <i class="fas fa-dice-d6"></i>
 	              </button>
@@ -628,7 +652,7 @@
 	                       value="{{skill.system.allocatedRating}}"
 	                       data-dtype="Number"
 	                       min="0"
-	                       max="12"
+	                       max="{{@root.skillAllocatedMax}}"
 	                       title="Allocated Skill Rating"
 	                       {{#if skill.system.isFree}}readonly{{/if}}/>
 	                <button type="button"

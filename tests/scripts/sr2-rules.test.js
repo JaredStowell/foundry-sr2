@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  sr2BuildCreationCompletionSummary,
   sr2Clamp,
   sr2ComputeAttributePointsSpent,
   sr2ComputeContactLevelSummary,
@@ -9,8 +10,12 @@ import {
   sr2ComputeCreationNuyenBudgetBreakdown,
   sr2ComputeForcePointsSpent,
   sr2ComputeItemNuyenSpent,
+  sr2ComputeKarmaPoolBonusFromEarned,
+  sr2ComputeKarmaPoolTotal,
   sr2ComputeSkillPointsSpent,
   sr2ComputeSkillRatingsFromAllocated,
+  sr2ComputeStartingCashFromUnspentNuyen,
+  sr2ComputeStartingKarmaPool,
   sr2ComputeSpellLockAugmentationModifiers,
   sr2ComputeSpellLockCapacity,
   sr2CountAssignedSpellLocks,
@@ -197,6 +202,64 @@ describe("sr2ComputeCreationNuyenBudgetBreakdown", () => {
   });
 });
 
+describe("creation completion helpers", () => {
+  it("converts unspent chargen nuyen to starting cash at 10:1", () => {
+    expect(sr2ComputeStartingCashFromUnspentNuyen(15000)).toBe(1500);
+    expect(sr2ComputeStartingCashFromUnspentNuyen(999)).toBe(99);
+    expect(sr2ComputeStartingCashFromUnspentNuyen(-100)).toBe(0);
+  });
+
+  it("assigns starting Karma Pool by metatype and optional rule", () => {
+    expect(sr2ComputeStartingKarmaPool("human")).toBe(1);
+    expect(sr2ComputeStartingKarmaPool("elf")).toBe(2);
+    expect(sr2ComputeStartingKarmaPool("ork", { moreMetahumans: true })).toBe(1);
+  });
+
+  it("builds completion summary from remaining budgets and a cash roll", () => {
+    const system = {
+      attributes: {
+        body: { value: 3 },
+        quickness: { value: 3 },
+        strength: { value: 3 },
+        charisma: { value: 3 },
+        intelligence: { value: 3 },
+        willpower: { value: 5 },
+      },
+      creation: {
+        attributePoints: 20,
+        skillPoints: 8,
+        forcePoints: 5,
+        startingNuyen: 100000,
+        extras: { contacts: 2, buddy: 0, gang: 0, followers: 0 },
+      },
+      resources: {
+        lifestyle: "low",
+      },
+    };
+    const items = [
+      { type: "skill", system: { baseSkill: "Pistols", allocatedRating: 5 } },
+      { type: "skill", system: { baseSkill: "Etiquette", allocatedRating: 3 } },
+      { type: "spell", system: { force: 4 } },
+      { type: "gear", system: { price: 25000, quantity: 1 } },
+    ];
+
+    const summary = sr2BuildCreationCompletionSummary({
+      system,
+      items,
+      metatype: "human",
+      startingCashRoll: 11000,
+    });
+
+    expect(summary.creationPoints.attributes.remaining).toBe(0);
+    expect(summary.creationPoints.skills.remaining).toBe(0);
+    expect(summary.creationPoints.force.remaining).toBe(1);
+    expect(summary.budgetBreakdown.remainingNuyen).toBe(74000);
+    expect(summary.unspentNuyen).toBe(74000);
+    expect(summary.startingCashFromUnspent).toBe(7400);
+    expect(summary.startingCashFinal).toBe(18400);
+  });
+});
+
 describe("sr2HasCreationLimits", () => {
   it("treats any configured creation budget as active", () => {
     expect(
@@ -232,6 +295,16 @@ describe("sr2HasCreationLimits", () => {
         },
       }),
     ).toBe(false);
+  });
+});
+
+describe("karma pool advancement", () => {
+  it("adds one Karma Pool point for each full ten earned Karma", () => {
+    expect(sr2ComputeKarmaPoolBonusFromEarned(0)).toBe(0);
+    expect(sr2ComputeKarmaPoolBonusFromEarned(9)).toBe(0);
+    expect(sr2ComputeKarmaPoolBonusFromEarned(10)).toBe(1);
+    expect(sr2ComputeKarmaPoolBonusFromEarned(29)).toBe(2);
+    expect(sr2ComputeKarmaPoolTotal(1, 29)).toBe(3);
   });
 });
 

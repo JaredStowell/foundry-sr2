@@ -1,8 +1,6 @@
 import {
   sr2ComputeContactLevelSummary,
-  sr2ComputeCreationNuyenBudgetBreakdown,
   sr2ComputeForcePointsSpent,
-  sr2ComputeItemNuyenSpent,
   sr2HasCreationLimits,
   sr2InferFocusBondCostForGearItem,
 } from "../sr2-rules.js";
@@ -112,18 +110,6 @@ export function registerCreationRuleHooks({
       );
       return false;
     }
-
-    const budget = Number(leader.system?.creation?.startingNuyen) || 0;
-    if (budget <= 0) return;
-
-    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(leader.system, leader.items, {
-      disableBuddies: buddiesDisabled(),
-      contactLevelsSummary: summary,
-    });
-    if ((breakdown.remainingNuyen || 0) < 0) {
-      ui.notifications.error("Not enough creation Nuyen remaining for that contact.");
-      return false;
-    }
   });
 
   Hooks.on("preUpdateActor", function (actor, changes, options, userId) {
@@ -194,108 +180,6 @@ export function registerCreationRuleHooks({
       ui.notifications.error(
         "Too many Level 3 contacts (max extra Level 3 upgrades is 1× Charisma).",
       );
-      return false;
-    }
-
-    const budget = Number(leader.system?.creation?.startingNuyen) || 0;
-    if (budget <= 0) return;
-
-    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(leader.system, leader.items, {
-      disableBuddies: buddiesDisabled(),
-      contactLevelsSummary: summary,
-    });
-    if ((breakdown.remainingNuyen || 0) < 0) {
-      ui.notifications.error("Not enough creation Nuyen remaining for that contact change.");
-      return false;
-    }
-  });
-
-  Hooks.on("preCreateItem", function (item, data, options, userId) {
-    if (!sr2IsSameUser(userId)) return;
-    if (options?.sr2SkipBudget) return;
-
-    const actor = item?.parent;
-    if (!actor || !SR2_CHARACTER_TYPES.includes(actor.type)) return;
-    if (!sr2IsCreationMode(actor)) return;
-
-    const budget = Number(actor.system?.creation?.startingNuyen) || 0;
-    if (budget <= 0) return;
-
-    const type = data?.type ?? item.type;
-    if (["skill", "spell", "adeptpower", "totem"].includes(type)) return;
-
-    const system = data?.system || {};
-    const previewItem = {
-      type,
-      system: {
-        price: system.price ?? system.cost ?? 0,
-        quantity: system.quantity ?? 1,
-      },
-    };
-
-    const breakdownOptions = {
-      disableBuddies: buddiesDisabled(),
-    };
-    const contactLevelsSummary = contactSummaryForLeader(actor);
-    if (contactLevelsSummary) breakdownOptions.contactLevelsSummary = contactLevelsSummary;
-
-    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(
-      actor.system,
-      actor.items,
-      breakdownOptions,
-    );
-    const newItemCost = sr2ComputeItemNuyenSpent([previewItem]);
-    if ((breakdown.remainingNuyen || 0) - newItemCost < 0) {
-      ui.notifications.error("Not enough creation Nuyen remaining for that item.");
-      return false;
-    }
-  });
-
-  Hooks.on("preUpdateItem", function (item, changes, options, userId) {
-    if (!sr2IsSameUser(userId)) return;
-    if (options?.sr2SkipBudget) return;
-
-    const actor = item?.parent;
-    if (!actor || !SR2_CHARACTER_TYPES.includes(actor.type)) return;
-    if (!sr2IsCreationMode(actor)) return;
-
-    const budget = Number(actor.system?.creation?.startingNuyen) || 0;
-    if (budget <= 0) return;
-
-    const type = item.type;
-    if (["skill", "spell", "adeptpower", "totem"].includes(type)) return;
-
-    const getProperty = globalThis.foundry?.utils?.getProperty;
-    if (typeof getProperty !== "function") return;
-
-    const oldPrice = Number(item.system?.price ?? item.system?.cost) || 0;
-    const oldQty = Math.max(1, Number(item.system?.quantity) || 1);
-    const oldCost = Math.max(0, oldPrice) * oldQty;
-
-    const nextPriceRaw = getProperty(changes, "system.price");
-    const nextCostRaw = getProperty(changes, "system.cost");
-    const nextQtyRaw = getProperty(changes, "system.quantity");
-
-    const nextPrice = Number(nextPriceRaw ?? nextCostRaw ?? oldPrice) || 0;
-    const nextQty = Math.max(1, Number(nextQtyRaw ?? oldQty) || 1);
-    const nextCost = Math.max(0, nextPrice) * nextQty;
-
-    const delta = nextCost - oldCost;
-    if (delta <= 0) return;
-
-    const breakdownOptions = {
-      disableBuddies: buddiesDisabled(),
-    };
-    const contactLevelsSummary = contactSummaryForLeader(actor);
-    if (contactLevelsSummary) breakdownOptions.contactLevelsSummary = contactLevelsSummary;
-
-    const breakdown = sr2ComputeCreationNuyenBudgetBreakdown(
-      actor.system,
-      actor.items,
-      breakdownOptions,
-    );
-    if ((breakdown.remainingNuyen || 0) - delta < 0) {
-      ui.notifications.error("Not enough creation Nuyen remaining for that change.");
       return false;
     }
   });
@@ -453,6 +337,7 @@ export function registerCreationRuleHooks({
 
     const actor = item?.parent;
     if (!actor || !SR2_CHARACTER_TYPES.includes(actor.type)) return;
+    if (!sr2IsCreationMode(actor)) return;
 
     const type = data?.type ?? item.type;
     if (type !== "skill") return;
@@ -473,6 +358,7 @@ export function registerCreationRuleHooks({
 
     const actor = item?.parent;
     if (!actor || !SR2_CHARACTER_TYPES.includes(actor.type)) return;
+    if (!sr2IsCreationMode(actor)) return;
     if (item.type !== "skill") return;
 
     const getProperty = globalThis.foundry?.utils?.getProperty;

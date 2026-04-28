@@ -1,7 +1,11 @@
 /**
  * Extend the base Actor document to support Shadowrun 2E
  */
-import { sr2ComputeSpellLockAugmentationModifiers, sr2ParseFocusName } from "../sr2-rules.js";
+import {
+  sr2ComputeKarmaPoolTotal,
+  sr2ComputeSpellLockAugmentationModifiers,
+  sr2ParseFocusName,
+} from "../sr2-rules.js";
 import {
   sr2ComputeInstalledBiowareIndex,
   sr2ComputeInstalledCyberwareEssenceLoss,
@@ -47,6 +51,7 @@ export class SR2Actor extends Actor {
     this._calculateDerivedAttributes(systemData, modifiers);
     this._calculateConditionMonitors(systemData);
     this._calculateInitiative(systemData, modifiers);
+    this._calculateKarmaPool(systemData);
   }
 
   _prepareSpiritData(actorData) {
@@ -79,6 +84,23 @@ export class SR2Actor extends Actor {
 
     attrs.essence.value =
       Math.round((Math.max(0, baseEssence - totalEssenceLoss) + Number.EPSILON) * 100) / 100;
+  }
+
+  _calculateKarmaPool(systemData) {
+    const karmaPool = systemData.pools?.karma;
+    if (!karmaPool) return;
+
+    const earned = Math.max(0, Math.floor(Number(systemData.karma?.earned) || 0));
+    const base = Math.max(
+      0,
+      Math.floor(Number(karmaPool.base ?? karmaPool.total ?? karmaPool.current) || 0),
+    );
+    const total = sr2ComputeKarmaPoolTotal(base, earned);
+    const current = Math.max(0, Math.min(total, Number(karmaPool.current) || 0));
+
+    karmaPool.base = base;
+    karmaPool.total = total;
+    karmaPool.current = current;
   }
 
   /**

@@ -45,7 +45,10 @@ export class SR2VehicleSheet extends ActorSheet {
       if (i.type === "weapon") {
         weapons.push(i);
       } else if (i.type === "gear") {
+        const category = String(i.system?.category || "").toLowerCase();
         if (
+          category === "vehicle modification" ||
+          category === "modification" ||
           i.name.toLowerCase().includes("modification") ||
           i.name.toLowerCase().includes("upgrade") ||
           i.name.toLowerCase().includes("enhancement")
@@ -94,6 +97,43 @@ export class SR2VehicleSheet extends ActorSheet {
 
     // Add Item
     html.find(".item-create").click(this._onItemCreate.bind(this));
+
+    // Open owned item sheets by clicking the displayed item name or double-clicking a row.
+    const openItemSheetFromRow = (rowElement) => {
+      const itemId = rowElement?.getAttribute("data-item-id") || rowElement?.dataset?.itemId;
+      if (!itemId) return;
+
+      const item = this.actor.items.get(itemId);
+      if (!item?.sheet) return;
+
+      try {
+        item.sheet.render(true);
+      } catch (err) {
+        try {
+          item.sheet.render({ force: true });
+        } catch (err2) {
+          console.error("SR2E | Failed to open vehicle item sheet", { itemId, err, err2 });
+          ui.notifications.error("Failed to open item sheet. Check console for details.");
+        }
+      }
+    };
+
+    html.find(".item-row .sr2-sheet-item-name span").click((ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openItemSheetFromRow(ev.currentTarget?.closest?.(".item-row"));
+    });
+
+    html.find(".item-row").dblclick((ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      const tag = String(ev.target?.tagName || "").toLowerCase();
+      if (["input", "select", "textarea", "button", "a", "label"].includes(tag)) return;
+      if (ev.target?.closest?.(".sr2-sheet-actions")) return;
+
+      openItemSheetFromRow(ev.currentTarget);
+    });
 
     // Delete Item
     html.find(".item-delete").click(async (ev) => {
@@ -175,13 +215,14 @@ export class SR2VehicleSheet extends ActorSheet {
     const type = header.dataset.type;
     const data = foundry.utils.deepClone(header.dataset);
     const typeLabel = type ? type.charAt(0).toUpperCase() + type.slice(1) : "Item";
-    const name = `New ${typeLabel}`;
+    const name = data.name || `New ${typeLabel}`;
     const itemData = {
       name: name,
       type: type,
       system: data,
     };
     delete itemData.system["type"];
+    delete itemData.system["name"];
 
     try {
       const [created] = await this.actor.createEmbeddedDocuments("Item", [itemData]);
@@ -208,6 +249,61 @@ export class SR2VehicleSheet extends ActorSheet {
     }
 
     return super._onDrop(event);
+  }
+
+  /** @override */
+  async _updateObject(event, formData) {
+    const actorUpdates = {};
+    const itemUpdates = {};
+
+    for (const [key, value] of Object.entries(formData)) {
+      const match = key.match(/^items\.([^.]+)\.(.+)$/);
+      if (match) {
+        const itemId = match[1];
+        const itemPath = match[2];
+        itemUpdates[itemId] ||= {};
+        itemUpdates[itemId][itemPath] = value;
+        continue;
+      }
+
+      actorUpdates[key] = value;
+    }
+
+    for (const [itemId, updateData] of Object.entries(itemUpdates)) {
+      const item = this.actor.items.get(itemId);
+      if (!item) continue;
+
+      for (const [path, value] of Object.entries(updateData)) {
+        if (path === "name") continue;
+        if (path.startsWith("system.")) updateData[path] = this._coerceItemFieldValue(path, value);
+      }
+
+      await item.update(updateData);
+    }
+
+    if (Object.keys(actorUpdates).length > 0) {
+      await this.actor.update(actorUpdates);
+    }
+
+    return true;
+  }
+
+  _coerceItemFieldValue(path, value) {
+    const numericFields = new Set([
+      "system.ammo.current",
+      "system.ammo.max",
+      "system.price",
+      "system.quantity",
+      "system.rating",
+      "system.weight",
+    ]);
+
+    if (!numericFields.has(path)) return value;
+
+    const parsed = path === "system.weight" ? parseFloat(value) : parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return path === "system.quantity" ? 1 : 0;
+    if (path === "system.quantity") return Math.max(1, parsed);
+    return Math.max(0, parsed);
   }
 
   /**

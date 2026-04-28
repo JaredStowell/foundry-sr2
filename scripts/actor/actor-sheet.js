@@ -1,11 +1,13 @@
 import {
   sr2ComputeCreationNuyenBudgetBreakdown,
+  sr2BuildCreationCompletionSummary,
   sr2ComputeAttributePointsSpent,
   sr2ComputeContactLevelSummary,
   sr2ComputeForcePointsSpent,
   sr2ComputeSkillPointsSpent,
   sr2ComputeSkillRatingsFromAllocated,
   sr2Clamp,
+  sr2ComputeStartingKarmaPool,
   sr2FormatSignedModifier,
   sr2HasCreationLimits,
   sr2GetRacialAttributeBounds,
@@ -18,7 +20,11 @@ import {
   sr2SkillInferAllocatedRating,
 } from "../sr2-rules.js";
 import { sr2LogDebug } from "../utils/logger.js";
-import { rollEncounterInitiative } from "../actions/initiative.js";
+import {
+  ensureEncounterCombatant,
+  rollEncounterInitiative,
+  sr2RollInitiativeToChat,
+} from "../actions/initiative.js";
 import { sr2PrepareSkillRoll } from "../actions/skill-roll.js";
 import { sr2BuildRangedModifierSummary } from "../rules/attack-modifiers.js";
 import {
@@ -162,6 +168,11 @@ export class SR2ActorSheet extends ActorSheet {
     // Ensure shadowrun2e flags container exists for template bindings
     if (!context.flags.shadowrun2e) context.flags.shadowrun2e = {};
     context.isCreationMode = sr2HasCreationLimits(context.system);
+    context.skillAllocatedMax = context.isCreationMode ? 6 : 99;
+
+    if (!context.system.karma) context.system.karma = {};
+    context.system.karma.earned = Math.max(0, Math.floor(Number(context.system.karma.earned) || 0));
+    context.system.karma.spent = Math.max(0, Math.floor(Number(context.system.karma.spent) || 0));
 
     // Ensure health data structure exists with defaults
     if (!context.system.health) {
@@ -241,11 +252,12 @@ export class SR2ActorSheet extends ActorSheet {
       const metatype = context.system?.details?.metatype || "human";
       const bounds = sr2GetRacialAttributeBounds(metatype);
 
-      // Apply racial min/max to displayed attributes (Body/Quickness/Strength/Charisma/Intelligence/Willpower)
+      // Apply chargen racial min/max only while creation budgets are active. After creation,
+      // advancement is tracked by Karma and the sheet should not block higher ratings.
       for (const [key, { min, max }] of Object.entries(bounds)) {
         if (!context.system.attributes?.[key]) continue;
-        context.system.attributes[key].min = min;
-        context.system.attributes[key].max = max;
+        context.system.attributes[key].min = context.isCreationMode ? min : 0;
+        context.system.attributes[key].max = context.isCreationMode ? max : 99;
       }
 
       // Leader display (followers)
@@ -811,6 +823,7 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Pool management
     html.find(".pool-adjust").click(this._onPoolAdjust.bind(this));
+    html.find(".karma-earned-adjust").click(this._onKarmaEarnedAdjust.bind(this));
     html.find(".reset-all-pools").click(this._onResetAllPools.bind(this));
 
     // Skill management
@@ -841,6 +854,7 @@ export class SR2ActorSheet extends ActorSheet {
     html.find(".sr2-add-ic").click(this._onAddIC.bind(this));
     html.find(".sr2-adjust-contacts").click(this._onAdjustContacts.bind(this));
     html.find(".sr2-toggle-extra").click(this._onToggleExtra.bind(this));
+    html.find(".sr2-complete-creation").click(this._onCompleteCreation.bind(this));
 
     // Lifestyle management
     if (["character", "contact", "follower"].includes(this.actor.type)) {
@@ -963,6 +977,18 @@ export class SR2ActorSheet extends ActorSheet {
     const newValue = sr2Clamp(currentValue + adjustment, 0, maxValue);
 
     this.actor.update({ [`system.pools.${poolType}.current`]: newValue });
+  }
+
+  _onKarmaEarnedAdjust(event) {
+    event.preventDefault();
+
+    const adjustment = parseInt(event.currentTarget?.dataset?.adjust, 10);
+    if (!Number.isFinite(adjustment) || adjustment === 0) return;
+
+    const currentValue = Number(this.actor.system?.karma?.earned) || 0;
+    const newValue = Math.max(0, Math.floor(currentValue + adjustment));
+
+    this.actor.update({ "system.karma.earned": newValue });
   }
 
   /**
@@ -1118,21 +1144,6 @@ export class SR2ActorSheet extends ActorSheet {
       nextAllocated = computedPreview.minAllocated;
     }
 
-    if (this._isCreationMode() && (Number(this.actor.system.creation?.skillPoints) || 0) > 0) {
-      const total = Number(this.actor.system.creation?.skillPoints) || 0;
-      const spentOther = this._getSkillPointsSpentExcluding(item.id);
-      const maxForThis = total - spentOther;
-
-      if (maxForThis < computedPreview.minAllocated) {
-        ui.notifications.error("Not enough Skill Points remaining. Reduce other skills first.");
-        element.value = item.system.concentration || "";
-        return;
-      }
-
-      nextAllocated = Math.min(nextAllocated, 6, maxForThis);
-      nextAllocated = Math.max(nextAllocated, computedPreview.minAllocated);
-    }
-
     const computed = sr2ComputeSkillRatingsFromAllocated({
       ...item.system,
       concentration,
@@ -1198,21 +1209,6 @@ export class SR2ActorSheet extends ActorSheet {
       nextAllocated = computedPreview.minAllocated;
     }
 
-    if (this._isCreationMode() && (Number(this.actor.system.creation?.skillPoints) || 0) > 0) {
-      const total = Number(this.actor.system.creation?.skillPoints) || 0;
-      const spentOther = this._getSkillPointsSpentExcluding(item.id);
-      const maxForThis = total - spentOther;
-
-      if (maxForThis < computedPreview.minAllocated) {
-        ui.notifications.error("Not enough Skill Points remaining. Reduce other skills first.");
-        element.value = item.system.specialization || "";
-        return;
-      }
-
-      nextAllocated = Math.min(nextAllocated, 6, maxForThis);
-      nextAllocated = Math.max(nextAllocated, computedPreview.minAllocated);
-    }
-
     const computed = sr2ComputeSkillRatingsFromAllocated({
       ...item.system,
       specialization,
@@ -1255,16 +1251,6 @@ export class SR2ActorSheet extends ActorSheet {
     return sr2HasCreationLimits(this.actor.system);
   }
 
-  _getSkillPointsSpentExcluding(excludeItemId) {
-    return this.actor.items
-      .filter((i) => i.type === "skill" && i.id !== excludeItemId)
-      .reduce((sum, skill) => {
-        if (!skill.system?.baseSkill) return sum;
-        if (skill.system?.isFree) return sum;
-        return sum + sr2SkillInferAllocatedRating(skill.system);
-      }, 0);
-  }
-
   /**
    * Handle allocated skill rating changes (SR2 skill point spending)
    */
@@ -1282,7 +1268,6 @@ export class SR2ActorSheet extends ActorSheet {
     }
 
     const baseSkill = item.system.baseSkill || "";
-    const oldAllocated = sr2SkillInferAllocatedRating(item.system);
     let nextAllocated = parseInt(element.value, 10);
     if (!Number.isFinite(nextAllocated)) nextAllocated = 0;
 
@@ -1291,27 +1276,9 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Starting skills must have a minimum rating (SR2 p. 45). Allow 0 only if no base skill selected.
     const minAllocated = baseSkill ? computedPreview.minAllocated : 0;
-    const maxAllocated = this._isCreationMode() ? 6 : 12;
+    const maxAllocated = this._isCreationMode() ? 6 : 99;
 
     nextAllocated = sr2Clamp(nextAllocated, minAllocated, maxAllocated);
-
-    if (
-      this._isCreationMode() &&
-      (Number(this.actor.system.creation?.skillPoints) || 0) > 0 &&
-      baseSkill
-    ) {
-      const total = Number(this.actor.system.creation?.skillPoints) || 0;
-      const spentOther = this._getSkillPointsSpentExcluding(item.id);
-      const maxForThis = total - spentOther;
-
-      if (maxForThis < minAllocated) {
-        ui.notifications.error("Not enough Skill Points remaining. Reduce other skills first.");
-        element.value = oldAllocated;
-        return;
-      }
-
-      nextAllocated = Math.min(nextAllocated, maxForThis);
-    }
 
     const computed = sr2ComputeSkillRatingsFromAllocated({
       ...item.system,
@@ -1334,7 +1301,7 @@ export class SR2ActorSheet extends ActorSheet {
       return;
     }
 
-    const maxAllocated = this._isCreationMode() ? 6 : 12;
+    const maxAllocated = this._isCreationMode() ? 6 : 99;
     if (rating < 0 || rating > maxAllocated) {
       element.style.borderColor = "#ff6b6b";
     } else {
@@ -1439,6 +1406,122 @@ export class SR2ActorSheet extends ActorSheet {
     await this.actor.update({
       [`system.creation.extras.${extra}`]: next,
     });
+  }
+
+  async _onCompleteCreation(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (this.actor.type !== "character" || !this._isCreationMode()) return false;
+
+    const contactLevelsEnabled = Boolean(sr2GetSystemSetting("contactLevels", false));
+    const disableBuddies =
+      contactLevelsEnabled || Boolean(sr2GetSystemSetting("disableBuddies", false));
+    const metatype = this.actor.system?.details?.metatype || "human";
+    const budgetOptions = { disableBuddies };
+    const linkedActors =
+      game?.actors?.filter((a) => a.system?.details?.leaderId === this.actor.id) ?? [];
+    const leaderContacts = linkedActors
+      .filter((a) => a.type === "contact")
+      .map((a) => ({
+        id: a.id,
+        sort: Number(a.sort) || 0,
+        contactLevel: a.system?.details?.contactLevel,
+      }));
+
+    if (contactLevelsEnabled) {
+      const charisma = Number(this.actor.system?.attributes?.charisma?.value) || 0;
+      const summary = sr2ComputeContactLevelSummary(leaderContacts, charisma);
+      budgetOptions.contactLevelsSummary = summary;
+
+      if (summary.over.extraContacts) {
+        ui.notifications.error(
+          "Too many contacts (max extra contacts is 3× Charisma, plus two free).",
+        );
+        return false;
+      }
+      if (summary.over.extraLevel2) {
+        ui.notifications.error(
+          "Too many Level 2+ contacts (max extra Level 2 upgrades is 2× Charisma).",
+        );
+        return false;
+      }
+      if (summary.over.extraLevel3) {
+        ui.notifications.error(
+          "Too many Level 3 contacts (max extra Level 3 upgrades is 1× Charisma).",
+        );
+        return false;
+      }
+    } else {
+      const purchasedContacts = Math.max(
+        2,
+        Math.max(0, parseInt(this.actor.system?.creation?.extras?.contacts, 10) || 0),
+      );
+      if (leaderContacts.length > purchasedContacts) {
+        ui.notifications.error("Too many contacts for the purchased creation extras.");
+        return false;
+      }
+    }
+
+    const gangArchetypes = new Set(["gangMember", "tribesman"]);
+    const followerCount = linkedActors.filter(
+      (a) => a.type === "follower" && !gangArchetypes.has(a.system?.details?.archetype || ""),
+    ).length;
+    const followersPurchased =
+      Math.max(0, parseInt(this.actor.system?.creation?.extras?.followers, 10) || 0) > 0;
+    const followerLimit = followersPurchased ? 5 : 0;
+    if (followerCount > followerLimit) {
+      ui.notifications.error("Too many followers for the purchased creation extras.");
+      return false;
+    }
+
+    const completion = sr2BuildCreationCompletionSummary({
+      system: this.actor.system,
+      items: this.actor.items,
+      metatype,
+      budgetOptions,
+    });
+
+    const RollCtor = globalThis.Roll;
+    if (!RollCtor) {
+      ui.notifications.error("Foundry Roll is unavailable, so creation cannot be completed.");
+      return false;
+    }
+
+    const startingCashRoll = await new RollCtor("3d6 * 1000").evaluate({ async: true });
+    const finalized = sr2BuildCreationCompletionSummary({
+      system: this.actor.system,
+      items: this.actor.items,
+      metatype,
+      startingCashRoll: startingCashRoll?.total,
+      budgetOptions,
+    });
+
+    const moreMetahumans = Boolean(sr2GetSystemSetting("moreMetahumans", false));
+    const startingKarmaPool = sr2ComputeStartingKarmaPool(metatype, { moreMetahumans });
+
+    await this.actor.update({
+      "system.resources.nuyen": finalized.startingCashFinal,
+      "system.pools.karma.current": startingKarmaPool,
+      "system.pools.karma.total": startingKarmaPool,
+      "system.pools.karma.base": startingKarmaPool,
+      "system.karma.earned": 0,
+      "system.karma.spent": 0,
+      "system.creation.attributePoints": 0,
+      "system.creation.skillPoints": 0,
+      "system.creation.forcePoints": 0,
+      "system.creation.startingNuyen": 0,
+      "system.creation.resourcesFinalized": true,
+      "system.creation.unspentNuyen": finalized.unspentNuyen,
+      "system.creation.startingCashFromUnspent": finalized.startingCashFromUnspent,
+      "system.creation.startingCashRoll": finalized.startingCashRoll,
+      "system.creation.startingCashFinal": finalized.startingCashFinal,
+    });
+
+    ui.notifications.info(
+      `Character creation completed. Starting cash: ¥${finalized.startingCashFinal}. Karma Pool: ${startingKarmaPool}.`,
+    );
+    return finalized;
   }
 
   async _sr2OpenActorCreateDialogWithDefaults({ type, leaderId = null, archetype = null }) {
@@ -2689,7 +2772,7 @@ export class SR2ActorSheet extends ActorSheet {
             null,
             {
               rollActor: targetActor,
-              allowedPoolKeys: SR2_ALL_POOL_KEYS,
+              allowedPoolKeys: ["spell", "karma"],
             },
           );
 
@@ -3871,6 +3954,30 @@ export class SR2ActorSheet extends ActorSheet {
     event.stopPropagation();
 
     try {
+      const encounterCheck = await ensureEncounterCombatant({
+        actor: this.actor,
+        createCombat: false,
+        createCombatant: false,
+        notify: false,
+      });
+
+      if (!encounterCheck.ok) {
+        const shouldRoll = await Dialog.confirm({
+          title: "Roll Initiative?",
+          content: `<p>${
+            this.actor?.name || "This character"
+          } is not in an encounter. Roll initiative anyway?</p>`,
+          yes: () => true,
+          no: () => false,
+          defaultYes: false,
+        });
+
+        if (!shouldRoll) return;
+
+        await sr2RollInitiativeToChat(this.actor);
+        return;
+      }
+
       await rollEncounterInitiative({ actor: this.actor });
     } catch (error) {
       console.error("SR2E | Error rolling initiative:", error);
@@ -4586,7 +4693,7 @@ export class SR2ActorSheet extends ActorSheet {
           actorUpdates["system.resources.lifestyles"][0]?.months || 1;
       }
 
-      // Clamp attributes by racial mins/maxes and enforce Attribute Points in creation mode
+      // Clamp attributes by racial mins/maxes only while creation mode is active.
       const metatype =
         actorUpdates["system.details.metatype"] ?? this.actor.system.details?.metatype ?? "human";
       const bounds = sr2GetRacialAttributeBounds(metatype);
@@ -4599,41 +4706,10 @@ export class SR2ActorSheet extends ActorSheet {
           actorUpdates[path] !== undefined
             ? actorUpdates[path]
             : this.actor.system.attributes?.[key]?.value;
-        const clamped = sr2Clamp(raw, bounds[key].min, bounds[key].max);
-        newAttributeValues[key] = clamped;
-        if (actorUpdates[path] !== undefined) actorUpdates[path] = clamped;
+        const value = creationMode ? sr2Clamp(raw, bounds[key].min, bounds[key].max) : Number(raw);
+        newAttributeValues[key] = Number.isFinite(value) ? value : 0;
+        if (actorUpdates[path] !== undefined) actorUpdates[path] = newAttributeValues[key];
       }
-
-      if (creationMode && totalAttributePoints > 0) {
-        const spent = attrKeys.reduce((sum, key) => {
-          const value = Number(newAttributeValues[key]);
-          const baseline = Number(bounds[key]?.min) || 0;
-          return sum + Math.max(0, value - baseline);
-        }, 0);
-
-        if (spent > totalAttributePoints) {
-          const changedName = event?.currentTarget?.name || "";
-          const match = changedName.match(/^system\.attributes\.([^.]+)\.value$/);
-          const changedKey = match?.[1];
-          if (changedKey && attrKeys.includes(changedKey)) {
-            const baseline = Number(bounds[changedKey]?.min) || 0;
-            const currentSpent = Math.max(0, Number(newAttributeValues[changedKey]) - baseline);
-            const otherSpent = spent - currentSpent;
-            const allowedSpent = Math.max(0, totalAttributePoints - otherSpent);
-            const allowedFinalRaw = baseline + allowedSpent;
-            const allowedFinal = sr2Clamp(
-              allowedFinalRaw,
-              bounds[changedKey].min,
-              bounds[changedKey].max,
-            );
-            actorUpdates[`system.attributes.${changedKey}.value`] = allowedFinal;
-            ui.notifications.warn("Attribute Points exceeded; clamped the last change.");
-          } else {
-            ui.notifications.warn("Attribute Points exceeded.");
-          }
-        }
-      }
-
       await this.object.update(actorUpdates);
     }
 

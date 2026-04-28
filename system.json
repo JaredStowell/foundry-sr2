@@ -2,7 +2,7 @@
   "id": "shadowrun2e",
   "title": "Shadowrun 2E",
   "description": "A comprehensive system for playing Shadowrun 2nd Edition in Foundry VTT",
-  "version": "1.0.28",
+  "version": "1.0.29",
   "compatibility": {
     "minimum": "11",
     "verified": "13"
@@ -118,7 +118,7 @@
   "secondaryTokenAttribute": "stun",
   "url": "https://github.com/JaredStowell/foundry-sr2",
   "manifest": "https://raw.githubusercontent.com/JaredStowell/foundry-sr2/main/system.json",
-  "download": "https://github.com/JaredStowell/foundry-sr2/archive/refs/tags/v1.0.28.zip",
+  "download": "https://github.com/JaredStowell/foundry-sr2/archive/refs/tags/v1.0.29.zip",
   "license": "LICENSE",
   "readme": "README.md"
 }

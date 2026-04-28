@@ -57,6 +57,12 @@ describe("registerActorRuleHooks", () => {
       },
     };
 
+    actor.system.creation = {
+      attributePoints: 30,
+      skillPoints: 0,
+      forcePoints: 0,
+      startingNuyen: 0,
+    };
     preUpdateActor(actor, changes, {}, "U1");
 
     expect(foundry.utils.getProperty(changes, "system.attributes.body.min")).toBe(5);
@@ -85,6 +91,12 @@ describe("registerActorRuleHooks", () => {
       },
     };
 
+    actor.system.creation = {
+      attributePoints: 30,
+      skillPoints: 0,
+      forcePoints: 0,
+      startingNuyen: 0,
+    };
     preUpdateActor(actor, changes, {}, "U1");
     expect(foundry.utils.getProperty(changes, "system.attributes.body.value")).toBe(11);
   });
@@ -107,6 +119,7 @@ describe("registerActorRuleHooks", () => {
           intelligence: { value: 2, min: 0, max: 6 },
           willpower: { value: 3, min: 1, max: 7 },
         },
+        creation: { attributePoints: 30, skillPoints: 0, forcePoints: 0, startingNuyen: 0 },
       },
     });
     const changes = {
@@ -121,6 +134,62 @@ describe("registerActorRuleHooks", () => {
 
     expect(foundry.utils.getProperty(changes, "system.attributes.quickness.value")).toBe(-1);
     expect(foundry.utils.getProperty(changes, "system.details.traits.diseaseResistance")).toBe(2);
+  });
+
+  it("does not clamp attributes after creation budgets are cleared", () => {
+    registerActorRuleHooks();
+    const [preUpdateActor] = Hooks.__get("preUpdateActor");
+
+    const actor = makeActor();
+    const changes = {
+      system: {
+        attributes: {
+          body: {
+            value: 99,
+          },
+        },
+      },
+    };
+
+    preUpdateActor(actor, changes, {}, "U1");
+    expect(foundry.utils.getProperty(changes, "system.attributes.body.value")).toBe(99);
+  });
+
+  it("keeps earned karma separate and adds every tenth point to Karma Pool", () => {
+    registerActorRuleHooks();
+    const [preUpdateActor] = Hooks.__get("preUpdateActor");
+
+    const actor = makeActor({
+      system: {
+        details: { metatype: "human", traits: { lowLightVision: false } },
+        attributes: {
+          body: { value: 3, min: 0, max: 6 },
+          quickness: { value: 3, min: 0, max: 6 },
+          strength: { value: 3, min: 0, max: 6 },
+          charisma: { value: 3, min: 0, max: 6 },
+          intelligence: { value: 3, min: 0, max: 6 },
+          willpower: { value: 3, min: 0, max: 6 },
+        },
+        pools: {
+          karma: { current: 1, total: 1, base: 1 },
+        },
+        karma: { earned: 9, spent: 0 },
+        magic: { awakened: false, physicalAdept: false },
+      },
+    });
+    const changes = {
+      system: {
+        karma: {
+          earned: 10,
+        },
+      },
+    };
+
+    preUpdateActor(actor, changes, {}, "U1");
+    expect(foundry.utils.getProperty(changes, "system.karma.earned")).toBe(10);
+    expect(foundry.utils.getProperty(changes, "system.pools.karma.base")).toBe(1);
+    expect(foundry.utils.getProperty(changes, "system.pools.karma.total")).toBe(2);
+    expect(foundry.utils.getProperty(changes, "system.pools.karma.current")).toBe(2);
   });
 
   it("initializes pre-created actors at racial minimum when values are unallocated", () => {

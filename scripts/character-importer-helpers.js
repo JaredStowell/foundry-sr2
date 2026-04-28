@@ -1,4 +1,5 @@
 import {
+  sr2ComputeKarmaPoolTotal,
   sr2InferCombatSpellDamageLevelFromName,
   sr2ComputeSkillRatingsFromAllocated,
   sr2GetRacialAttributeBounds,
@@ -345,6 +346,9 @@ export function sr2BuildImportedActorData(data) {
 
   const magic = mapImportedMagicFlags(data);
   const initiativeBase = Number(attributes.reaction?.value) || 1;
+  const earnedKarma = Math.max(0, Math.floor(Number(data?.karma) || 0));
+  const karmaPoolBase = Math.max(0, Math.floor(Number(data?.karmaPool) || 0));
+  const karmaPoolTotal = sr2ComputeKarmaPoolTotal(karmaPoolBase, earnedKarma);
 
   return {
     name: getImportedStringField(data, "street_name", "name") || "Imported Character",
@@ -355,7 +359,11 @@ export function sr2BuildImportedActorData(data) {
       pools: {
         combat: { current: 0, max: 0 },
         spell: { current: 0, max: 0 },
-        karma: { current: Number(data?.karmaPool) || 0, total: Number(data?.karma) || 0 },
+        karma: {
+          current: Math.min(karmaPoolBase, karmaPoolTotal),
+          total: karmaPoolTotal,
+          base: karmaPoolBase,
+        },
         hacking: { current: 0, max: 0 },
         control: { current: 0, max: 0 },
         task: { current: 0, max: 0 },
@@ -367,6 +375,10 @@ export function sr2BuildImportedActorData(data) {
         current: 0,
       },
       magic,
+      karma: {
+        earned: earnedKarma,
+        spent: 0,
+      },
       priorities: mapImportedPriorities(data?.priorities),
       creation: mapImportedCreationBudget(data),
       resources: {
@@ -841,7 +853,7 @@ export function sr2BuildImportedContactActorData(contact, { characterName, leade
       pools: {
         combat: { current: 0, max: 0 },
         spell: { current: 0, max: 0 },
-        karma: { current: 0, total: 0 },
+        karma: { current: 0, total: 0, base: 0 },
         hacking: { current: 0, max: 0 },
         control: { current: 0, max: 0 },
         task: { current: 0, max: 0 },
@@ -849,6 +861,7 @@ export function sr2BuildImportedContactActorData(contact, { characterName, leade
       },
       initiative: { base: 3, dice: 1, current: 0 },
       magic: { awakened: false, physicalAdept: false, tradition: "" },
+      karma: { earned: 0, spent: 0 },
       resources: {
         nuyen: 0,
         lifestyle: "street",

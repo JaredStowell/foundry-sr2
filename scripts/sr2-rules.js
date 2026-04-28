@@ -56,6 +56,8 @@ export const SR2_RACIAL_TRAITS = {
   },
 };
 
+const SR2_METAHUMAN_METATYPES = new Set(["elf", "dwarf", "ork", "troll"]);
+
 export const SR2_LIFESTYLE_COSTS = {
   street: 0,
   squatter: 100,
@@ -265,6 +267,81 @@ export function sr2ComputeCreationNuyenBudgetBreakdown(system, items, options = 
     extrasCost,
     totalCost,
     remainingNuyen: budgetNuyen - totalCost,
+  };
+}
+
+export function sr2ComputeStartingCashFromUnspentNuyen(unspentNuyen) {
+  const remaining = Math.max(0, Math.floor(Number(unspentNuyen) || 0));
+  return Math.floor(remaining / 10);
+}
+
+export function sr2ComputeStartingKarmaPool(metatype, options = {}) {
+  const normalizedMetatype = String(metatype || "human")
+    .trim()
+    .toLowerCase();
+
+  if (SR2_METAHUMAN_METATYPES.has(normalizedMetatype) && !options?.moreMetahumans) {
+    return 2;
+  }
+
+  return 1;
+}
+
+export function sr2ComputeKarmaPoolBonusFromEarned(earnedKarma) {
+  const earned = Math.max(0, Math.floor(Number(earnedKarma) || 0));
+  return Math.floor(earned / 10);
+}
+
+export function sr2ComputeKarmaPoolTotal(basePool, earnedKarma) {
+  const base = Math.max(0, Math.floor(Number(basePool) || 0));
+  return base + sr2ComputeKarmaPoolBonusFromEarned(earnedKarma);
+}
+
+export function sr2BuildCreationCompletionSummary({
+  system,
+  items,
+  metatype,
+  startingCashRoll = 0,
+  budgetOptions = {},
+} = {}) {
+  const attributePointsTotal = Number(system?.creation?.attributePoints) || 0;
+  const skillPointsTotal = Number(system?.creation?.skillPoints) || 0;
+  const forcePointsTotal = Number(system?.creation?.forcePoints) || 0;
+
+  const attributePointsSpent = sr2ComputeAttributePointsSpent(system?.attributes, metatype);
+  const skillItems =
+    typeof items?.filter === "function" ? items.filter((item) => item?.type === "skill") : [];
+  const skillPointsSpent = sr2ComputeSkillPointsSpent(skillItems);
+  const forcePointsSpent = sr2ComputeForcePointsSpent(items);
+  const budgetBreakdown = sr2ComputeCreationNuyenBudgetBreakdown(system, items, budgetOptions);
+
+  const unspentNuyen = Math.max(0, Number(budgetBreakdown?.remainingNuyen) || 0);
+  const startingCashFromUnspent = sr2ComputeStartingCashFromUnspentNuyen(unspentNuyen);
+  const safeStartingCashRoll = Math.max(0, Math.floor(Number(startingCashRoll) || 0));
+
+  return {
+    creationPoints: {
+      attributes: {
+        total: attributePointsTotal,
+        spent: attributePointsSpent,
+        remaining: attributePointsTotal - attributePointsSpent,
+      },
+      skills: {
+        total: skillPointsTotal,
+        spent: skillPointsSpent,
+        remaining: skillPointsTotal - skillPointsSpent,
+      },
+      force: {
+        total: forcePointsTotal,
+        spent: forcePointsSpent,
+        remaining: forcePointsTotal - forcePointsSpent,
+      },
+    },
+    budgetBreakdown,
+    unspentNuyen,
+    startingCashFromUnspent,
+    startingCashRoll: safeStartingCashRoll,
+    startingCashFinal: startingCashFromUnspent + safeStartingCashRoll,
   };
 }
 

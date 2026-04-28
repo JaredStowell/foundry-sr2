@@ -373,12 +373,17 @@ describe("combat encounter e2e flow", () => {
     const shooterSheet = createSheet(SR2ActorSheet, shooter);
     const brawlerSheet = createSheet(SR2ActorSheet, brawler);
     const mageSheet = createSheet(SR2ActorSheet, mage);
+    const combat = await SR2Combat.create({ scene: scene.id, active: true });
+    await combat.createEmbeddedDocuments("Combatant", [
+      { tokenId: shooterToken.id, actorId: shooter.id },
+      { tokenId: brawlerToken.id, actorId: brawler.id },
+      { tokenId: mageToken.id, actorId: mage.id },
+    ]);
 
     await shooterSheet._onInitiativeRoll({ preventDefault: vi.fn(), stopPropagation: vi.fn() });
     await brawlerSheet._onInitiativeRoll({ preventDefault: vi.fn(), stopPropagation: vi.fn() });
     await mageSheet._onInitiativeRoll({ preventDefault: vi.fn(), stopPropagation: vi.fn() });
 
-    const [combat] = game.combats.contents;
     expect(combat).toBeTruthy();
     expect(combat.combatants).toHaveLength(3);
     expect(foundry.utils.getProperty(combat, "flags.shadowrun2e.sr2.currentPhase")).toBe(19);

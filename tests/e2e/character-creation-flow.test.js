@@ -652,7 +652,191 @@ describe("character creation e2e flow (vitest integration)", () => {
     expect(breakdown.remainingNuyen).toBe(25000);
   });
 
-  it("blocks illegal chargen choices end to end for mundane characters and clamps overspends", async () => {
+  it("completes character creation by converting leftover resources into starting cash", async () => {
+    const { SR2Actor, SR2ActorSheet } = await loadCharacterClasses();
+    globalThis.Roll = class FakeChargenCashRoll {
+      constructor(formula) {
+        this.formula = formula;
+        this.total = 10000;
+      }
+
+      async evaluate() {
+        return this;
+      }
+    };
+
+    const actor = createCharacterActorDocument(SR2Actor, {
+      system: {
+        details: {
+          metatype: "human",
+        },
+        attributes: {
+          body: { value: 4 },
+          quickness: { value: 4 },
+          strength: { value: 3 },
+          charisma: { value: 3 },
+          intelligence: { value: 3 },
+          willpower: { value: 3 },
+          reaction: { value: 0 },
+          magic: { value: 0, effective: 0 },
+          essence: { value: 6, max: 6 },
+        },
+        creation: {
+          attributePoints: 20,
+          skillPoints: 8,
+          forcePoints: 0,
+          startingNuyen: 100000,
+          lifestyleMonths: 1,
+          resourcesFinalized: false,
+          extras: {
+            contacts: 2,
+            buddy: 0,
+            gang: 0,
+            followers: 0,
+          },
+        },
+        resources: {
+          nuyen: 0,
+          lifestyle: "low",
+          lifestyles: [{ type: "low", months: 1 }],
+        },
+      },
+    });
+    const sheet = createSheet(SR2ActorSheet, actor);
+
+    await actor.createEmbeddedDocuments("Item", [
+      {
+        name: "Pistols",
+        type: "skill",
+        system: {
+          baseSkill: "Pistols",
+          allocatedRating: 5,
+          baseRating: 5,
+          concentration: "",
+          concentrationRating: 0,
+          specialization: "",
+          specializationRating: 0,
+        },
+      },
+      {
+        name: "Etiquette",
+        type: "skill",
+        system: {
+          baseSkill: "Etiquette",
+          allocatedRating: 3,
+          baseRating: 3,
+          concentration: "",
+          concentrationRating: 0,
+          specialization: "",
+          specializationRating: 0,
+        },
+      },
+      {
+        name: "Armor Jacket",
+        type: "armor",
+        system: { price: 25000, quantity: 1, ballistic: 5, impact: 3, equipped: true },
+      },
+    ]);
+
+    const completion = await sheet._onCompleteCreation({
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    });
+
+    expect(completion).toMatchObject({
+      unspentNuyen: 74000,
+      startingCashFromUnspent: 7400,
+      startingCashRoll: 10000,
+      startingCashFinal: 17400,
+    });
+    expect(actor.system.resources.nuyen).toBe(17400);
+    expect(actor.system.pools.karma.current).toBe(1);
+    expect(actor.system.pools.karma.total).toBe(1);
+    expect(actor.system.pools.karma.base).toBe(1);
+    expect(actor.system.karma.earned).toBe(0);
+    expect(actor.system.creation.resourcesFinalized).toBe(true);
+    expect(actor.system.creation.unspentNuyen).toBe(74000);
+    expect(actor.system.creation.startingCashFromUnspent).toBe(7400);
+    expect(actor.system.creation.startingCashRoll).toBe(10000);
+    expect(actor.system.creation.startingCashFinal).toBe(17400);
+    expect(actor.system.creation.attributePoints).toBe(0);
+    expect(actor.system.creation.skillPoints).toBe(0);
+    expect(actor.system.creation.forcePoints).toBe(0);
+    expect(actor.system.creation.startingNuyen).toBe(0);
+    expect(sheet._isCreationMode()).toBe(false);
+    expect(ui.notifications.info).toHaveBeenCalledWith(
+      "Character creation completed. Starting cash: ¥17400. Karma Pool: 1.",
+    );
+  });
+
+  it("allows completing creation even when attribute, skill, or force budgets are overspent", async () => {
+    const { SR2Actor, SR2ActorSheet } = await loadCharacterClasses();
+    const actor = createCharacterActorDocument(SR2Actor, {
+      system: {
+        details: { metatype: "human" },
+        attributes: {
+          body: { value: 6 },
+          quickness: { value: 6 },
+          strength: { value: 6 },
+          charisma: { value: 6 },
+          intelligence: { value: 6 },
+          willpower: { value: 6 },
+        },
+        creation: {
+          attributePoints: 1,
+          skillPoints: 1,
+          forcePoints: 1,
+          startingNuyen: 5000,
+          resourcesFinalized: false,
+          extras: { contacts: 0, buddy: 0, gang: 0, followers: 0 },
+        },
+      },
+    });
+    const sheet = createSheet(SR2ActorSheet, actor);
+
+    await actor.createEmbeddedDocuments("Item", [
+      {
+        name: "Pistols",
+        type: "skill",
+        system: {
+          baseSkill: "Pistols",
+          allocatedRating: 8,
+          baseRating: 8,
+          concentration: "",
+          concentrationRating: 0,
+          specialization: "",
+          specializationRating: 0,
+        },
+      },
+      {
+        name: "Heal",
+        type: "spell",
+        system: { force: 6 },
+      },
+    ]);
+
+    const completion = await sheet._onCompleteCreation({
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    });
+
+    expect(completion).toBeTruthy();
+    expect(actor.system.creation.attributePoints).toBe(0);
+    expect(actor.system.creation.skillPoints).toBe(0);
+    expect(actor.system.creation.forcePoints).toBe(0);
+    expect(sheet._isCreationMode()).toBe(false);
+    expect(ui.notifications.error).not.toHaveBeenCalledWith(
+      "Too many Attribute Points have been spent to complete creation.",
+    );
+    expect(ui.notifications.error).not.toHaveBeenCalledWith(
+      "Too many Skill Points have been spent to complete creation.",
+    );
+    expect(ui.notifications.error).not.toHaveBeenCalledWith(
+      "Too many Force Points have been spent to complete creation.",
+    );
+  });
+
+  it("blocks illegal chargen choices end to end for mundane characters without attribute spend clamps", async () => {
     const { SR2Actor, SR2ActorSheet } = await loadCharacterClasses();
     registerCreationRuleHooks();
 
@@ -703,9 +887,9 @@ describe("character creation e2e flow (vitest integration)", () => {
 
     expect(
       sr2ComputeAttributePointsSpent(actor.system.attributes, actor.system.details.metatype),
-    ).toBe(20);
-    expect(actor.system.attributes.body.value).toBe(3);
-    expect(ui.notifications.warn).toHaveBeenCalledWith(
+    ).toBe(21);
+    expect(actor.system.attributes.body.value).toBe(4);
+    expect(ui.notifications.warn).not.toHaveBeenCalledWith(
       "Attribute Points exceeded; clamped the last change.",
     );
 
@@ -765,8 +949,8 @@ describe("character creation e2e flow (vitest integration)", () => {
       },
     });
 
-    expect(expensiveCyberware).toBeNull();
-    expect(ui.notifications.error).toHaveBeenCalledWith(
+    expect(expensiveCyberware).toBeTruthy();
+    expect(ui.notifications.error).not.toHaveBeenCalledWith(
       "Not enough creation Nuyen remaining for that item.",
     );
   });

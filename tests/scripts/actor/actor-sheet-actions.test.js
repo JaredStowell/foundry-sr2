@@ -76,6 +76,9 @@ describe("SR2ActorSheet action flows", () => {
       create: vi.fn(async () => {}),
       getSpeaker: vi.fn(() => ({ alias: "Runner" })),
     };
+    globalThis.Dialog = {
+      confirm: vi.fn(async () => true),
+    };
 
     globalThis.canvas = undefined;
   });
@@ -186,6 +189,13 @@ describe("SR2ActorSheet action flows", () => {
     token.actor = actor;
     game.actors.__set(actor);
     globalThis.canvas = { scene: { id: "scene-1" } };
+    const combat = await SR2Combat.create({ scene: "scene-1", active: true });
+    await combat.createEmbeddedDocuments("Combatant", [
+      {
+        tokenId: token.id,
+        actorId: actor.id,
+      },
+    ]);
 
     const sheet = Object.create(SR2ActorSheet.prototype);
     sheet.actor = actor;
@@ -195,10 +205,63 @@ describe("SR2ActorSheet action flows", () => {
       stopPropagation: vi.fn(),
     });
 
-    const [combat] = game.combats.contents;
-    expect(combat).toBeTruthy();
     expect(foundry.utils.getProperty(combat, "flags.shadowrun2e.sr2.currentPhase")).toBe(22);
     expect(combat.combatants[0].tokenId).toBe("token-initiative");
+    expect(Dialog.confirm).not.toHaveBeenCalled();
+  });
+
+  it("asks before rolling initiative outside an Encounter", async () => {
+    const SR2ActorSheet = await loadSheetClass();
+
+    class FakeRoll {
+      constructor(formula) {
+        this.formula = formula;
+      }
+
+      async evaluate() {
+        return this;
+      }
+
+      async toMessage(data) {
+        ChatMessage.create(data);
+      }
+    }
+
+    globalThis.Roll = FakeRoll;
+
+    const actor = {
+      id: "actor-no-encounter",
+      name: "Runner",
+      system: {
+        initiative: { dice: 2, base: 8 },
+        attributes: {
+          reaction: { value: 8 },
+        },
+      },
+      getActiveTokens: vi.fn(() => []),
+    };
+
+    const sheet = Object.create(SR2ActorSheet.prototype);
+    sheet.actor = actor;
+
+    await sheet._onInitiativeRoll({
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    });
+
+    expect(Dialog.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Roll Initiative?",
+        content: expect.stringContaining("is not in an encounter"),
+      }),
+    );
+    expect(ChatMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        flavor: "Runner rolls Initiative (2d6+8)",
+      }),
+    );
+    expect(game.combats.contents).toHaveLength(0);
+    expect(ui.notifications.warn).not.toHaveBeenCalled();
   });
 
   it("resolves spell resistance, applies combat spell damage, and applies caster drain", async () => {

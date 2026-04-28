@@ -91,16 +91,22 @@ function sr2FindTokenCombatant(combat, token) {
 }
 
 // SR2: Initiative in play is tracked on a token in the active scene, not as an actor-only roll detached from the encounter.
-export async function ensureEncounterCombatant({ actor, token = null, createCombat = true } = {}) {
+export async function ensureEncounterCombatant({
+  actor,
+  token = null,
+  createCombat = true,
+  createCombatant = true,
+  notify = true,
+} = {}) {
   const resolvedToken = sr2GetActorEncounterToken(actor, token);
   if (!resolvedToken) {
-    ui.notifications.warn("Initiative requires an active token in the current scene.");
+    if (notify) ui.notifications.warn("Initiative requires an active token in the current scene.");
     return { ok: false, reason: "missing-token" };
   }
 
   const sceneId = sr2GetSceneIdFromToken(resolvedToken);
   if (!sceneId) {
-    ui.notifications.warn("Could not determine the current scene for initiative.");
+    if (notify) ui.notifications.warn("Could not determine the current scene for initiative.");
     return { ok: false, reason: "missing-scene" };
   }
 
@@ -109,12 +115,12 @@ export async function ensureEncounterCombatant({ actor, token = null, createComb
     combat = await sr2CreateSceneCombat(sceneId);
   }
   if (!combat) {
-    ui.notifications.warn("No active Encounter was found for this scene.");
+    if (notify) ui.notifications.warn("No active Encounter was found for this scene.");
     return { ok: false, reason: "missing-combat" };
   }
 
   let combatant = sr2FindTokenCombatant(combat, resolvedToken);
-  if (!combatant) {
+  if (!combatant && createCombatant) {
     const created = await combat.createEmbeddedDocuments("Combatant", [
       {
         tokenId: resolvedToken.id,
@@ -125,7 +131,12 @@ export async function ensureEncounterCombatant({ actor, token = null, createComb
   }
 
   if (!combatant) {
-    ui.notifications.error("Failed to create an Encounter combatant for initiative.");
+    if (notify) {
+      const message = createCombatant
+        ? "Failed to create an Encounter combatant for initiative."
+        : "Actor is not in the active Encounter.";
+      ui.notifications[createCombatant ? "error" : "warn"](message);
+    }
     return { ok: false, reason: "missing-combatant" };
   }
 

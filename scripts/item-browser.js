@@ -81,7 +81,10 @@ export class SR2ItemBrowser extends Application {
       item.showBuy = costValue !== null && this._supportsNuyenPurchases();
       item.buyCostDisplay = costDisplay;
       item.buyCostValue = costValue;
-      item.canBuy = Boolean(buyer) && costValue !== null && buyerNuyen >= costValue;
+      item.canBuy =
+        Boolean(buyer) &&
+        costValue !== null &&
+        (purchaseFunds.mode === "creation" || buyerNuyen >= costValue);
       item.buyDisabled = !item.canBuy;
       item.buyButtonClass = item.canBuy ? "can-buy" : "cant-buy";
       item.buyTitle = this._getBuyTitle({ buyer, purchaseFunds, buyerNuyen, cost, item });
@@ -491,7 +494,7 @@ export class SR2ItemBrowser extends Application {
 
     const purchaseFunds = this._getPurchaseFunds(buyer);
     const buyerNuyen = purchaseFunds.value;
-    if (buyerNuyen < cost.value) {
+    if (purchaseFunds.mode !== "creation" && buyerNuyen < cost.value) {
       const label = purchaseFunds.mode === "creation" ? "resource budget" : "nuyen";
       ui.notifications.warn(`Not enough ${label} to buy ${itemData.name}.`);
       return;
@@ -774,7 +777,7 @@ export class SR2ItemBrowser extends Application {
   _getBuyTitle({ buyer, purchaseFunds, buyerNuyen, cost, item }) {
     if (!buyer) return "No buyer available";
     if (cost.value === null) return "Can't buy: cost is not a number";
-    if (buyerNuyen < cost.value) {
+    if (purchaseFunds.mode !== "creation" && buyerNuyen < cost.value) {
       const label = purchaseFunds.mode === "creation" ? "resource budget" : "nuyen";
       return `Can't buy: need ¥${cost.value} (${label})`;
     }

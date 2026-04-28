@@ -1,7 +1,9 @@
 import {
+  sr2ComputeKarmaPoolTotal,
   sr2GetRacialAttributeBounds,
   sr2GetRacialModifiers,
   sr2GetRacialTraits,
+  sr2HasCreationLimits,
 } from "../sr2-rules.js";
 
 const SR2_ACTOR_RULE_HOOKS_KEY = "__sr2ActorRuleHooksInstalled";
@@ -12,6 +14,43 @@ function sr2IsSameUser(userId) {
   const currentUserId = globalThis.game?.user?.id;
   if (!currentUserId) return true;
   return userId === currentUserId;
+}
+
+function sr2NormalizeKarmaNumber(value) {
+  return Math.max(0, Math.floor(Number(value) || 0));
+}
+
+function sr2SyncKarmaPoolFromEarned(actor, changes) {
+  const getProperty = globalThis.foundry?.utils?.getProperty;
+  const setProperty = globalThis.foundry?.utils?.setProperty;
+  if (typeof getProperty !== "function" || typeof setProperty !== "function") return;
+
+  const earnedUpdate = getProperty(changes, "system.karma.earned");
+  const baseUpdate = getProperty(changes, "system.pools.karma.base");
+  if (earnedUpdate === undefined && baseUpdate === undefined) return;
+
+  const oldEarned = sr2NormalizeKarmaNumber(actor.system?.karma?.earned);
+  const oldBase = sr2NormalizeKarmaNumber(
+    actor.system?.pools?.karma?.base ?? actor.system?.pools?.karma?.total,
+  );
+  const oldTotal = sr2NormalizeKarmaNumber(actor.system?.pools?.karma?.total);
+  const oldCurrent = sr2NormalizeKarmaNumber(actor.system?.pools?.karma?.current);
+
+  const nextEarned = sr2NormalizeKarmaNumber(earnedUpdate === undefined ? oldEarned : earnedUpdate);
+  const nextBase = sr2NormalizeKarmaNumber(baseUpdate === undefined ? oldBase : baseUpdate);
+  const nextTotal = sr2ComputeKarmaPoolTotal(nextBase, nextEarned);
+
+  const currentUpdate = getProperty(changes, "system.pools.karma.current");
+  const nextCurrentRaw =
+    currentUpdate === undefined
+      ? oldCurrent + Math.max(0, nextTotal - oldTotal)
+      : sr2NormalizeKarmaNumber(currentUpdate);
+  const nextCurrent = Math.max(0, Math.min(nextTotal, nextCurrentRaw));
+
+  setProperty(changes, "system.karma.earned", nextEarned);
+  setProperty(changes, "system.pools.karma.base", nextBase);
+  setProperty(changes, "system.pools.karma.total", nextTotal);
+  setProperty(changes, "system.pools.karma.current", nextCurrent);
 }
 
 export function registerActorRuleHooks({ syncFreeLanguageSkills } = {}) {
@@ -26,6 +65,9 @@ export function registerActorRuleHooks({ syncFreeLanguageSkills } = {}) {
     const setProperty = globalThis.foundry?.utils?.setProperty;
     if (typeof getProperty !== "function" || typeof setProperty !== "function") return;
 
+    sr2SyncKarmaPoolFromEarned(actor, changes);
+
+    const creationMode = sr2HasCreationLimits(actor.system);
     const newMetatype = getProperty(changes, "system.details.metatype");
     const oldMetatype = actor.system?.details?.metatype || "human";
     const effectiveMetatype = newMetatype || oldMetatype;
@@ -35,17 +77,21 @@ export function registerActorRuleHooks({ syncFreeLanguageSkills } = {}) {
 
     const attrKeys = ["body", "quickness", "strength", "charisma", "intelligence", "willpower"];
 
-    for (const key of attrKeys) {
-      const b = bounds[key];
-      if (!b) continue;
-      const currentMin = actor.system?.attributes?.[key]?.min;
-      const currentMax = actor.system?.attributes?.[key]?.max;
-      if (currentMin !== b.min) setProperty(changes, `system.attributes.${key}.min`, b.min);
-      if (currentMax !== b.max) setProperty(changes, `system.attributes.${key}.max`, b.max);
+    if (creationMode) {
+      for (const key of attrKeys) {
+        const b = bounds[key];
+        if (!b) continue;
+        const currentMin = actor.system?.attributes?.[key]?.min;
+        const currentMax = actor.system?.attributes?.[key]?.max;
+        if (currentMin !== b.min) setProperty(changes, `system.attributes.${key}.min`, b.min);
+        if (currentMax !== b.max) setProperty(changes, `system.attributes.${key}.max`, b.max);
+      }
     }
 
     if (newMetatype && newMetatype !== oldMetatype) {
       setProperty(changes, "system.details.traits", traitData);
+
+      if (!creationMode) return;
 
       const oldMods = sr2GetRacialModifiers(oldMetatype);
       const newMods = sr2GetRacialModifiers(newMetatype);
@@ -73,6 +119,8 @@ export function registerActorRuleHooks({ syncFreeLanguageSkills } = {}) {
     if (!existingTraits || typeof existingTraits !== "object") {
       setProperty(changes, "system.details.traits", traitData);
     }
+
+    if (!creationMode) return;
 
     for (const key of attrKeys) {
       const path = `system.attributes.${key}.value`;

@@ -34,6 +34,30 @@ export function sr2ParseRtnCommand(messageText) {
   return { formula, targetNumber };
 }
 
+function sr2GetRollResultValue(result) {
+  if (typeof result === "number") return result;
+  if (!result || typeof result !== "object") return null;
+  if (result.active === false || result.discarded === true) return null;
+
+  const value = Number(result.result ?? result.value ?? result.total);
+  return Number.isFinite(value) ? value : null;
+}
+
+export function sr2CountRtnSuccesses(roll, targetNumber) {
+  const diceTerms = Array.isArray(roll?.dice) ? roll.dice : [];
+  let successes = 0;
+
+  for (const die of diceTerms) {
+    const results = Array.isArray(die?.results) ? die.results : [];
+    for (const result of results) {
+      const value = sr2GetRollResultValue(result);
+      if (value !== null && value >= targetNumber) successes++;
+    }
+  }
+
+  return successes;
+}
+
 export async function sr2ExecuteRtnCommand(parsedCommand, chatData = {}) {
   const { formula, targetNumber } = parsedCommand;
 
@@ -42,8 +66,9 @@ export async function sr2ExecuteRtnCommand(parsedCommand, chatData = {}) {
     await roll.evaluate({ async: true });
 
     const total = Number(roll.total) || 0;
-    const success = total >= targetNumber;
-    const outcome = success ? "Success" : "Failure";
+    const successes = sr2CountRtnSuccesses(roll, targetNumber);
+    const success = successes > 0;
+    const outcome = `${successes} success${successes === 1 ? "" : "es"}`;
 
     const speaker = chatData?.speaker ??
       globalThis.ChatMessage?.getSpeaker?.() ?? { alias: game?.user?.name };
@@ -65,6 +90,7 @@ export async function sr2ExecuteRtnCommand(parsedCommand, chatData = {}) {
             formula,
             targetNumber,
             total,
+            successes,
             success,
           },
         },

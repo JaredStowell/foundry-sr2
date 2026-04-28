@@ -2503,6 +2503,12 @@
   padding: 0 4px;
 }
 
+.shadowrun2e .sheet-header .sr2-header-resources .sr2-karma-earned-input {
+  width: 34px !important;
+  min-width: 34px;
+  max-width: 34px;
+}
+
 .shadowrun2e .sheet-header .sr2-header-resources .sr2-inline-formula {
   font-size: 13px;
 }

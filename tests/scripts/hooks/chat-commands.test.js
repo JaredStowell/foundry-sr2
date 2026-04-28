@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   registerChatCommandHooks,
+  sr2CountRtnSuccesses,
   sr2HandleRtnChatMessage,
   sr2ParseRtnCommand,
 } from "../../../scripts/hooks/chat-commands.js";
@@ -72,6 +73,11 @@ describe("sr2HandleRtnChatMessage", () => {
     globalThis.Roll = vi.fn((formula) => ({
       formula,
       total: 8,
+      dice: [
+        {
+          results: [{ result: 2 }, { result: 5 }, { result: 6 }],
+        },
+      ],
       evaluate,
       toMessage,
     }));
@@ -88,11 +94,12 @@ describe("sr2HandleRtnChatMessage", () => {
     const [{ flavor, flags }] = toMessage.mock.calls[0];
     expect(flavor).toContain("Target Number Roll");
     expect(flavor).toContain("Target Number:</strong> 5");
-    expect(flavor).toContain("Outcome:</strong> Success");
+    expect(flavor).toContain("Outcome:</strong> 2 successes");
     expect(flags.shadowrun2e.rtn).toEqual({
       formula: "1d6+4",
       targetNumber: 5,
       total: 8,
+      successes: 2,
       success: true,
     });
   });
@@ -110,5 +117,27 @@ describe("sr2HandleRtnChatMessage", () => {
         "Failed to roll /rtn command: this-is-bad",
       );
     });
+  });
+});
+
+describe("sr2CountRtnSuccesses", () => {
+  it("counts active die results greater than or equal to the target number", () => {
+    expect(
+      sr2CountRtnSuccesses(
+        {
+          dice: [
+            {
+              results: [
+                { result: 4 },
+                { result: 5 },
+                { result: 6 },
+                { result: 8, active: false },
+              ],
+            },
+          ],
+        },
+        5,
+      ),
+    ).toBe(2);
   });
 });

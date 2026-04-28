@@ -85,7 +85,7 @@ describe("registerCreationRuleHooks", () => {
     registerCreationRuleHooks();
     registerCreationRuleHooks();
 
-    expect(Hooks.on).toHaveBeenCalledTimes(10);
+    expect(Hooks.on).toHaveBeenCalledTimes(8);
   });
 
   it("ignores legacy creation flags and derives chargen limits from system.creation data", () => {
@@ -275,7 +275,7 @@ describe("registerCreationRuleHooks", () => {
     );
   });
 
-  it("blocks contact creation when nuyen budget would go negative", () => {
+  it("allows contact creation when nuyen budget would go negative", () => {
     registerCreationRuleHooks({
       areContactLevelsEnabled: () => true,
     });
@@ -306,8 +306,8 @@ describe("registerCreationRuleHooks", () => {
       "U1",
     );
 
-    expect(result).toBe(false);
-    expect(ui.notifications.error).toHaveBeenCalledWith(
+    expect(result).toBeUndefined();
+    expect(ui.notifications.error).not.toHaveBeenCalledWith(
       "Not enough creation Nuyen remaining for that contact.",
     );
   });
@@ -345,7 +345,7 @@ describe("registerCreationRuleHooks", () => {
     expect(ui.notifications.warn).toHaveBeenCalledWith("Buddies are disabled for this world.");
   });
 
-  it("clamps contact level and blocks expensive contact updates", () => {
+  it("clamps contact level and allows expensive contact updates", () => {
     const summary = {
       over: {
         extraContacts: false,
@@ -395,8 +395,8 @@ describe("registerCreationRuleHooks", () => {
     const result = contactUpdateHook(actor, changes, {}, "U1");
     expect(foundry.utils.getProperty(changes, "system.details.contactLevel")).toBe(3);
     expect(contactSummaryForLeader).toHaveBeenCalled();
-    expect(result).toBe(false);
-    expect(ui.notifications.error).toHaveBeenCalledWith(
+    expect(result).toBeUndefined();
+    expect(ui.notifications.error).not.toHaveBeenCalledWith(
       "Not enough creation Nuyen remaining for that contact change.",
     );
   });
@@ -485,6 +485,12 @@ describe("registerCreationRuleHooks", () => {
         attributes: {
           magic: { value: 0 },
         },
+        creation: {
+          attributePoints: 0,
+          skillPoints: 1,
+          forcePoints: 0,
+          startingNuyen: 0,
+        },
       },
     };
     const item = {
@@ -504,6 +510,40 @@ describe("registerCreationRuleHooks", () => {
     expect(ui.notifications.error).toHaveBeenCalledWith(
       "Sorcery and Conjuring require a Magic rating.",
     );
+  });
+
+  it("allows creating Sorcery skills after creation even when magic is zero", () => {
+    registerCreationRuleHooks();
+    const preCreateItemHooks = Hooks.__get("preCreateItem");
+
+    const actor = {
+      type: "character",
+      system: {
+        attributes: {
+          magic: { value: 0 },
+        },
+        creation: {
+          attributePoints: 0,
+          skillPoints: 0,
+          forcePoints: 0,
+          startingNuyen: 0,
+        },
+      },
+    };
+    const item = {
+      type: "skill",
+      parent: actor,
+    };
+    const data = {
+      type: "skill",
+      system: {
+        baseSkill: "Sorcery",
+      },
+    };
+
+    const results = runAll(preCreateItemHooks, [item, data, {}, "U1"]);
+
+    expect(results.some((result) => result === false)).toBe(false);
   });
 
   it("rejects Sorcery/Conjuring skill updates when magic is zero", () => {
@@ -653,7 +693,7 @@ describe("registerCreationRuleHooks", () => {
     );
   });
 
-  it("blocks expensive non-skill item creation and updates in creation mode", () => {
+  it("allows expensive non-skill item creation and updates in creation mode", () => {
     registerCreationRuleHooks();
     const preCreateItemHooks = Hooks.__get("preCreateItem");
     const preUpdateItemHooks = Hooks.__get("preUpdateItem");
@@ -684,8 +724,8 @@ describe("registerCreationRuleHooks", () => {
       {},
       "U1",
     ]);
-    expect(createResults.some((result) => result === false)).toBe(true);
-    expect(ui.notifications.error).toHaveBeenCalledWith(
+    expect(createResults.some((result) => result === false)).toBe(false);
+    expect(ui.notifications.error).not.toHaveBeenCalledWith(
       "Not enough creation Nuyen remaining for that item.",
     );
 
@@ -700,8 +740,8 @@ describe("registerCreationRuleHooks", () => {
       {},
       "U1",
     ]);
-    expect(updateResults.some((result) => result === false)).toBe(true);
-    expect(ui.notifications.error).toHaveBeenCalledWith(
+    expect(updateResults.some((result) => result === false)).toBe(false);
+    expect(ui.notifications.error).not.toHaveBeenCalledWith(
       "Not enough creation Nuyen remaining for that change.",
     );
   });

@@ -209,6 +209,8 @@ describe("character importer helpers", () => {
     expect(actorData.system.creation.skillPoints).toBe(20);
     expect(actorData.system.creation.forcePoints).toBe(5);
     expect(actorData.system.resources.nuyen).toBe(300);
+    expect(actorData.system.karma.earned).toBe(3);
+    expect(actorData.system.pools.karma).toEqual({ current: 1, total: 1, base: 1 });
     expect(actorData.system.biography).toContain("Totem: Wolf");
     expect(actorData.system.biography).toContain("Racial Notes:");
   });
