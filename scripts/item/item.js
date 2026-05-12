@@ -1,6 +1,8 @@
 /**
  * Extend the basic Item with Shadowrun 2E specific functionality
  */
+import { sr2ApplyMessageMode } from "../utils/chat-mode.js";
+
 function sr2EscapeHtml(value) {
   const raw = String(value ?? "");
   if (globalThis.foundry?.utils?.escapeHTML) return globalThis.foundry.utils.escapeHTML(raw);
@@ -62,7 +64,6 @@ export class SR2Item extends Item {
 
     // Initialize chat data
     const speaker = ChatMessage.getSpeaker({ actor: this.actor });
-    const rollMode = game.settings.get("core", "rollMode");
     const label = `[${item.type.capitalize()}] ${item.name}`;
 
     // Handle different item types
@@ -75,12 +76,13 @@ export class SR2Item extends Item {
         return this._rollSkill();
       default:
         // For other items, show description or basic info
-        ChatMessage.create({
-          speaker: speaker,
-          rollMode: rollMode,
-          flavor: label,
-          content: this._getItemDescription(),
-        });
+        ChatMessage.create(
+          sr2ApplyMessageMode({
+            speaker: speaker,
+            flavor: label,
+            content: this._getItemDescription(),
+          }),
+        );
         break;
     }
   }
@@ -90,7 +92,6 @@ export class SR2Item extends Item {
    */
   async _rollWeapon() {
     const speaker = ChatMessage.getSpeaker({ actor: this.actor });
-    const rollMode = game.settings.get("core", "rollMode");
     const itemName = sr2EscapeHtml(this.name);
     const damage = sr2EscapeHtml(this.system.damage || "Unknown");
     const reach = sr2EscapeHtml(this.system.reach || "Unknown");
@@ -107,12 +108,13 @@ export class SR2Item extends Item {
 
     content += `<p><em>Use the weapon attack button for full combat rolls.</em></p></div>`;
 
-    ChatMessage.create({
-      speaker: speaker,
-      rollMode: rollMode,
-      flavor: `Weapon: ${this.name}`,
-      content: content,
-    });
+    ChatMessage.create(
+      sr2ApplyMessageMode({
+        speaker: speaker,
+        flavor: `Weapon: ${this.name}`,
+        content: content,
+      }),
+    );
   }
 
   /**
@@ -120,7 +122,6 @@ export class SR2Item extends Item {
    */
   async _rollSpell() {
     const speaker = ChatMessage.getSpeaker({ actor: this.actor });
-    const rollMode = game.settings.get("core", "rollMode");
     const itemName = sr2EscapeHtml(this.name);
     const category = sr2EscapeHtml(this.system.category || "Unknown");
     const target = sr2EscapeHtml(this.system.target || "Unknown");
@@ -139,12 +140,13 @@ export class SR2Item extends Item {
 
     content += `<p><em>Use the spell cast button for full spellcasting rolls.</em></p></div>`;
 
-    ChatMessage.create({
-      speaker: speaker,
-      rollMode: rollMode,
-      flavor: `Spell: ${this.name}`,
-      content: content,
-    });
+    ChatMessage.create(
+      sr2ApplyMessageMode({
+        speaker: speaker,
+        flavor: `Spell: ${this.name}`,
+        content: content,
+      }),
+    );
   }
 
   /**
@@ -152,7 +154,6 @@ export class SR2Item extends Item {
    */
   async _rollSkill() {
     const speaker = ChatMessage.getSpeaker({ actor: this.actor });
-    const rollMode = game.settings.get("core", "rollMode");
     const itemName = sr2EscapeHtml(this.name);
     const baseSkill = sr2EscapeHtml(this.system.baseSkill || "None");
     const baseRating = Number(this.system.baseRating) || 0;
@@ -173,12 +174,13 @@ export class SR2Item extends Item {
 
     content += `<p><em>Use the skill roll button for dice rolls.</em></p></div>`;
 
-    ChatMessage.create({
-      speaker: speaker,
-      rollMode: rollMode,
-      flavor: `Skill: ${this.name}`,
-      content: content,
-    });
+    ChatMessage.create(
+      sr2ApplyMessageMode({
+        speaker: speaker,
+        flavor: `Skill: ${this.name}`,
+        content: content,
+      }),
+    );
   }
 
   /**

@@ -20,6 +20,7 @@ import {
   sr2SkillInferAllocatedRating,
 } from "../sr2-rules.js";
 import { sr2LogDebug } from "../utils/logger.js";
+import { sr2ApplyMessageMode } from "../utils/chat-mode.js";
 import {
   ensureEncounterCombatant,
   rollEncounterInitiative,
@@ -73,6 +74,13 @@ import {
   sr2NormalizeSpellClass,
   sr2ParseDamageCode,
 } from "./actor-sheet-helpers.js";
+import {
+  sr2BuildLifestyleUpdatesFromFormFields,
+  sr2ClearDirtyFieldState,
+  sr2CreateDirtyFieldState,
+  sr2FilterUpdatesToDirtyFields,
+  sr2MarkDirtyField,
+} from "./actor-sheet-save-helpers.js";
 
 function sr2GetSpellRangeLabel(spell) {
   const explicitRange = String(spell?.system?.range || "").trim();
@@ -125,6 +133,7 @@ export class SR2ActorSheet extends ActorSheet {
 
     this._boundOnActorUpdate = this._onActorUpdate.bind(this);
     this._hasActorUpdateHook = false;
+    this._dirtyFields = sr2CreateDirtyFieldState();
 
     this._debouncedUpdate = this._debounce(this._processUpdateQueue.bind(this), 50);
   }
@@ -758,6 +767,8 @@ export class SR2ActorSheet extends ActorSheet {
     // Everything below here is only needed if the sheet is editable
     if (!this.isEditable) return;
 
+    this._trackDirtyFormFields(html);
+
     // Add Inventory Item
     html.find(".item-create").click(this._onItemCreate.bind(this));
 
@@ -951,11 +962,12 @@ export class SR2ActorSheet extends ActorSheet {
     if (dataset.roll) {
       let label = dataset.label ? `[ability] ${dataset.label}` : "";
       let roll = new Roll(dataset.roll, this.actor.getRollData());
-      roll.toMessage({
-        speaker: ChatMessage.getSpeaker({ actor: this.actor }),
-        flavor: label,
-        rollMode: game.settings.get("core", "rollMode"),
-      });
+      roll.toMessage(
+        sr2ApplyMessageMode({
+          speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+          flavor: label,
+        }),
+      );
       return roll;
     }
   }
@@ -1496,12 +1508,20 @@ export class SR2ActorSheet extends ActorSheet {
       startingCashRoll: startingCashRoll?.total,
       budgetOptions,
     });
+    const computedStartingCashFinal = finalized.startingCashFinal;
+    const currentNuyen = Math.max(
+      0,
+      Math.floor(Number(this.actor.system?.resources?.nuyen) || 0),
+    );
+    const finalNuyen = Math.max(currentNuyen, computedStartingCashFinal);
+    finalized.startingCashFinal = finalNuyen;
+    finalized.computedStartingCashFinal = computedStartingCashFinal;
 
     const moreMetahumans = Boolean(sr2GetSystemSetting("moreMetahumans", false));
     const startingKarmaPool = sr2ComputeStartingKarmaPool(metatype, { moreMetahumans });
 
     await this.actor.update({
-      "system.resources.nuyen": finalized.startingCashFinal,
+      "system.resources.nuyen": finalNuyen,
       "system.pools.karma.current": startingKarmaPool,
       "system.pools.karma.total": startingKarmaPool,
       "system.pools.karma.base": startingKarmaPool,
@@ -1519,7 +1539,7 @@ export class SR2ActorSheet extends ActorSheet {
     });
 
     ui.notifications.info(
-      `Character creation completed. Starting cash: ¥${finalized.startingCashFinal}. Karma Pool: ${startingKarmaPool}.`,
+      `Character creation completed. Starting cash: ¥${finalNuyen}. Karma Pool: ${startingKarmaPool}.`,
     );
     return finalized;
   }
@@ -2632,7 +2652,7 @@ export class SR2ActorSheet extends ActorSheet {
           {
             name: "Sustained Spell: Invisibility",
             icon: "icons/svg/invisible.svg",
-            changes: [],
+            system: { changes: [] },
             disabled: false,
             flags: { shadowrun2e: { spellLockInvisibilityEffect: true } },
           },
@@ -4526,8 +4546,8 @@ export class SR2ActorSheet extends ActorSheet {
   /** @override */
   async _updateObject(event, formData) {
     // Separate actor updates from item updates
-    const actorUpdates = {};
-    const itemUpdates = {};
+    let actorUpdates = {};
+    let itemUpdates = {};
 
     for (const [key, value] of Object.entries(formData)) {
       if (key.startsWith("items.")) {
@@ -4553,6 +4573,12 @@ export class SR2ActorSheet extends ActorSheet {
         actorUpdates[key] = value;
       }
     }
+
+    ({ actorUpdates, itemUpdates } = sr2FilterUpdatesToDirtyFields({
+      actorUpdates,
+      itemUpdates,
+      dirty: this._dirtyFields,
+    }));
 
     const creationMode = this._isCreationMode();
     const totalSkillPoints = Number(this.actor.system.creation?.skillPoints) || 0;
@@ -4651,46 +4677,17 @@ export class SR2ActorSheet extends ActorSheet {
     if (Object.keys(actorUpdates).length > 0) {
       // Sync legacy lifestyle fields from the multi-lifestyle list
       const existingLifestyles = this._getNormalizedLifestylesFromActor();
-      const lifestylesByIndex = new Map();
-      for (const [key, value] of Object.entries(actorUpdates)) {
-        const match = key.match(/^system\.resources\.lifestyles\.(\d+)\.(type|months)$/);
-        if (!match) continue;
+      const lifestyleUpdates = sr2BuildLifestyleUpdatesFromFormFields(
+        actorUpdates,
+        existingLifestyles,
+      );
 
-        const index = parseInt(match[1], 10);
-        if (!Number.isFinite(index)) continue;
+      if (lifestyleUpdates.changed) {
+        for (const key of lifestyleUpdates.indexedKeys) delete actorUpdates[key];
 
-        if (!lifestylesByIndex.has(index)) {
-          const current = existingLifestyles[index] || { type: "street", months: 1 };
-          lifestylesByIndex.set(index, {
-            type: current.type || "street",
-            months: Math.max(1, parseInt(current.months, 10) || 1),
-          });
-        }
-        const entry = lifestylesByIndex.get(index);
-        if (match[2] === "type") entry.type = String(value || "street");
-        if (match[2] === "months") entry.months = Math.max(1, parseInt(value, 10) || 1);
-      }
-
-      if (lifestylesByIndex.size > 0) {
-        const normalizedLifestyles = [...lifestylesByIndex.entries()]
-          .sort(([a], [b]) => a - b)
-          .map(([, entry]) => ({
-            type: entry.type || "street",
-            months: entry.months || 1,
-          }));
-
-        for (const key of Object.keys(actorUpdates)) {
-          if (key.startsWith("system.resources.lifestyles.")) delete actorUpdates[key];
-        }
-
-        actorUpdates["system.resources.lifestyles"] = normalizedLifestyles.length
-          ? normalizedLifestyles
-          : [{ type: "street", months: 1 }];
-
-        actorUpdates["system.resources.lifestyle"] =
-          actorUpdates["system.resources.lifestyles"][0]?.type || "street";
-        actorUpdates["system.creation.lifestyleMonths"] =
-          actorUpdates["system.resources.lifestyles"][0]?.months || 1;
+        actorUpdates["system.resources.lifestyles"] = lifestyleUpdates.lifestyles;
+        actorUpdates["system.resources.lifestyle"] = lifestyleUpdates.primaryType;
+        actorUpdates["system.creation.lifestyleMonths"] = lifestyleUpdates.primaryMonths;
       }
 
       // Clamp attributes by racial mins/maxes only while creation mode is active.
@@ -4713,7 +4710,14 @@ export class SR2ActorSheet extends ActorSheet {
       await this.object.update(actorUpdates);
     }
 
+    sr2ClearDirtyFieldState(this._dirtyFields);
     return true;
+  }
+
+  _trackDirtyFormFields(html) {
+    html.find("input[name], select[name], textarea[name]").on("input change", (event) => {
+      sr2MarkDirtyField(this._dirtyFields, event.currentTarget?.name);
+    });
   }
 
   /**

@@ -652,7 +652,7 @@ describe("character creation e2e flow (vitest integration)", () => {
     expect(breakdown.remainingNuyen).toBe(25000);
   });
 
-  it("completes character creation by converting leftover resources into starting cash", async () => {
+  it("completes character creation without lowering manually entered nuyen", async () => {
     const { SR2Actor, SR2ActorSheet } = await loadCharacterClasses();
     globalThis.Roll = class FakeChargenCashRoll {
       constructor(formula) {
@@ -696,7 +696,7 @@ describe("character creation e2e flow (vitest integration)", () => {
           },
         },
         resources: {
-          nuyen: 0,
+          nuyen: 78000,
           lifestyle: "low",
           lifestyles: [{ type: "low", months: 1 }],
         },
@@ -747,9 +747,10 @@ describe("character creation e2e flow (vitest integration)", () => {
       unspentNuyen: 74000,
       startingCashFromUnspent: 7400,
       startingCashRoll: 10000,
-      startingCashFinal: 17400,
+      computedStartingCashFinal: 17400,
+      startingCashFinal: 78000,
     });
-    expect(actor.system.resources.nuyen).toBe(17400);
+    expect(actor.system.resources.nuyen).toBe(78000);
     expect(actor.system.pools.karma.current).toBe(1);
     expect(actor.system.pools.karma.total).toBe(1);
     expect(actor.system.pools.karma.base).toBe(1);
@@ -758,14 +759,14 @@ describe("character creation e2e flow (vitest integration)", () => {
     expect(actor.system.creation.unspentNuyen).toBe(74000);
     expect(actor.system.creation.startingCashFromUnspent).toBe(7400);
     expect(actor.system.creation.startingCashRoll).toBe(10000);
-    expect(actor.system.creation.startingCashFinal).toBe(17400);
+    expect(actor.system.creation.startingCashFinal).toBe(78000);
     expect(actor.system.creation.attributePoints).toBe(0);
     expect(actor.system.creation.skillPoints).toBe(0);
     expect(actor.system.creation.forcePoints).toBe(0);
     expect(actor.system.creation.startingNuyen).toBe(0);
     expect(sheet._isCreationMode()).toBe(false);
     expect(ui.notifications.info).toHaveBeenCalledWith(
-      "Character creation completed. Starting cash: ¥17400. Karma Pool: 1.",
+      "Character creation completed. Starting cash: ¥78000. Karma Pool: 1.",
     );
   });
 

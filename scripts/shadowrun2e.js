@@ -12,6 +12,7 @@ import { SR2ICSheet } from "./actor/ic-sheet.js";
 import { SR2Item } from "./item/item.js";
 import { SR2ItemSheet } from "./item/item-sheet.js";
 import { SR2Combat } from "./combat/sr2-combat.js";
+import { SR2_ACTOR_DATA_MODELS, SR2_ITEM_DATA_MODELS } from "./data-models.js";
 import { SR2ItemBrowser } from "./item-browser.js";
 import { SR2GearPurchaseApp } from "./gear-purchase.js";
 import { SR2DataImporter } from "./data-importer.js";
@@ -64,7 +65,9 @@ Hooks.once("init", async function () {
 
   // Assign custom classes and constants
   CONFIG.Actor.documentClass = SR2Actor;
+  CONFIG.Actor.dataModels = SR2_ACTOR_DATA_MODELS;
   CONFIG.Item.documentClass = SR2Item;
+  CONFIG.Item.dataModels = SR2_ITEM_DATA_MODELS;
   CONFIG.Combat.documentClass = SR2Combat;
 
   // Ensure core Combat "Roll All" initiative works.

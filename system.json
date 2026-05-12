@@ -4,8 +4,9 @@
   "description": "A comprehensive system for playing Shadowrun 2nd Edition in Foundry VTT",
   "version": "1.0.29",
   "compatibility": {
-    "minimum": "11",
-    "verified": "13"
+    "minimum": "14",
+    "verified": "14.361",
+    "maximum": "14"
   },
   "authors": [
     {
@@ -24,6 +25,69 @@
       "path": "lang/en.json"
     }
   ],
+  "documentTypes": {
+    "Actor": {
+      "character": {
+        "htmlFields": ["biography"]
+      },
+      "contact": {
+        "htmlFields": ["biography"]
+      },
+      "follower": {
+        "htmlFields": ["biography"]
+      },
+      "cyberdeck": {
+        "htmlFields": ["biography"]
+      },
+      "vehicle": {
+        "htmlFields": ["biography"]
+      },
+      "spirit": {
+        "htmlFields": ["biography"]
+      },
+      "critter": {
+        "htmlFields": ["biography"]
+      },
+      "ic": {
+        "htmlFields": ["biography"]
+      }
+    },
+    "Item": {
+      "skill": {
+        "htmlFields": ["description"]
+      },
+      "weapon": {
+        "htmlFields": ["description"]
+      },
+      "armor": {
+        "htmlFields": ["description"]
+      },
+      "gear": {
+        "htmlFields": ["description"]
+      },
+      "cyberware": {
+        "htmlFields": ["description"]
+      },
+      "bioware": {
+        "htmlFields": ["description"]
+      },
+      "spell": {
+        "htmlFields": ["description"]
+      },
+      "adeptpower": {
+        "htmlFields": ["description"]
+      },
+      "contact": {
+        "htmlFields": ["description"]
+      },
+      "program": {
+        "htmlFields": ["description"]
+      },
+      "totem": {
+        "htmlFields": ["description"]
+      }
+    }
+  },
   "packs": [
     {
       "name": "cyberware",

@@ -744,9 +744,11 @@ describe("SR2ActorSheet action flows", () => {
     expect(actor.createEmbeddedDocuments).toHaveBeenCalledWith("ActiveEffect", [
       expect.objectContaining({
         name: "Sustained Spell: Invisibility",
+        system: { changes: [] },
         flags: { shadowrun2e: { spellLockInvisibilityEffect: true } },
       }),
     ]);
+    expect(actor.createEmbeddedDocuments.mock.calls[0][1][0]).not.toHaveProperty("changes");
     expect(sheet.render).toHaveBeenCalledWith(false);
 
     const effect = effects[0];
