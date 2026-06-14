@@ -1,5 +1,6 @@
 const SR2_CHAT_COMMAND_HOOKS_KEY = "__sr2ChatCommandHooksInstalled";
 const SR2_RTN_COMMAND_REGEX = /^\/rtn(?:\s|$)/i;
+const SR2_RTN_CHAT_COMMAND_REGEX = /^\/rtn(?:\s+(.+))?$/i;
 const SR2_RTN_USAGE = "Usage: /rtn <diceFormula> <targetNumber> (example: /rtn 1d6+4 5)";
 
 function sr2EscapeHtml(value) {
@@ -58,6 +59,25 @@ export function sr2CountRtnSuccesses(roll, targetNumber) {
   return successes;
 }
 
+function sr2GetChatLogCommandRegistry() {
+  const ChatLogClass =
+    globalThis.ChatLog ??
+    globalThis.foundry?.applications?.sidebar?.tabs?.ChatLog ??
+    globalThis.ui?.chat?.constructor;
+  const commands = ChatLogClass?.CHAT_COMMANDS;
+  return commands && typeof commands === "object" ? commands : null;
+}
+
+function sr2GetRtnCommandMessageText(command, match) {
+  if (typeof match === "string") return match;
+  if (Array.isArray(match)) {
+    const firstMatch = match[0];
+    if (typeof firstMatch === "string") return firstMatch;
+    if (Array.isArray(firstMatch) && typeof firstMatch[0] === "string") return firstMatch[0];
+  }
+  return `/${command || "rtn"}`;
+}
+
 export async function sr2ExecuteRtnCommand(parsedCommand, chatData = {}) {
   const { formula, targetNumber } = parsedCommand;
 
@@ -102,6 +122,20 @@ export async function sr2ExecuteRtnCommand(parsedCommand, chatData = {}) {
   }
 }
 
+export async function sr2HandleRtnChatCommand(command, match, chatData = {}) {
+  const messageText = sr2GetRtnCommandMessageText(command, match);
+  const parsed = sr2ParseRtnCommand(messageText);
+  if (!parsed) return;
+
+  if (parsed.error) {
+    ui.notifications.warn(parsed.error);
+    return false;
+  }
+
+  await sr2ExecuteRtnCommand(parsed, chatData);
+  return false;
+}
+
 export function sr2HandleRtnChatMessage(chatLog, messageText, chatData) {
   const parsed = sr2ParseRtnCommand(messageText);
   if (!parsed) return true;
@@ -115,8 +149,20 @@ export function sr2HandleRtnChatMessage(chatLog, messageText, chatData) {
   return false;
 }
 
+export function sr2RegisterRtnChatCommand() {
+  const commands = sr2GetChatLogCommandRegistry();
+  if (!commands) return false;
+
+  commands.rtn = {
+    rgx: SR2_RTN_CHAT_COMMAND_REGEX,
+    fn: sr2HandleRtnChatCommand,
+  };
+  return true;
+}
+
 export function registerChatCommandHooks() {
   if (globalThis[SR2_CHAT_COMMAND_HOOKS_KEY]) return;
   globalThis[SR2_CHAT_COMMAND_HOOKS_KEY] = true;
+  if (sr2RegisterRtnChatCommand()) return;
   Hooks.on("chatMessage", sr2HandleRtnChatMessage);
 }

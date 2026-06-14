@@ -13,6 +13,7 @@ beforeEach(() => {
   ui.notifications.warn.mockClear();
   ui.notifications.error.mockClear();
   delete globalThis.__sr2ChatCommandHooksInstalled;
+  delete globalThis.ChatLog;
   delete globalThis.Roll;
   globalThis.ChatMessage = {
     getSpeaker: vi.fn(() => ({ alias: "GM" })),
@@ -20,11 +21,56 @@ beforeEach(() => {
 });
 
 describe("registerChatCommandHooks", () => {
-  it("registers chat command hooks only once", () => {
+  it("registers /rtn with Foundry 14 chat commands only once", () => {
+    globalThis.ChatLog = { CHAT_COMMANDS: {} };
+
+    registerChatCommandHooks();
+    registerChatCommandHooks();
+
+    expect(Hooks.on).not.toHaveBeenCalled();
+    expect(globalThis.ChatLog.CHAT_COMMANDS.rtn).toEqual({
+      rgx: expect.any(RegExp),
+      fn: expect.any(Function),
+    });
+  });
+
+  it("falls back to the legacy chatMessage hook only once", () => {
     registerChatCommandHooks();
     registerChatCommandHooks();
     expect(Hooks.on).toHaveBeenCalledTimes(1);
     expect(Hooks.__get("chatMessage")).toHaveLength(1);
+  });
+
+  it("handles /rtn through the Foundry 14 chat command callback", async () => {
+    const evaluate = vi.fn().mockResolvedValue(undefined);
+    const toMessage = vi.fn().mockResolvedValue(undefined);
+
+    globalThis.ChatLog = { CHAT_COMMANDS: {} };
+    globalThis.Roll = vi.fn((formula) => ({
+      formula,
+      total: 8,
+      dice: [
+        {
+          results: [{ result: 2 }, { result: 5 }, { result: 6 }],
+        },
+      ],
+      evaluate,
+      toMessage,
+    }));
+
+    registerChatCommandHooks();
+
+    const handled = await globalThis.ChatLog.CHAT_COMMANDS.rtn.fn(
+      "rtn",
+      ["/rtn 1d6+4 5", "1d6+4 5"],
+      { speaker: { alias: "User" } },
+      {},
+    );
+
+    expect(handled).toBe(false);
+    expect(globalThis.Roll).toHaveBeenCalledWith("1d6+4");
+    expect(evaluate).toHaveBeenCalledWith({ async: true });
+    expect(toMessage).toHaveBeenCalledTimes(1);
   });
 });
 
