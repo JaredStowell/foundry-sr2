@@ -41,6 +41,16 @@ describe("registerChatCommandHooks", () => {
     expect(Hooks.__get("chatMessage")).toHaveLength(1);
   });
 
+  it("uses the v14 namespaced registry even if the legacy ChatLog global still exists", () => {
+    const registry = {};
+    globalThis.ChatLog = {};
+    foundry.applications = { sidebar: { tabs: { ChatLog: { CHAT_COMMANDS: registry } } } };
+    registerChatCommandHooks();
+    expect(registry.rtn.fn).toBeTypeOf("function");
+    expect(Hooks.on).not.toHaveBeenCalled();
+    delete foundry.applications;
+  });
+
   it("handles /rtn through the Foundry 14 chat command callback", async () => {
     const evaluate = vi.fn().mockResolvedValue(undefined);
     const toMessage = vi.fn().mockResolvedValue(undefined);
@@ -173,12 +183,7 @@ describe("sr2CountRtnSuccesses", () => {
         {
           dice: [
             {
-              results: [
-                { result: 4 },
-                { result: 5 },
-                { result: 6 },
-                { result: 8, active: false },
-              ],
+              results: [{ result: 4 }, { result: 5 }, { result: 6 }, { result: 8, active: false }],
             },
           ],
         },

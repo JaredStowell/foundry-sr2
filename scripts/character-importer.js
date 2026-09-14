@@ -16,9 +16,10 @@ export class SR2CharacterImporter {
    * Show the character import dialog
    */
   static async showImportDialog() {
-    const dialog = new Dialog({
-      title: "Import Shadowrun 2E Character",
-      content: `
+    const dialog = new Dialog(
+      {
+        title: "Import Shadowrun 2E Character",
+        content: `
         <form>
           <div class="form-group">
             <label>Character JSON File:</label>
@@ -38,19 +39,21 @@ export class SR2CharacterImporter {
           </div>
         </form>
       `,
-      buttons: {
-        import: {
-          icon: '<i class="fas fa-upload"></i>',
-          label: "Import Character",
-          callback: (html) => this._processImport(html),
+        buttons: {
+          import: {
+            icon: '<i class="fas fa-upload"></i>',
+            label: "Import Character",
+            callback: (html) => this._processImport(html),
+          },
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: "Cancel",
+          },
         },
-        cancel: {
-          icon: '<i class="fas fa-times"></i>',
-          label: "Cancel",
-        },
+        default: "import",
       },
-      default: "import",
-    });
+      { classes: ["dialog", "sr2-dialog"] },
+    );
 
     dialog.render(true);
   }

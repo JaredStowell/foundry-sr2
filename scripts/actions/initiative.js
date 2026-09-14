@@ -2,25 +2,8 @@ import {
   sr2AdvanceEncounterPhase as sr2AdvanceEncounterPhaseState,
   sr2DelayEncounterAction as sr2DelayEncounterCombatAction,
 } from "../combat/sr2-combat.js";
-
-export function sr2GetInitiativeTerms(actor) {
-  const initiative = actor?.system?.initiative || {};
-
-  let initiativeDice = parseInt(initiative.dice, 10);
-  if (!Number.isFinite(initiativeDice) || initiativeDice < 1) initiativeDice = 1;
-  if (initiativeDice > 10) initiativeDice = 10;
-
-  const baseFromReaction = actor?.system?.attributes?.reaction?.value;
-  let initiativeBase = parseInt(initiative.base ?? baseFromReaction ?? 0, 10);
-  if (!Number.isFinite(initiativeBase) || initiativeBase < 0) initiativeBase = 0;
-
-  return {
-    dice: initiativeDice,
-    base: initiativeBase,
-    formula: `${initiativeDice}d6 + ${initiativeBase}`,
-    compactFormula: `${initiativeDice}d6+${initiativeBase}`,
-  };
-}
+import { sr2GetInitiativeTerms } from "../rules/initiative.js";
+export { sr2GetInitiativeTerms } from "../rules/initiative.js";
 
 function sr2GetCombatsArray() {
   const combats = game?.combats;

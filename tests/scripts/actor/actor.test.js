@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { sr2GetInitiativeTerms } from "../../../scripts/actions/initiative.js";
 
 async function loadActorClass() {
   vi.resetModules();
@@ -148,6 +149,170 @@ describe("SR2Actor derived augmentation handling", () => {
     expect(actor.system.initiative.base).toBe(9);
     expect(actor.system.initiative.dice).toBe(3);
     expect(actor.system.attributes.magic.value).toBe(3);
+  });
+
+  it.each([
+    {},
+    { reactionBonus: 0, initiativeDice: 0 },
+    { reactionBonus: "", initiativeDice: "invalid" },
+  ])("retains reflex bonuses on legacy cyberware with numeric fields %j", async (fields) => {
+    const SR2Actor = await loadActorClass();
+    const actor = createCharacterActor(SR2Actor, {
+      items: [
+        {
+          type: "cyberware",
+          name: "Wired Reflexes 2",
+          system: { installed: true, mods: "+4RCT,+2INI", ...fields },
+        },
+      ],
+    });
+
+    actor.prepareDerivedData();
+
+    expect(actor.system.initiative).toMatchObject({ base: 8, dice: 3 });
+    expect(actor.getRollData().actor.initiative).toMatchObject({ base: 8, dice: 3 });
+    expect(sr2GetInitiativeTerms(actor).compactFormula).toBe("3d6+8");
+    actor.prepareDerivedData();
+    expect(actor.system.initiative).toMatchObject({ base: 8, dice: 3 });
+  });
+
+  it("prefers edited numeric reflex bonuses and excludes uninstalled cyberware", async () => {
+    const SR2Actor = await loadActorClass();
+    const actor = createCharacterActor(SR2Actor, {
+      items: [
+        {
+          type: "cyberware",
+          name: "Wired Reflexes 2",
+          system: { installed: true, mods: "+4RCT,+2INI", reactionBonus: 2, initiativeDice: 1 },
+        },
+        {
+          type: "cyberware",
+          name: "Wired Reflexes 3",
+          system: { installed: false, mods: "+6RCT,+3INI" },
+        },
+      ],
+    });
+
+    actor.prepareDerivedData();
+
+    expect(actor.system.initiative).toMatchObject({ base: 6, dice: 2 });
+  });
+
+  it("calculates Reaction numerically for imported string attributes", async () => {
+    const SR2Actor = await loadActorClass();
+    const actor = createCharacterActor(SR2Actor, {
+      system: { attributes: { quickness: { value: "4" }, intelligence: { value: "5" } } },
+    });
+
+    actor.prepareDerivedData();
+
+    expect(actor.system.initiative).toMatchObject({ base: 4, dice: 1 });
+  });
+
+  it.each([
+    { dice: 12, base: 4, expectedDice: 10, expectedBase: 4 },
+    { dice: 2.7, base: -4, expectedDice: 2, expectedBase: 0 },
+    { dice: "bad", base: "bad", expectedDice: 1, expectedBase: 6 },
+  ])(
+    "uses identical roll terms in chat and core Combat for $dice dice and base $base",
+    async ({ dice, base, expectedDice, expectedBase }) => {
+      const SR2Actor = await loadActorClass();
+      const actor = createCharacterActor(SR2Actor, {
+        system: { initiative: { dice, base }, attributes: { reaction: { value: 6 } } },
+      });
+
+      expect(sr2GetInitiativeTerms(actor)).toMatchObject({
+        dice: expectedDice,
+        base: expectedBase,
+      });
+      expect(actor.getRollData().actor.initiative).toMatchObject({
+        dice: expectedDice,
+        base: expectedBase,
+      });
+      expect(actor.system.initiative).toMatchObject({ dice, base });
+    },
+  );
+
+  it.each([
+    { type: "spirit", spiritForm: "manifest", expectedBase: 16 },
+    { type: "spirit", spiritForm: "astral", expectedBase: 26 },
+    { type: "critter", spiritForm: "manifest", expectedBase: 16 },
+    { type: "ic", spiritForm: "astral", expectedBase: 6 },
+  ])(
+    "keeps $type $spiritForm initiative identical across preparation, chat, and core Combat",
+    async ({ type, spiritForm, expectedBase }) => {
+      const SR2Actor = await loadActorClass();
+      const actor = createCharacterActor(SR2Actor, {
+        system: {
+          spiritForm,
+          initiative: { base: 0, dice: 5 },
+          attributes: { reaction: { value: 6 } },
+        },
+      });
+      actor.type = type;
+
+      expect(sr2GetInitiativeTerms(actor)).toMatchObject({ dice: 1, base: expectedBase });
+      actor.prepareDerivedData();
+      expect(actor.system.initiative).toMatchObject({ dice: 1, base: expectedBase });
+      expect(actor.getRollData().actor.initiative).toMatchObject({ dice: 1, base: expectedBase });
+    },
+  );
+
+  it.each([
+    { metatype: "human", base: 0, earned: 10, total: 1, expected: 2 },
+    { metatype: "human", base: undefined, earned: 30, total: 4, expected: 4 },
+    { metatype: "elf", base: 0, earned: 10, total: 1, expected: 3 },
+  ])(
+    "restores the chargen Karma Pool for $metatype with base $base",
+    async ({ metatype, base, earned, total, expected }) => {
+      const SR2Actor = await loadActorClass();
+      const actor = createCharacterActor(SR2Actor, {
+        system: {
+          details: { metatype },
+          karma: { earned, spent: 0 },
+          pools: { karma: { base, total, current: 1 } },
+        },
+      });
+      actor.prepareDerivedData();
+      actor.prepareDerivedData();
+      expect(actor.system.pools.karma.total).toBe(expected);
+      expect(actor.system.pools.karma.current).toBe(1);
+    },
+  );
+
+  it("gives Anna 3d6+10 from Wired Reflexes without adding physical reflexes to Hacking Pool", async () => {
+    const SR2Actor = await loadActorClass();
+    const actor = createCharacterActor(SR2Actor, {
+      system: { attributes: { quickness: { value: 6 }, intelligence: { value: 6 } } },
+      items: [
+        {
+          type: "cyberware",
+          name: "Wired Reflexes 2",
+          system: { installed: true, reactionBonus: 0, initiativeDice: 0, mods: "+4RCT,+2INI" },
+        },
+        { type: "skill", name: "Computer", system: { baseSkill: "Computer", baseRating: 4 } },
+      ],
+    });
+    actor.prepareDerivedData();
+    expect(sr2GetInitiativeTerms(actor).compactFormula).toBe("3d6+10");
+    expect(actor.getRollData().actor.initiative).toMatchObject({ dice: 3, base: 10 });
+    expect(actor.system.pools.hacking.max).toBe(10);
+  });
+
+  it("keeps earned Karma Pool totals stable without refreshing spent dice during preparation", async () => {
+    const SR2Actor = await loadActorClass();
+    const actor = createCharacterActor(SR2Actor, {
+      system: {
+        karma: { earned: 30, spent: 12 },
+        pools: { karma: { base: 2, total: 5, current: 1 } },
+      },
+    });
+
+    actor.prepareDerivedData();
+    actor.prepareDerivedData();
+
+    expect(actor.system.pools.karma).toEqual({ base: 2, total: 5, current: 1 });
+    expect(actor.system.karma).toEqual({ earned: 30, spent: 12 });
   });
 
   it("keeps bioware and adept-power mods additive for non-reflex stats", async () => {

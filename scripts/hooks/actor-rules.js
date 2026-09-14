@@ -4,6 +4,7 @@ import {
   sr2GetRacialModifiers,
   sr2GetRacialTraits,
   sr2HasCreationLimits,
+  sr2ResolveKarmaPoolBase,
 } from "../sr2-rules.js";
 
 const SR2_ACTOR_RULE_HOOKS_KEY = "__sr2ActorRuleHooksInstalled";
@@ -25,14 +26,18 @@ function sr2SyncKarmaPoolFromEarned(actor, changes) {
   const setProperty = globalThis.foundry?.utils?.setProperty;
   if (typeof getProperty !== "function" || typeof setProperty !== "function") return;
 
-  const earnedUpdate = getProperty(changes, "system.karma.earned");
-  const baseUpdate = getProperty(changes, "system.pools.karma.base");
+  const getChange = (path) =>
+    Object.prototype.hasOwnProperty.call(changes, path)
+      ? changes[path]
+      : getProperty(changes, path);
+  const earnedUpdate = getChange("system.karma.earned");
+  const baseUpdate = getChange("system.pools.karma.base");
   if (earnedUpdate === undefined && baseUpdate === undefined) return;
 
   const oldEarned = sr2NormalizeKarmaNumber(actor.system?.karma?.earned);
-  const oldBase = sr2NormalizeKarmaNumber(
-    actor.system?.pools?.karma?.base ?? actor.system?.pools?.karma?.total,
-  );
+  const oldBase = sr2ResolveKarmaPoolBase(actor.system, {
+    moreMetahumans: game.settings?.get("shadowrun2e", "moreMetahumans") ?? false,
+  });
   const oldTotal = sr2NormalizeKarmaNumber(actor.system?.pools?.karma?.total);
   const oldCurrent = sr2NormalizeKarmaNumber(actor.system?.pools?.karma?.current);
 
@@ -40,17 +45,25 @@ function sr2SyncKarmaPoolFromEarned(actor, changes) {
   const nextBase = sr2NormalizeKarmaNumber(baseUpdate === undefined ? oldBase : baseUpdate);
   const nextTotal = sr2ComputeKarmaPoolTotal(nextBase, nextEarned);
 
-  const currentUpdate = getProperty(changes, "system.pools.karma.current");
+  const currentUpdate = getChange("system.pools.karma.current");
+  // A full form can submit the unchanged current value alongside earned karma.
+  // Only an actual pool edit should override the newly earned pool points.
   const nextCurrentRaw =
-    currentUpdate === undefined
+    currentUpdate === undefined || sr2NormalizeKarmaNumber(currentUpdate) === oldCurrent
       ? oldCurrent + Math.max(0, nextTotal - oldTotal)
       : sr2NormalizeKarmaNumber(currentUpdate);
   const nextCurrent = Math.max(0, Math.min(nextTotal, nextCurrentRaw));
 
-  setProperty(changes, "system.karma.earned", nextEarned);
-  setProperty(changes, "system.pools.karma.base", nextBase);
-  setProperty(changes, "system.pools.karma.total", nextTotal);
-  setProperty(changes, "system.pools.karma.current", nextCurrent);
+  for (const [path, value] of Object.entries({
+    "system.karma.earned": nextEarned,
+    "system.pools.karma.base": nextBase,
+    "system.pools.karma.total": nextTotal,
+    "system.pools.karma.current": nextCurrent,
+  })) {
+    setProperty(changes, path, value);
+    // Do not leave a stale dotted key that could overwrite the synchronized value.
+    delete changes[path];
+  }
 }
 
 export function registerActorRuleHooks({ syncFreeLanguageSkills } = {}) {

@@ -644,6 +644,8 @@ export class SR2ActorSheet extends ActorSheet {
 
   /** @override */
   activateListeners(html) {
+    // Track changes before core listeners can synchronously submit the form.
+    if (this.isEditable) this._trackDirtyFormFields(html);
     super.activateListeners(html);
 
     // Initialize health data if needed
@@ -766,8 +768,6 @@ export class SR2ActorSheet extends ActorSheet {
 
     // Everything below here is only needed if the sheet is editable
     if (!this.isEditable) return;
-
-    this._trackDirtyFormFields(html);
 
     // Add Inventory Item
     html.find(".item-create").click(this._onItemCreate.bind(this));
@@ -997,10 +997,18 @@ export class SR2ActorSheet extends ActorSheet {
     const adjustment = parseInt(event.currentTarget?.dataset?.adjust, 10);
     if (!Number.isFinite(adjustment) || adjustment === 0) return;
 
-    const currentValue = Number(this.actor.system?.karma?.earned) || 0;
-    const newValue = Math.max(0, Math.floor(currentValue + adjustment));
-
-    this.actor.update({ "system.karma.earned": newValue });
+    // Read the actor after the preceding click has saved, so rapid clicks are not lost.
+    this._karmaEarnedUpdate = (this._karmaEarnedUpdate ?? Promise.resolve())
+      .then(() => {
+        const currentValue = Number(this.actor.system?.karma?.earned) || 0;
+        const newValue = Math.max(0, Math.floor(currentValue + adjustment));
+        return this.actor.update({ "system.karma.earned": newValue });
+      })
+      .catch((error) => {
+        console.error("SR2E | Error updating earned karma:", error);
+        ui.notifications.error("Failed to update earned karma (see console).");
+      });
+    return this._karmaEarnedUpdate;
   }
 
   /**
@@ -1008,46 +1016,17 @@ export class SR2ActorSheet extends ActorSheet {
    */
   async _onResetAllPools(event) {
     event.preventDefault();
-
-    // Check conditions for pool visibility
-    const magicAttribute = this.actor.system.attributes.magic?.value || 0;
-    const isSpellcaster =
-      Boolean(this.actor.system.magic?.awakened) &&
-      !Boolean(this.actor.system.magic?.physicalAdept);
-    const hasCyberdeck = this.actor.items.some(
-      (item) => item.type === "cyberware" && item.name.toLowerCase().includes("cyberdeck"),
-    );
-    const hasControlRig = this.actor.items.some(
-      (item) =>
-        item.type === "cyberware" &&
-        (item.name.toLowerCase().includes("control rig") ||
-          item.name.toLowerCase().includes("vehicle control rig")),
-    );
-
-    // Build update data for available pools only
+    event.stopPropagation?.();
+    // This is a manual reset of every pool; automatic action refresh excludes Karma.
     const updateData = {};
-    const poolData = this.actor.system.pools;
-
-    // Define pool types with their visibility conditions
-    const poolTypes = [
-      { key: "combat", condition: true },
-      { key: "spell", condition: isSpellcaster && magicAttribute > 0 },
-      { key: "hacking", condition: hasCyberdeck },
-      { key: "control", condition: hasControlRig },
-      { key: "task", condition: (poolData.task?.max || 0) > 0 },
-      { key: "astral", condition: isSpellcaster && magicAttribute > 0 },
-    ];
-
-    poolTypes.forEach((poolType) => {
-      if (poolType.condition && poolData[poolType.key]) {
-        updateData[`system.pools.${poolType.key}.current`] = poolData[poolType.key].max;
-      }
-    });
-
-    // Update the actor
+    for (const key of SR2_ALL_POOL_KEYS) {
+      const pool = this.actor.system.pools?.[key];
+      if (!pool) continue;
+      const path = `system.pools.${key}.current`;
+      updateData[path] = Math.max(0, Number(pool[key === "karma" ? "total" : "max"]) || 0);
+      this._dirtyFields?.actorFields?.delete(path);
+    }
     await this.actor.update(updateData);
-
-    // Show confirmation message
     ui.notifications.info(`All available dice pools reset to maximum for ${this.actor.name}`);
   }
 
@@ -1837,31 +1816,34 @@ export class SR2ActorSheet extends ActorSheet {
         resolve(result);
       };
 
-      const dialog = new Dialog({
-        title: "Conjuring",
-        content,
-        buttons: {
-          continue: {
-            icon: '<i class="fas fa-dice-d6"></i>',
-            label: "Continue",
-            callback: (html) => {
-              const spiritType = String(html.find('input[name="spiritType"]').val() || "").trim();
-              const force = Math.max(
-                1,
-                parseInt(html.find('input[name="spiritForce"]').val(), 10) || defaultForce,
-              );
-              finish({ ok: true, spiritType, force });
+      const dialog = new Dialog(
+        {
+          title: "Conjuring",
+          content,
+          buttons: {
+            continue: {
+              icon: '<i class="fas fa-dice-d6"></i>',
+              label: "Continue",
+              callback: (html) => {
+                const spiritType = String(html.find('input[name="spiritType"]').val() || "").trim();
+                const force = Math.max(
+                  1,
+                  parseInt(html.find('input[name="spiritForce"]').val(), 10) || defaultForce,
+                );
+                finish({ ok: true, spiritType, force });
+              },
+            },
+            cancel: {
+              icon: '<i class="fas fa-times"></i>',
+              label: "Cancel",
+              callback: () => finish({ ok: false }),
             },
           },
-          cancel: {
-            icon: '<i class="fas fa-times"></i>',
-            label: "Cancel",
-            callback: () => finish({ ok: false }),
-          },
+          default: "continue",
+          close: () => finish({ ok: false }),
         },
-        default: "continue",
-        close: () => finish({ ok: false }),
-      });
+        { classes: ["dialog", "sr2-dialog"] },
+      );
 
       dialog.render(true);
     });
@@ -2042,8 +2024,11 @@ export class SR2ActorSheet extends ActorSheet {
           pools.push({
             key: poolType.key,
             name: poolType.name,
-            current: pool.current || 0,
-            max: pool[poolType.maxKey] || 0,
+            current: Math.max(
+              0,
+              Math.min(Number(pool.current) || 0, Number(pool[poolType.maxKey]) || 0),
+            ),
+            max: Math.max(0, Number(pool[poolType.maxKey]) || 0),
             isActorPool: true,
           });
         }
@@ -2087,10 +2072,12 @@ export class SR2ActorSheet extends ActorSheet {
       ];
     }
 
-    const poolCaps =
-      enrichedContext?.poolCaps && typeof enrichedContext.poolCaps === "object"
+    const poolCaps = {
+      hacking: Math.max(0, Number(dicePool) || 0),
+      ...(enrichedContext?.poolCaps && typeof enrichedContext.poolCaps === "object"
         ? enrichedContext.poolCaps
-        : {};
+        : {}),
+    };
     const isRangedAttack =
       rollType === "attack" && weaponData && weaponData.system.weaponType === "ranged";
     const rangedWoundModifier = isRangedAttack
@@ -2313,230 +2300,245 @@ export class SR2ActorSheet extends ActorSheet {
         resolve(result);
       };
 
-      const dialog = new Dialog({
-        title: `${title} - Target Number Selection`,
-        content: content,
-        render: (html) => {
-          // Handle pool checkbox interactions
-          html.find(".pool-checkbox").change(function () {
-            const isChecked = $(this).is(":checked");
-            const poolKey = $(this).val();
-            const diceInput = html.find(`input[name="pool-${poolKey}-dice"]`);
-            const pool = availablePools.find((p) => p.key === poolKey);
+      const dialog = new Dialog(
+        {
+          title: `${title} - Target Number Selection`,
+          content: content,
+          render: (html) => {
+            // Handle pool checkbox interactions
+            html.find(".pool-checkbox").change(function () {
+              const isChecked = $(this).is(":checked");
+              const poolKey = $(this).val();
+              const diceInput = html.find(`input[name="pool-${poolKey}-dice"]`);
+              const pool = availablePools.find((p) => p.key === poolKey);
 
-            if (isChecked) {
-              diceInput.prop("disabled", false);
-              // Only default to 1 if the pool has dice available
-              if (pool && (pool.isUnlimited || pool.current > 0)) {
-                diceInput.val(1);
+              if (isChecked) {
+                diceInput.prop("disabled", false);
+                // Only default to 1 if the pool has dice available
+                if (pool && (pool.isUnlimited || pool.current > 0)) {
+                  diceInput.val(1);
+                } else {
+                  diceInput.val(0);
+                }
               } else {
+                diceInput.prop("disabled", true);
                 diceInput.val(0);
               }
-            } else {
-              diceInput.prop("disabled", true);
-              diceInput.val(0);
-            }
-          });
+            });
 
-          // Clamp pool dice inputs to their max values (prevents typing above available dice)
-          html.find(".pool-dice-input").on("input change", function () {
-            const rawMax = parseInt($(this).attr("max"), 10);
-            const hasMax = Number.isFinite(rawMax);
+            // Clamp pool dice inputs to their max values (prevents typing above available dice)
+            html.find(".pool-dice-input").on("input change", function () {
+              const rawMax = parseInt($(this).attr("max"), 10);
+              const hasMax = Number.isFinite(rawMax);
 
-            let rawValue = parseInt($(this).val(), 10);
-            if (!Number.isFinite(rawValue)) rawValue = 0;
+              let rawValue = parseInt($(this).val(), 10);
+              if (!Number.isFinite(rawValue)) rawValue = 0;
 
-            const clamped = hasMax
-              ? Math.max(0, Math.min(rawValue, rawMax))
-              : Math.max(0, rawValue);
-            if (String($(this).val()) !== String(clamped)) {
-              $(this).val(clamped);
-            }
-          });
+              const clamped = hasMax
+                ? Math.max(0, Math.min(rawValue, rawMax))
+                : Math.max(0, rawValue);
+              if (String($(this).val()) !== String(clamped)) {
+                $(this).val(clamped);
+              }
+            });
 
-          // Reset all pool dice allocations in this dialog
-          html.find(".reset-pool-dice").on("click", function () {
-            html.find(".pool-checkbox").prop("checked", false);
-            html.find(".pool-dice-input").prop("disabled", true).val(0);
-          });
+            // Reset all pool dice allocations in this dialog
+            html.find(".reset-pool-dice").on("click", function () {
+              html.find(".pool-checkbox").prop("checked", false);
+              html.find(".pool-dice-input").prop("disabled", true).val(0);
+            });
 
-          // Handle ranged modifier calculations
-          if (isRangedAttack) {
-            const updateTotalModifier = () => {
-              const modifierSummary = sr2BuildRangedModifierSummary({
-                baseTargetNumber: defaultTN,
-                recoilModifier:
-                  (parseInt(html.find('select[name="recoil-modifier"]').val()) || 0) +
-                  autoRangedModifiers.recoilModifier,
-                visibilityModifier:
-                  parseInt(html.find('select[name="visibility-modifier"]').val()) || 0,
-                coverModifier: parseInt(html.find('select[name="cover-modifier"]').val()) || 0,
-                multipleTargetsModifier:
-                  parseInt(html.find('select[name="multiple-targets-modifier"]').val()) || 0,
-                targetMovementModifier:
-                  parseInt(html.find('select[name="target-movement-modifier"]').val()) || 0,
-                attackerMeleeModifier:
-                  parseInt(html.find('select[name="attacker-melee-modifier"]').val()) || 0,
-                attackerMovementModifier:
-                  parseInt(html.find('select[name="attacker-movement-modifier"]').val()) || 0,
-                accessoriesModifier:
-                  (parseInt(html.find('select[name="accessories-modifier"]').val()) || 0) +
-                  autoRangedModifiers.accessoriesModifier,
-                otherModifier: parseInt(html.find('select[name="other-modifier"]').val()) || 0,
-                woundModifier: rangedWoundModifier,
-                calledShotModifier: autoRangedModifiers.calledShotModifier,
-              });
-              html
-                .find("#total-tn-modifier")
-                .text(
-                  modifierSummary.totalModifier >= 0
-                    ? `+${modifierSummary.totalModifier}`
-                    : `${modifierSummary.totalModifier}`,
-                );
-            };
-
-            html.find(".modifier-select").change(updateTotalModifier);
-            updateTotalModifier(); // Initial calculation
-          }
-        },
-        buttons: {
-          roll: {
-            icon: '<i class="fas fa-dice-d6"></i>',
-            label: "Roll",
-            callback: async (html) => {
-              if (isRolling || isResolved) return;
-              isRolling = true;
-              try {
-                const baseTargetNumber = parseInt(html.find("#target-number").val());
-                let finalDicePool = dicePool;
-
-                // Calculate ranged combat modifiers if applicable
-                let tnModifier = 0;
-                let modifierDetails = [];
-
-                if (isRangedAttack) {
-                  const modifierSummary = sr2BuildRangedModifierSummary({
-                    baseTargetNumber,
-                    recoilModifier:
-                      (parseInt(html.find('select[name="recoil-modifier"]').val()) || 0) +
-                      autoRangedModifiers.recoilModifier,
-                    visibilityModifier:
-                      parseInt(html.find('select[name="visibility-modifier"]').val()) || 0,
-                    coverModifier: parseInt(html.find('select[name="cover-modifier"]').val()) || 0,
-                    multipleTargetsModifier:
-                      parseInt(html.find('select[name="multiple-targets-modifier"]').val()) || 0,
-                    targetMovementModifier:
-                      parseInt(html.find('select[name="target-movement-modifier"]').val()) || 0,
-                    attackerMeleeModifier:
-                      parseInt(html.find('select[name="attacker-melee-modifier"]').val()) || 0,
-                    attackerMovementModifier:
-                      parseInt(html.find('select[name="attacker-movement-modifier"]').val()) || 0,
-                    accessoriesModifier:
-                      (parseInt(html.find('select[name="accessories-modifier"]').val()) || 0) +
-                      autoRangedModifiers.accessoriesModifier,
-                    otherModifier: parseInt(html.find('select[name="other-modifier"]').val()) || 0,
-                    woundModifier: rangedWoundModifier,
-                    calledShotModifier: autoRangedModifiers.calledShotModifier,
-                  });
-
-                  tnModifier = modifierSummary.totalModifier;
-                  modifierDetails = modifierSummary.parts.map(
-                    (part) => `${part.label}: ${part.value >= 0 ? "+" : ""}${part.value}`,
-                  );
-                }
-
-                const finalTargetNumber = Math.max(2, baseTargetNumber + tnModifier);
-
-                // Handle pool dice
-                const poolsUsed = [];
-                let totalPoolDice = 0;
-
-                availablePools.forEach((pool) => {
-                  const checkbox = html.find(`input[name="pool-${pool.key}"]`);
-                  const diceInput = html.find(`input[name="pool-${pool.key}-dice"]`);
-
-                  if (checkbox.is(":checked")) {
-                    const diceUsed = parseInt(diceInput.val()) || 0;
-                    let actualDiceUsed = 0;
-                    if (pool.isUnlimited) {
-                      actualDiceUsed = Math.max(0, diceUsed);
-                    } else {
-                      // Validate that we don't use more dice than available
-                      const cap = Number(poolCaps?.[pool.key]);
-                      const maxFromCap = Number.isFinite(cap) ? cap : Infinity;
-                      actualDiceUsed = Math.min(diceUsed, pool.current, maxFromCap);
-                    }
-                    if (actualDiceUsed > 0) {
-                      totalPoolDice += actualDiceUsed;
-                      poolsUsed.push({ pool: pool, dice: actualDiceUsed });
-                    }
-                  }
+            // Handle ranged modifier calculations
+            if (isRangedAttack) {
+              const updateTotalModifier = () => {
+                const modifierSummary = sr2BuildRangedModifierSummary({
+                  baseTargetNumber: defaultTN,
+                  recoilModifier:
+                    (parseInt(html.find('select[name="recoil-modifier"]').val()) || 0) +
+                    autoRangedModifiers.recoilModifier,
+                  visibilityModifier:
+                    parseInt(html.find('select[name="visibility-modifier"]').val()) || 0,
+                  coverModifier: parseInt(html.find('select[name="cover-modifier"]').val()) || 0,
+                  multipleTargetsModifier:
+                    parseInt(html.find('select[name="multiple-targets-modifier"]').val()) || 0,
+                  targetMovementModifier:
+                    parseInt(html.find('select[name="target-movement-modifier"]').val()) || 0,
+                  attackerMeleeModifier:
+                    parseInt(html.find('select[name="attacker-melee-modifier"]').val()) || 0,
+                  attackerMovementModifier:
+                    parseInt(html.find('select[name="attacker-movement-modifier"]').val()) || 0,
+                  accessoriesModifier:
+                    (parseInt(html.find('select[name="accessories-modifier"]').val()) || 0) +
+                    autoRangedModifiers.accessoriesModifier,
+                  otherModifier: parseInt(html.find('select[name="other-modifier"]').val()) || 0,
+                  woundModifier: rangedWoundModifier,
+                  calledShotModifier: autoRangedModifiers.calledShotModifier,
                 });
+                html
+                  .find("#total-tn-modifier")
+                  .text(
+                    modifierSummary.totalModifier >= 0
+                      ? `+${modifierSummary.totalModifier}`
+                      : `${modifierSummary.totalModifier}`,
+                  );
+              };
 
-                // Add pool dice to final dice pool
-                finalDicePool += totalPoolDice;
+              html.find(".modifier-select").change(updateTotalModifier);
+              updateTotalModifier(); // Initial calculation
+            }
+          },
+          buttons: {
+            roll: {
+              icon: '<i class="fas fa-dice-d6"></i>',
+              label: "Roll",
+              callback: async (html) => {
+                if (isRolling || isResolved) return;
+                isRolling = true;
+                try {
+                  const baseTargetNumber = parseInt(html.find("#target-number").val());
+                  let finalDicePool = dicePool;
 
-                // Ensure minimum dice pool of 1
-                if (finalDicePool < 1) {
-                  finalDicePool = 1;
-                }
+                  // Calculate ranged combat modifiers if applicable
+                  let tnModifier = 0;
+                  let modifierDetails = [];
 
-                // Update actor's pool values
-                if (poolsUsed.length > 0) {
-                  const updateData = {};
-                  poolsUsed.forEach(({ pool, dice }) => {
-                    if (!pool.isActorPool) return;
-                    const newCurrent = Math.max(0, pool.current - dice);
-                    updateData[`system.pools.${pool.key}.current`] = newCurrent;
+                  if (isRangedAttack) {
+                    const modifierSummary = sr2BuildRangedModifierSummary({
+                      baseTargetNumber,
+                      recoilModifier:
+                        (parseInt(html.find('select[name="recoil-modifier"]').val()) || 0) +
+                        autoRangedModifiers.recoilModifier,
+                      visibilityModifier:
+                        parseInt(html.find('select[name="visibility-modifier"]').val()) || 0,
+                      coverModifier:
+                        parseInt(html.find('select[name="cover-modifier"]').val()) || 0,
+                      multipleTargetsModifier:
+                        parseInt(html.find('select[name="multiple-targets-modifier"]').val()) || 0,
+                      targetMovementModifier:
+                        parseInt(html.find('select[name="target-movement-modifier"]').val()) || 0,
+                      attackerMeleeModifier:
+                        parseInt(html.find('select[name="attacker-melee-modifier"]').val()) || 0,
+                      attackerMovementModifier:
+                        parseInt(html.find('select[name="attacker-movement-modifier"]').val()) || 0,
+                      accessoriesModifier:
+                        (parseInt(html.find('select[name="accessories-modifier"]').val()) || 0) +
+                        autoRangedModifiers.accessoriesModifier,
+                      otherModifier:
+                        parseInt(html.find('select[name="other-modifier"]').val()) || 0,
+                      woundModifier: rangedWoundModifier,
+                      calledShotModifier: autoRangedModifiers.calledShotModifier,
+                    });
+
+                    tnModifier = modifierSummary.totalModifier;
+                    modifierDetails = modifierSummary.parts.map(
+                      (part) => `${part.label}: ${part.value >= 0 ? "+" : ""}${part.value}`,
+                    );
+                  }
+
+                  const finalTargetNumber = Math.max(2, baseTargetNumber + tnModifier);
+
+                  // Handle pool dice
+                  const poolsUsed = [];
+                  let totalPoolDice = 0;
+
+                  availablePools.forEach((pool) => {
+                    const checkbox = html.find(`input[name="pool-${pool.key}"]`);
+                    const diceInput = html.find(`input[name="pool-${pool.key}-dice"]`);
+
+                    if (checkbox.is(":checked")) {
+                      const diceUsed = parseInt(diceInput.val()) || 0;
+                      let actualDiceUsed = 0;
+                      if (pool.isUnlimited) {
+                        actualDiceUsed = Math.max(0, diceUsed);
+                      } else {
+                        if (pool.isActorPool) {
+                          // Recheck after other rolls or resets while this dialog was open.
+                          const livePool = rollActor.system.pools?.[pool.key];
+                          const maxKey = pool.key === "karma" ? "total" : "max";
+                          pool.current = Math.max(
+                            0,
+                            Math.min(
+                              Number(livePool?.current) || 0,
+                              Number(livePool?.[maxKey]) || 0,
+                            ),
+                          );
+                        }
+                        // Validate that we don't use more dice than available
+                        const cap = Number(poolCaps?.[pool.key]);
+                        const maxFromCap = Number.isFinite(cap) ? cap : Infinity;
+                        actualDiceUsed = Math.min(diceUsed, pool.current, maxFromCap);
+                      }
+                      if (actualDiceUsed > 0) {
+                        totalPoolDice += actualDiceUsed;
+                        poolsUsed.push({ pool: pool, dice: actualDiceUsed });
+                      }
+                    }
                   });
-                  if (Object.keys(updateData).length > 0) {
-                    await rollActor.update(updateData);
-                  }
-                }
 
-                // Create enhanced title with pool info and modifiers
-                let finalTitle = `${title} (TN ${finalTargetNumber})`;
-                if (tnModifier !== 0) {
-                  finalTitle += ` [Base TN ${baseTargetNumber} ${tnModifier >= 0 ? "+" : ""}${tnModifier}]`;
-                }
-                if (poolsUsed.length > 0) {
-                  const poolInfo = poolsUsed
-                    .map(({ pool, dice }) => `${dice} ${pool.name}`)
-                    .join(", ");
-                  finalTitle += ` [+${totalPoolDice} from ${poolInfo}]`;
-                }
+                  // Add pool dice to final dice pool
+                  finalDicePool += totalPoolDice;
 
-                // Roll the dice
-                const unclampedDicePool = (Number(dicePool) || 0) + totalPoolDice;
-                let sources = [];
-                if (unclampedDicePool <= 0) {
-                  sources = ["base"];
-                } else {
-                  for (let i = 0; i < Math.max(0, Number(dicePool) || 0); i++) {
-                    sources.push("base");
+                  // Ensure minimum dice pool of 1
+                  if (finalDicePool < 1) {
+                    finalDicePool = 1;
                   }
-                  for (const { pool, dice } of poolsUsed) {
-                    for (let i = 0; i < dice; i++) {
-                      sources.push(pool.key);
+
+                  // Update actor's pool values
+                  if (poolsUsed.length > 0) {
+                    const updateData = {};
+                    poolsUsed.forEach(({ pool, dice }) => {
+                      if (!pool.isActorPool) return;
+                      const newCurrent = Math.max(0, pool.current - dice);
+                      updateData[`system.pools.${pool.key}.current`] = newCurrent;
+                    });
+                    if (Object.keys(updateData).length > 0) {
+                      await rollActor.update(updateData);
                     }
                   }
-                }
-                while (sources.length < finalDicePool) sources.push("base");
-                if (sources.length > finalDicePool) sources = sources.slice(0, finalDicePool);
 
-                const rollResult = await rollActor.rollDice(
-                  finalDicePool,
-                  finalTargetNumber,
-                  finalTitle,
-                  { sources },
-                );
+                  // Create enhanced title with pool info and modifiers
+                  let finalTitle = `${title} (TN ${finalTargetNumber})`;
+                  if (tnModifier !== 0) {
+                    finalTitle += ` [Base TN ${baseTargetNumber} ${tnModifier >= 0 ? "+" : ""}${tnModifier}]`;
+                  }
+                  if (poolsUsed.length > 0) {
+                    const poolInfo = poolsUsed
+                      .map(({ pool, dice }) => `${dice} ${pool.name}`)
+                      .join(", ");
+                    finalTitle += ` [+${totalPoolDice} from ${poolInfo}]`;
+                  }
 
-                // Show modifier breakdown in chat if there were ranged modifiers
-                if (isRangedAttack && modifierDetails.length > 0) {
-                  const modifierChatData = {
-                    user: game.user.id,
-                    speaker: ChatMessage.getSpeaker({ actor: rollActor }),
-                    content: `
+                  // Roll the dice
+                  const unclampedDicePool = (Number(dicePool) || 0) + totalPoolDice;
+                  let sources = [];
+                  if (unclampedDicePool <= 0) {
+                    sources = ["base"];
+                  } else {
+                    for (let i = 0; i < Math.max(0, Number(dicePool) || 0); i++) {
+                      sources.push("base");
+                    }
+                    for (const { pool, dice } of poolsUsed) {
+                      for (let i = 0; i < dice; i++) {
+                        sources.push(pool.key);
+                      }
+                    }
+                  }
+                  while (sources.length < finalDicePool) sources.push("base");
+                  if (sources.length > finalDicePool) sources = sources.slice(0, finalDicePool);
+
+                  const rollResult = await rollActor.rollDice(
+                    finalDicePool,
+                    finalTargetNumber,
+                    finalTitle,
+                    { sources },
+                  );
+
+                  // Show modifier breakdown in chat if there were ranged modifiers
+                  if (isRangedAttack && modifierDetails.length > 0) {
+                    const modifierChatData = {
+                      user: game.user.id,
+                      speaker: ChatMessage.getSpeaker({ actor: rollActor }),
+                      content: `
 	                    <div class="ranged-modifiers-breakdown">
 	                      <h4>Ranged Combat Modifiers Applied:</h4>
 	                      <ul>
@@ -2545,41 +2547,43 @@ export class SR2ActorSheet extends ActorSheet {
                       <p><strong>Total TN Modifier: ${tnModifier >= 0 ? "+" : ""}${tnModifier}</strong></p>
                     </div>
                   `,
-                  };
-                  ChatMessage.create(modifierChatData);
-                }
+                    };
+                    ChatMessage.create(modifierChatData);
+                  }
 
-                finish({
-                  rolled: true,
-                  rollResult,
-                  finalDicePool,
-                  finalTargetNumber,
-                  baseTargetNumber,
-                  tnModifier,
-                  poolsUsed,
-                });
-              } catch (error) {
-                console.error("SR2E | Failed to resolve TN roll dialog", error);
-                ui.notifications?.error?.("Roll failed (see console).");
-                finish({ rolled: false });
-              } finally {
-                isRolling = false;
-              }
+                  finish({
+                    rolled: true,
+                    rollResult,
+                    finalDicePool,
+                    finalTargetNumber,
+                    baseTargetNumber,
+                    tnModifier,
+                    poolsUsed,
+                  });
+                } catch (error) {
+                  console.error("SR2E | Failed to resolve TN roll dialog", error);
+                  ui.notifications?.error?.("Roll failed (see console).");
+                  finish({ rolled: false });
+                } finally {
+                  isRolling = false;
+                }
+              },
+            },
+            cancel: {
+              icon: '<i class="fas fa-times"></i>',
+              label: "Cancel",
+              callback: () => finish({ rolled: false }),
             },
           },
-          cancel: {
-            icon: '<i class="fas fa-times"></i>',
-            label: "Cancel",
-            callback: () => finish({ rolled: false }),
+          default: "roll",
+          close: () => {
+            // Dialog auto-close after clicking Roll should not short-circuit async roll handling.
+            if (isRolling) return;
+            finish({ rolled: false });
           },
         },
-        default: "roll",
-        close: () => {
-          // Dialog auto-close after clicking Roll should not short-circuit async roll handling.
-          if (isRolling) return;
-          finish({ rolled: false });
-        },
-      });
+        { classes: ["dialog", "sr2-dialog"] },
+      );
 
       dialog.render(true);
     });
@@ -3600,6 +3604,7 @@ export class SR2ActorSheet extends ActorSheet {
         // Show confirmation for significant essence loss
         if (essenceCost >= 1.0) {
           const confirm = await Dialog.confirm({
+            options: { classes: ["dialog", "sr2-dialog"] },
             title: "Cyberware Installation",
             content: `<p>Installing <strong>${item.name}</strong> will permanently reduce your Essence by <strong>${essenceCost}</strong>.</p>
                      <p>Current Essence: <strong>${currentEssence.toFixed(2)}</strong></p>
@@ -3621,6 +3626,7 @@ export class SR2ActorSheet extends ActorSheet {
       } else {
         // Uninstall the cyberware
         const confirm = await Dialog.confirm({
+          options: { classes: ["dialog", "sr2-dialog"] },
           title: "Cyberware Removal",
           content: `<p>Are you sure you want to remove <strong>${item.name}</strong>?</p>
                    <p>This will restore <strong>${essenceCost}</strong> Essence.</p>
@@ -3686,6 +3692,7 @@ export class SR2ActorSheet extends ActorSheet {
         // Show confirmation for bioware installation
         if (bioIndex >= 1.0) {
           const confirm = await Dialog.confirm({
+            options: { classes: ["dialog", "sr2-dialog"] },
             title: "Bioware Installation",
             content: `<p>Installing <strong>${item.name}</strong> will use <strong>${bioIndex}</strong> Bio Index.</p>
                      <p>Current Bio Index Used: <strong>${currentBioIndex.toFixed(2)}</strong></p>
@@ -3708,6 +3715,7 @@ export class SR2ActorSheet extends ActorSheet {
       } else {
         // Uninstall the bioware
         const confirm = await Dialog.confirm({
+          options: { classes: ["dialog", "sr2-dialog"] },
           title: "Bioware Removal",
           content: `<p>Are you sure you want to remove <strong>${item.name}</strong>?</p>
                    <p>This will free up <strong>${bioIndex}</strong> Bio Index.</p>
@@ -3983,6 +3991,7 @@ export class SR2ActorSheet extends ActorSheet {
 
       if (!encounterCheck.ok) {
         const shouldRoll = await Dialog.confirm({
+          options: { classes: ["dialog", "sr2-dialog"] },
           title: "Roll Initiative?",
           content: `<p>${
             this.actor?.name || "This character"
@@ -4544,7 +4553,18 @@ export class SR2ActorSheet extends ActorSheet {
   }
 
   /** @override */
+  _getSubmitData(updateData = {}) {
+    // FilePicker and other core controls submit explicit updates without input events.
+    for (const path of Object.keys(updateData)) sr2MarkDirtyField(this._dirtyFields, path);
+    return super._getSubmitData(updateData);
+  }
+
+  /** @override */
   async _updateObject(event, formData) {
+    const changedField = event?.target?.name || event?.currentTarget?.name;
+    if (changedField && Object.prototype.hasOwnProperty.call(formData, changedField)) {
+      sr2MarkDirtyField(this._dirtyFields, changedField);
+    }
     // Separate actor updates from item updates
     let actorUpdates = {};
     let itemUpdates = {};
@@ -4954,41 +4974,44 @@ export class SR2ActorSheet extends ActorSheet {
     `;
 
     // Create and show the dialog
-    new Dialog({
-      title: `Melee Attack: ${weapon.name}`,
-      content: dialogContent,
-      buttons: {
-        attack: {
-          label: "Make Attack",
-          callback: (html) => {
-            const modifiers = this._calculateMeleeModifiers(html);
-            this._performWeaponAttack(weapon, modifiers.total);
+    new Dialog(
+      {
+        title: `Melee Attack: ${weapon.name}`,
+        content: dialogContent,
+        buttons: {
+          attack: {
+            label: "Make Attack",
+            callback: (html) => {
+              const modifiers = this._calculateMeleeModifiers(html);
+              this._performWeaponAttack(weapon, modifiers.total);
+            },
+          },
+          cancel: {
+            label: "Cancel",
           },
         },
-        cancel: {
-          label: "Cancel",
+        default: "attack",
+        render: (html) => {
+          // Reset all pool dice allocations in this dialog
+          html.find(".reset-pool-dice").on("click", function () {
+            html.find(".pool-checkbox").prop("checked", false);
+            html.find(".pool-dice-input").prop("disabled", true).val(0);
+          });
+
+          // Add event listeners to update total modifier in real-time
+          const updateTotal = () => {
+            const modifiers = this._calculateMeleeModifiers(html);
+            html
+              .find("#total-modifier")
+              .text(modifiers.total > 0 ? `+${modifiers.total}` : modifiers.total);
+          };
+
+          html.find('select, input[type="checkbox"]').on("change", updateTotal);
+          updateTotal(); // Initial calculation
         },
       },
-      default: "attack",
-      render: (html) => {
-        // Reset all pool dice allocations in this dialog
-        html.find(".reset-pool-dice").on("click", function () {
-          html.find(".pool-checkbox").prop("checked", false);
-          html.find(".pool-dice-input").prop("disabled", true).val(0);
-        });
-
-        // Add event listeners to update total modifier in real-time
-        const updateTotal = () => {
-          const modifiers = this._calculateMeleeModifiers(html);
-          html
-            .find("#total-modifier")
-            .text(modifiers.total > 0 ? `+${modifiers.total}` : modifiers.total);
-        };
-
-        html.find('select, input[type="checkbox"]').on("change", updateTotal);
-        updateTotal(); // Initial calculation
-      },
-    }).render(true);
+      { classes: ["dialog", "sr2-dialog"] },
+    ).render(true);
   }
 
   /**

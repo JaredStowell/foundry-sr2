@@ -83,6 +83,60 @@ describe("SR2ActorSheet action flows", () => {
     globalThis.canvas = undefined;
   });
 
+  it("preserves rapid earned-karma clicks while an actor update is pending", async () => {
+    const SR2ActorSheet = await loadSheetClass();
+    const actor = { system: { karma: { earned: 8 } } };
+    actor.update = vi.fn(async (changes) => {
+      await Promise.resolve();
+      actor.system.karma.earned = changes["system.karma.earned"];
+    });
+    const sheet = new SR2ActorSheet(actor);
+    const event = { preventDefault: vi.fn(), currentTarget: { dataset: { adjust: "1" } } };
+
+    await Promise.all([sheet._onKarmaEarnedAdjust(event), sheet._onKarmaEarnedAdjust(event)]);
+
+    expect(actor.system.karma.earned).toBe(10);
+    expect(actor.update.mock.calls.map(([changes]) => changes["system.karma.earned"])).toEqual([
+      9, 10,
+    ]);
+  });
+
+  it("allows another karma adjustment after a failed save", async () => {
+    const SR2ActorSheet = await loadSheetClass();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const actor = { system: { karma: { earned: 9 } } };
+    actor.update = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Save failed"))
+      .mockImplementation(async (changes) => {
+        actor.system.karma.earned = changes["system.karma.earned"];
+      });
+    const sheet = new SR2ActorSheet(actor);
+    const event = { preventDefault: vi.fn(), currentTarget: { dataset: { adjust: "1" } } };
+
+    await sheet._onKarmaEarnedAdjust(event);
+    expect(ui.notifications.error).toHaveBeenCalledWith(
+      "Failed to update earned karma (see console).",
+    );
+    expect(actor.system.karma.earned).toBe(9);
+    await sheet._onKarmaEarnedAdjust(event);
+    expect(actor.system.karma.earned).toBe(10);
+  });
+
+  it("clamps earned-karma decrements at zero and ignores invalid adjustments", async () => {
+    const SR2ActorSheet = await loadSheetClass();
+    const actor = { system: { karma: { earned: 0 } }, update: vi.fn(async () => {}) };
+    const sheet = new SR2ActorSheet(actor);
+    for (const adjust of ["-1", "invalid", "0"]) {
+      await sheet._onKarmaEarnedAdjust({
+        preventDefault: vi.fn(),
+        currentTarget: { dataset: { adjust } },
+      });
+    }
+    expect(actor.update).toHaveBeenCalledTimes(1);
+    expect(actor.update).toHaveBeenCalledWith({ "system.karma.earned": 0 });
+  });
+
   it("applies full-auto ranged profile damage and ammo consumption", async () => {
     const SR2ActorSheet = await loadSheetClass();
 

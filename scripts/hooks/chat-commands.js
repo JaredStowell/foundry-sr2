@@ -60,12 +60,16 @@ export function sr2CountRtnSuccesses(roll, targetNumber) {
 }
 
 function sr2GetChatLogCommandRegistry() {
-  const ChatLogClass =
-    globalThis.ChatLog ??
-    globalThis.foundry?.applications?.sidebar?.tabs?.ChatLog ??
-    globalThis.ui?.chat?.constructor;
-  const commands = ChatLogClass?.CHAT_COMMANDS;
-  return commands && typeof commands === "object" ? commands : null;
+  const classes = [
+    globalThis.foundry?.applications?.sidebar?.tabs?.ChatLog,
+    globalThis.ChatLog,
+    globalThis.ui?.chat?.constructor,
+  ];
+  return (
+    classes
+      .map((cls) => cls?.CHAT_COMMANDS)
+      .find((commands) => commands && typeof commands === "object") ?? null
+  );
 }
 
 function sr2GetRtnCommandMessageText(command, match) {

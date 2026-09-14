@@ -192,6 +192,74 @@ describe("registerActorRuleHooks", () => {
     expect(foundry.utils.getProperty(changes, "system.pools.karma.current")).toBe(2);
   });
 
+  it.each(["character", "contact", "follower"])(
+    "credits Karma Pool for dotted earned-karma updates on a %s",
+    (type) => {
+      registerActorRuleHooks();
+      const [preUpdateActor] = Hooks.__get("preUpdateActor");
+      const actor = makeActor({ type });
+      actor.system.karma = { earned: 9, spent: 0 };
+      actor.system.pools = { karma: { base: 2, total: 2, current: 1 } };
+      const changes = { "system.karma.earned": "30" };
+
+      preUpdateActor(actor, changes, {}, "U1");
+
+      const read = (path) => changes[path] ?? foundry.utils.getProperty(changes, path);
+      expect(read("system.karma.earned")).toBe(30);
+      expect(read("system.pools.karma.total")).toBe(5);
+      expect(read("system.pools.karma.current")).toBe(4);
+    },
+  );
+
+  it.each([
+    { current: 1, earned: 10, expected: 2 },
+    { current: 0, earned: 10, expected: 0 },
+    { current: 1, earned: 9, expected: 1 },
+  ])(
+    "handles a submitted current pool of $current with earned karma $earned",
+    ({ current, earned, expected }) => {
+      registerActorRuleHooks();
+      const [preUpdateActor] = Hooks.__get("preUpdateActor");
+      const actor = makeActor();
+      actor.system.karma = { earned: 9, spent: 0 };
+      actor.system.pools = { karma: { base: 1, total: 1, current: 1 } };
+      const changes = { system: { karma: { earned }, pools: { karma: { current } } } };
+
+      preUpdateActor(actor, changes, {}, "U1");
+
+      expect(changes.system.pools.karma.current).toBe(expected);
+      expect(changes.system.pools.karma.total).toBe(1 + Math.floor(earned / 10));
+    },
+  );
+
+  it("clamps the pool when earned karma is corrected down without refunding spent points", () => {
+    registerActorRuleHooks();
+    const [preUpdateActor] = Hooks.__get("preUpdateActor");
+    const actor = makeActor();
+    actor.system.karma = { earned: 30, spent: 12 };
+    actor.system.pools = { karma: { base: 1, total: 4, current: 3 } };
+    const changes = { system: { karma: { earned: 9 } } };
+
+    preUpdateActor(actor, changes, {}, "U1");
+
+    expect(changes.system.pools.karma).toEqual({ base: 1, total: 1, current: 1 });
+    expect(changes.system.karma.spent).toBeUndefined();
+  });
+
+  it("does not refill Karma Pool when spending karma or changing unrelated fields", () => {
+    registerActorRuleHooks();
+    const [preUpdateActor] = Hooks.__get("preUpdateActor");
+    const actor = makeActor();
+    actor.system.karma = { earned: 30, spent: 12 };
+    actor.system.pools = { karma: { base: 1, total: 4, current: 1 } };
+    const changes = { system: { karma: { spent: 15 } } };
+
+    preUpdateActor(actor, changes, {}, "U1");
+
+    expect(changes.system.pools).toBeUndefined();
+    expect(changes.system.karma).toEqual({ spent: 15 });
+  });
+
   it("initializes pre-created actors at racial minimum when values are unallocated", () => {
     registerActorRuleHooks();
     const [preCreateActor] = Hooks.__get("preCreateActor");

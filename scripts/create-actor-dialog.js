@@ -55,6 +55,16 @@ export function sr2InferVehicleType(vehicle) {
   return "ground";
 }
 
+function sr2SetTemplateFieldsEnabled(fields, enabled) {
+  fields.each((_, field) => {
+    field.disabled = !enabled;
+    const path = field.dataset.sr2Field;
+    if (!path) return;
+    if (enabled) field.name = path;
+    else field.removeAttribute("name");
+  });
+}
+
 export function sr2EnhanceActorCreateDialog(app, html) {
   // In some Foundry versions/hooks, "html" may not be a jQuery object.
   const jq = globalThis.jQuery;
@@ -261,51 +271,51 @@ export function sr2EnhanceActorCreateDialog(app, html) {
               </select>
             </div>
           </div>
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.model" data-dtype="String" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.vehicleType" data-dtype="String" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.handling.on" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.handling.off" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.speed" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.accel" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.body" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.armor" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.sig" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.autonav" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.pilot" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.sensor" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.cargo" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.load" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.seating" data-dtype="String" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.cost" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.availability" data-dtype="String" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.streetIndex" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.notes" data-dtype="String" disabled />
-          <input type="hidden" class="sr2-vehicle-template-field" name="system.bookPage" data-dtype="String" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.model" data-dtype="String" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.vehicleType" data-dtype="String" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.handling.on" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.handling.off" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.speed" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.accel" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.body" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.armor" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.sig" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.autonav" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.pilot" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.sensor" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.cargo" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.load" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.seating" data-dtype="String" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.cost" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.availability" data-dtype="String" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.streetIndex" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.notes" data-dtype="String" disabled />
+          <input type="hidden" class="sr2-vehicle-template-field" data-sr2-field="system.bookPage" data-dtype="String" disabled />
         </div>
         <div class="sr2-create-cyberdeck-details">
           <h3>Cyberdeck</h3>
           <div class="form-group">
             <label>Cyberdeck</label>
             <div class="form-fields">
-              <select name="system.model" class="sr2-cyberdeck-template-select">
+              <select data-sr2-field="system.model" class="sr2-cyberdeck-template-select">
                 <option value=""></option>
                 <option value="" disabled>Loading cyberdecks…</option>
               </select>
             </div>
           </div>
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.persona" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.hardening" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.memory.total" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.memory.used" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.storage.total" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.storage.used" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.load" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.ioSpeed" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.responseIncrease" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.cost" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.streetIndex" data-dtype="Number" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.availability" data-dtype="String" disabled />
-          <input type="hidden" class="sr2-cyberdeck-template-field" name="system.bookPage" data-dtype="String" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.persona" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.hardening" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.memory.total" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.memory.used" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.storage.total" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.storage.used" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.load" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.ioSpeed" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.responseIncrease" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.cost" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.streetIndex" data-dtype="Number" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.availability" data-dtype="String" disabled />
+          <input type="hidden" class="sr2-cyberdeck-template-field" data-sr2-field="system.bookPage" data-dtype="String" disabled />
         </div>
         <div class="sr2-create-spirit-details">
           <h3 class="sr2-spirit-details-title">Spirit</h3>
@@ -623,7 +633,7 @@ export function sr2EnhanceActorCreateDialog(app, html) {
     const templateFields = vehicleSection.find("input.sr2-vehicle-template-field");
 
     if (!templateKey) {
-      templateFields.prop("disabled", true);
+      sr2SetTemplateFieldsEnabled(templateFields, false);
       return;
     }
 
@@ -631,13 +641,13 @@ export function sr2EnhanceActorCreateDialog(app, html) {
       .then(({ map }) => {
         // Avoid enabling hidden inputs if the user changed type/selection while loading.
         if (typeSelect.val() !== "vehicle" || vehicleTemplateSelect.val() !== templateKey) {
-          templateFields.prop("disabled", true);
+          sr2SetTemplateFieldsEnabled(templateFields, false);
           return;
         }
 
         const entry = map[templateKey];
         if (!entry) {
-          templateFields.prop("disabled", true);
+          sr2SetTemplateFieldsEnabled(templateFields, false);
           return;
         }
 
@@ -698,40 +708,44 @@ export function sr2EnhanceActorCreateDialog(app, html) {
         const cost = parseInt(vehicle["$Cost"]?.toString().replace(/[^\d]/g, "")) || 0;
         const streetIndex = parseFloat(vehicle["Street Index"]) || 1.0;
 
-        vehicleSection.find('input[name="system.model"]').val(modelName);
-        vehicleSection.find('input[name="system.vehicleType"]').val(vehicleType);
-        vehicleSection.find('input[name="system.handling.on"]').val(handlingOn);
-        vehicleSection.find('input[name="system.handling.off"]').val(handlingOff);
-        vehicleSection.find('input[name="system.speed"]').val(speed);
-        vehicleSection.find('input[name="system.accel"]').val(accel);
-        vehicleSection.find('input[name="system.body"]').val(body);
-        vehicleSection.find('input[name="system.armor"]').val(armor);
-        vehicleSection.find('input[name="system.sig"]').val(sig);
-        vehicleSection.find('input[name="system.autonav"]').val(autonav);
-        vehicleSection.find('input[name="system.pilot"]').val(pilot);
-        vehicleSection.find('input[name="system.sensor"]').val(sensor);
-        vehicleSection.find('input[name="system.cargo"]').val(cargo);
-        vehicleSection.find('input[name="system.load"]').val(load);
-        vehicleSection.find('input[name="system.seating"]').val((vehicle.Seating || "").toString());
-        vehicleSection.find('input[name="system.cost"]').val(cost);
+        vehicleSection.find('input[data-sr2-field="system.model"]').val(modelName);
+        vehicleSection.find('input[data-sr2-field="system.vehicleType"]').val(vehicleType);
+        vehicleSection.find('input[data-sr2-field="system.handling.on"]').val(handlingOn);
+        vehicleSection.find('input[data-sr2-field="system.handling.off"]').val(handlingOff);
+        vehicleSection.find('input[data-sr2-field="system.speed"]').val(speed);
+        vehicleSection.find('input[data-sr2-field="system.accel"]').val(accel);
+        vehicleSection.find('input[data-sr2-field="system.body"]').val(body);
+        vehicleSection.find('input[data-sr2-field="system.armor"]').val(armor);
+        vehicleSection.find('input[data-sr2-field="system.sig"]').val(sig);
+        vehicleSection.find('input[data-sr2-field="system.autonav"]').val(autonav);
+        vehicleSection.find('input[data-sr2-field="system.pilot"]').val(pilot);
+        vehicleSection.find('input[data-sr2-field="system.sensor"]').val(sensor);
+        vehicleSection.find('input[data-sr2-field="system.cargo"]').val(cargo);
+        vehicleSection.find('input[data-sr2-field="system.load"]').val(load);
         vehicleSection
-          .find('input[name="system.availability"]')
+          .find('input[data-sr2-field="system.seating"]')
+          .val((vehicle.Seating || "").toString());
+        vehicleSection.find('input[data-sr2-field="system.cost"]').val(cost);
+        vehicleSection
+          .find('input[data-sr2-field="system.availability"]')
           .val((vehicle.Availability || "").toString());
-        vehicleSection.find('input[name="system.streetIndex"]').val(streetIndex);
-        vehicleSection.find('input[name="system.notes"]').val((vehicle.Notes || "").toString());
+        vehicleSection.find('input[data-sr2-field="system.streetIndex"]').val(streetIndex);
         vehicleSection
-          .find('input[name="system.bookPage"]')
+          .find('input[data-sr2-field="system.notes"]')
+          .val((vehicle.Notes || "").toString());
+        vehicleSection
+          .find('input[data-sr2-field="system.bookPage"]')
           .val((vehicle["Book.Page"] || "").toString());
 
         if (typeSelect.val() !== "vehicle" || vehicleTemplateSelect.val() !== templateKey) {
-          templateFields.prop("disabled", true);
+          sr2SetTemplateFieldsEnabled(templateFields, false);
           return;
         }
 
-        templateFields.prop("disabled", false);
+        sr2SetTemplateFieldsEnabled(templateFields, true);
       })
       .catch(() => {
-        templateFields.prop("disabled", true);
+        sr2SetTemplateFieldsEnabled(templateFields, false);
       });
   }
 
@@ -740,7 +754,7 @@ export function sr2EnhanceActorCreateDialog(app, html) {
     const templateFields = cyberdeckSection.find("input.sr2-cyberdeck-template-field");
 
     if (!model) {
-      templateFields.prop("disabled", true);
+      sr2SetTemplateFieldsEnabled(templateFields, false);
       return;
     }
 
@@ -748,47 +762,51 @@ export function sr2EnhanceActorCreateDialog(app, html) {
       .then(({ map }) => {
         // Avoid enabling hidden inputs if the user changed type/selection while loading.
         if (typeSelect.val() !== "cyberdeck" || cyberdeckTemplateSelect.val() !== model) {
-          templateFields.prop("disabled", true);
+          sr2SetTemplateFieldsEnabled(templateFields, false);
           return;
         }
 
         const deck = map[model];
         if (!deck) {
-          templateFields.prop("disabled", true);
+          sr2SetTemplateFieldsEnabled(templateFields, false);
           return;
         }
 
-        cyberdeckSection.find('input[name="system.persona"]').val(deck.Persona ?? 1);
-        cyberdeckSection.find('input[name="system.hardening"]').val(deck.Hardening ?? 0);
-        cyberdeckSection.find('input[name="system.memory.total"]').val(deck.Memory ?? 100);
-        cyberdeckSection.find('input[name="system.memory.used"]').val(0);
-        cyberdeckSection.find('input[name="system.storage.total"]').val(deck.Storage ?? 500);
-        cyberdeckSection.find('input[name="system.storage.used"]').val(0);
-        cyberdeckSection.find('input[name="system.load"]').val(deck.Load ?? 5);
-        cyberdeckSection.find('input[name="system.ioSpeed"]').val(deck["I/O Speed"] ?? 1);
+        cyberdeckSection.find('input[data-sr2-field="system.persona"]').val(deck.Persona ?? 1);
+        cyberdeckSection.find('input[data-sr2-field="system.hardening"]').val(deck.Hardening ?? 0);
         cyberdeckSection
-          .find('input[name="system.responseIncrease"]')
+          .find('input[data-sr2-field="system.memory.total"]')
+          .val(deck.Memory ?? 100);
+        cyberdeckSection.find('input[data-sr2-field="system.memory.used"]').val(0);
+        cyberdeckSection
+          .find('input[data-sr2-field="system.storage.total"]')
+          .val(deck.Storage ?? 500);
+        cyberdeckSection.find('input[data-sr2-field="system.storage.used"]').val(0);
+        cyberdeckSection.find('input[data-sr2-field="system.load"]').val(deck.Load ?? 5);
+        cyberdeckSection.find('input[data-sr2-field="system.ioSpeed"]').val(deck["I/O Speed"] ?? 1);
+        cyberdeckSection
+          .find('input[data-sr2-field="system.responseIncrease"]')
           .val(deck["Response Increase"] ?? 0);
-        cyberdeckSection.find('input[name="system.cost"]').val(deck.Cost ?? 0);
+        cyberdeckSection.find('input[data-sr2-field="system.cost"]').val(deck.Cost ?? 0);
         cyberdeckSection
-          .find('input[name="system.streetIndex"]')
+          .find('input[data-sr2-field="system.streetIndex"]')
           .val(parseFloat(deck["Street Index"]) || 1.0);
         cyberdeckSection
-          .find('input[name="system.availability"]')
+          .find('input[data-sr2-field="system.availability"]')
           .val((deck.Availability || "").toString());
         cyberdeckSection
-          .find('input[name="system.bookPage"]')
+          .find('input[data-sr2-field="system.bookPage"]')
           .val((deck.BookPage || "").toString());
 
         if (typeSelect.val() !== "cyberdeck" || cyberdeckTemplateSelect.val() !== model) {
-          templateFields.prop("disabled", true);
+          sr2SetTemplateFieldsEnabled(templateFields, false);
           return;
         }
 
-        templateFields.prop("disabled", false);
+        sr2SetTemplateFieldsEnabled(templateFields, true);
       })
       .catch(() => {
-        templateFields.prop("disabled", true);
+        sr2SetTemplateFieldsEnabled(templateFields, false);
       });
   }
 
@@ -814,12 +832,12 @@ export function sr2EnhanceActorCreateDialog(app, html) {
     archetypeSection.find("select").prop("disabled", !showArchetype);
 
     vehicleSection.toggle(showVehicle);
-    vehicleSection.find("select, input").prop("disabled", true);
+    sr2SetTemplateFieldsEnabled(vehicleSection.find("select, input"), false);
     vehicleTemplateSelect.prop("disabled", !showVehicle);
 
     cyberdeckSection.toggle(showCyberdeck);
-    cyberdeckSection.find("select, input").prop("disabled", true);
-    cyberdeckTemplateSelect.prop("disabled", !showCyberdeck);
+    sr2SetTemplateFieldsEnabled(cyberdeckSection.find("select, input"), false);
+    sr2SetTemplateFieldsEnabled(cyberdeckTemplateSelect, showCyberdeck);
 
     spiritSection.find(".sr2-spirit-details-title").text(spiritLabel);
     spiritSection.find(".sr2-spirit-type-label").text(`${spiritLabel} Type`);

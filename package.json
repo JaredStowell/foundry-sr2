@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "preview": "node scripts/dev/preview/server.mjs",
     "fmt": "pnpm exec oxfmt package.json system.json module.json template.json vitest.config.js \"data/**/*.json\" \"lang/**/*.json\" \"scripts/**/*.js\" \"tests/**/*.js\"",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -10,7 +11,11 @@
     "typecheck": "node scripts/dev/typecheck.mjs"
   },
   "devDependencies": {
+    "@fortawesome/fontawesome-free": "6.7.2",
     "@vitest/coverage-v8": "^2.1.9",
+    "handlebars": "^4.7.9",
+    "jquery": "^3.7.1",
+    "jsdom": "^30.0.1",
     "oxfmt": "^0.38.0",
     "vitest": "^2.1.8"
   }

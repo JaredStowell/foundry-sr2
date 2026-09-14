@@ -5,12 +5,14 @@ import {
   sr2ComputeKarmaPoolTotal,
   sr2ComputeSpellLockAugmentationModifiers,
   sr2ParseFocusName,
+  sr2ResolveKarmaPoolBase,
 } from "../sr2-rules.js";
 import {
   sr2ComputeInstalledBiowareIndex,
   sr2ComputeInstalledCyberwareEssenceLoss,
   sr2ParseAugmentationModifierString,
 } from "../rules/augmentation-effects.js";
+import { sr2GetInitiativeTerms } from "../rules/initiative.js";
 
 export class SR2Actor extends Actor {
   /** @override */
@@ -60,16 +62,10 @@ export class SR2Actor extends Actor {
     const systemData = actorData.system;
     if (!systemData) return;
 
-    const attrs = systemData.attributes || {};
-    const reaction = Number(attrs.reaction?.value) || 0;
-
-    const spiritForm = String(systemData.spiritForm || "manifest");
-    const formBonus = actorData.type === "ic" ? 0 : spiritForm === "astral" ? 20 : 10;
-
     if (!systemData.initiative) systemData.initiative = {};
-
-    systemData.initiative.dice = 1;
-    systemData.initiative.base = reaction + formBonus;
+    const { dice, base } = sr2GetInitiativeTerms(actorData);
+    systemData.initiative.dice = dice;
+    systemData.initiative.base = base;
 
     const current = Number(systemData.initiative.current);
     systemData.initiative.current = Number.isFinite(current) ? current : 0;
@@ -91,10 +87,9 @@ export class SR2Actor extends Actor {
     if (!karmaPool) return;
 
     const earned = Math.max(0, Math.floor(Number(systemData.karma?.earned) || 0));
-    const base = Math.max(
-      0,
-      Math.floor(Number(karmaPool.base ?? karmaPool.total ?? karmaPool.current) || 0),
-    );
+    const base = sr2ResolveKarmaPoolBase(systemData, {
+      moreMetahumans: game.settings?.get("shadowrun2e", "moreMetahumans") ?? false,
+    });
     const total = sr2ComputeKarmaPoolTotal(base, earned);
     const current = Math.max(0, Math.min(total, Number(karmaPool.current) || 0));
 
@@ -114,12 +109,12 @@ export class SR2Actor extends Actor {
 
     // Base attributes with modifiers applied
     const modifiedAttrs = {
-      body: attrs.body.value + (modifiers.BOD || 0),
-      quickness: attrs.quickness.value + (modifiers.QCK || 0),
-      strength: attrs.strength.value + (modifiers.STR || 0),
-      charisma: attrs.charisma.value + (modifiers.CHA || 0),
-      intelligence: attrs.intelligence.value + (modifiers.INT || 0),
-      willpower: attrs.willpower.value + (modifiers.WIL || 0),
+      body: (Number(attrs.body.value) || 0) + (modifiers.BOD || 0),
+      quickness: (Number(attrs.quickness.value) || 0) + (modifiers.QCK || 0),
+      strength: (Number(attrs.strength.value) || 0) + (modifiers.STR || 0),
+      charisma: (Number(attrs.charisma.value) || 0) + (modifiers.CHA || 0),
+      intelligence: (Number(attrs.intelligence.value) || 0) + (modifiers.INT || 0),
+      willpower: (Number(attrs.willpower.value) || 0) + (modifiers.WIL || 0),
     };
 
     // Reaction = floor((Quickness + Intelligence) / 2) + Reaction modifiers
@@ -176,9 +171,15 @@ export class SR2Actor extends Actor {
       systemData.pools.spell.max = 0;
     }
 
-    // Hacking Pool = Modified Reaction + highest Computer skill
+    // Matrix tests do not benefit from physical reflex boosters (SR2 Hacking Pool).
+    const matrixBaseReaction = Math.max(
+      0,
+      Math.floor(
+        ((Number(attrs.quickness.value) || 0) + (Number(attrs.intelligence.value) || 0)) / 2,
+      ),
+    );
     const hackingSkill = this._getHighestComputerSkill();
-    systemData.pools.hacking.max = modifiedAttrs.reaction + hackingSkill;
+    systemData.pools.hacking.max = matrixBaseReaction + hackingSkill;
 
     // Control Pool = Modified Reaction + Vehicle Control Rig bonus
     const controlRigBonus = this._getControlRigBonus();
@@ -357,12 +358,6 @@ export class SR2Actor extends Actor {
 
     // Parse modifiers from each augmentation
     for (const aug of augmentations) {
-      // Explicit cyberware fields (in addition to optional Mods string)
-      if (aug.type === "cyberware") {
-        modifiers.RCT += Number(aug.system.reactionBonus) || 0;
-        modifiers.INI += Number(aug.system.initiativeDice) || 0;
-      }
-
       // For adept powers, multiply by current level if it has levels
       let levelMultiplier = 1;
       if (aug.type === "adeptpower" && aug.system.hasLevels) {
@@ -373,8 +368,13 @@ export class SR2Actor extends Actor {
         multiplier: levelMultiplier,
       });
       if (aug.type === "cyberware") {
-        parsedMods.RCT = 0;
-        parsedMods.INI = 0;
+        // Older items only have Mods; numeric fields may have been defaulted to zero.
+        // Prefer populated numeric fields, but never count both representations.
+        const reactionBonus = Number(aug.system.reactionBonus);
+        const initiativeDice = Number(aug.system.initiativeDice);
+        if (Number.isFinite(reactionBonus) && reactionBonus !== 0) parsedMods.RCT = reactionBonus;
+        if (Number.isFinite(initiativeDice) && initiativeDice !== 0)
+          parsedMods.INI = initiativeDice;
       }
       for (const [attribute, value] of Object.entries(parsedMods)) {
         if (!Object.prototype.hasOwnProperty.call(modifiers, attribute)) continue;
@@ -414,10 +414,14 @@ export class SR2Actor extends Actor {
     if (!modifiers) modifiers = this._calculateAugmentationModifiers();
 
     // Base initiative = Reaction (already includes modifiers via derived attributes)
+    if (!systemData.initiative) systemData.initiative = {};
     systemData.initiative.base = attrs.reaction.value;
 
     // Initiative dice = 1 base + INI modifiers from cyberware
     systemData.initiative.dice = 1 + (modifiers.INI || 0);
+    const { dice, base } = sr2GetInitiativeTerms({ system: systemData });
+    systemData.initiative.dice = dice;
+    systemData.initiative.base = base;
   }
 
   /**
@@ -526,27 +530,9 @@ export class SR2Actor extends Actor {
       const systemData = data.actor;
       if (!systemData.initiative) systemData.initiative = {};
 
-      // Spirits/Critters/IC: base Reaction (per type) + 10/20 (manifest/astral), then roll 1d6.
-      if (this.type === "spirit" || this.type === "critter" || this.type === "ic") {
-        const reaction = Number(systemData.attributes?.reaction?.value) || 0;
-        const spiritForm = String(systemData.spiritForm || "manifest");
-        const formBonus = this.type === "ic" ? 0 : spiritForm === "astral" ? 20 : 10;
-
-        systemData.initiative.dice = 1;
-        systemData.initiative.base = reaction + formBonus;
-      } else {
-        let initiativeDice = Number(systemData.initiative?.dice);
-        if (!Number.isFinite(initiativeDice) || initiativeDice < 1) initiativeDice = 1;
-
-        let initiativeBase = Number(systemData.initiative?.base);
-        if (!Number.isFinite(initiativeBase)) {
-          const reaction = Number(systemData.attributes?.reaction?.value);
-          initiativeBase = Number.isFinite(reaction) ? reaction : 0;
-        }
-
-        systemData.initiative.dice = initiativeDice;
-        systemData.initiative.base = initiativeBase;
-      }
+      const { dice, base } = sr2GetInitiativeTerms(this);
+      systemData.initiative.dice = dice;
+      systemData.initiative.base = base;
 
       let initiativeCurrent = Number(systemData.initiative?.current);
       if (!Number.isFinite(initiativeCurrent) || initiativeCurrent < 0) initiativeCurrent = 0;

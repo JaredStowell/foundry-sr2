@@ -954,6 +954,7 @@ class DataImportConfig extends FormApplication {
     event.preventDefault();
 
     const confirmed = await Dialog.confirm({
+      options: { classes: ["dialog", "sr2-dialog"] },
       title: "Clear All Data",
       content: "Are you sure you want to clear all imported data? This cannot be undone.",
       yes: () => true,
@@ -1055,6 +1056,7 @@ Hooks.once("ready", async function () {
   // Auto-import data on first world load
   if (game.user.isGM && !game.settings.get("shadowrun2e", "dataImported")) {
     const shouldImport = await Dialog.confirm({
+      options: { classes: ["dialog", "sr2-dialog"] },
       title: "Import Shadowrun 2E Data",
       content: `<p>This appears to be the first time loading Shadowrun 2E in this world.</p>
                      <p>Would you like to automatically import all system data (cyberware, bioware, spells, etc.) into compendiums?</p>

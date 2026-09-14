@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Shadowrun 2E · Screen gallery</title>
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="/scripts/dev/preview/preview.css">
+    <link rel="stylesheet" href="/styles/shadowrun2e.css">
+    <link rel="stylesheet" href="/styles/compact-ui.css">
+    <script src="/vendor/jquery/jquery.min.js"></script>
+    <script src="/vendor/handlebars/handlebars.min.js"></script>
+  </head>
+  <body>
+    <aside class="preview-sidebar">
+      <div class="preview-brand">SHADOWRUN <b>2E</b></div>
+      <h1>Screen gallery</h1>
+      <p>Real system templates, styles and sample data.</p>
+      <input id="preview-search" type="search" placeholder="Find a screen…" aria-label="Find a screen">
+      <nav id="preview-nav" aria-label="Screens"></nav>
+    </aside>
+    <main class="preview-main">
+      <header class="preview-toolbar">
+        <div><h2 id="preview-title">Loading screens…</h2><small id="preview-source"></small></div>
+        <button id="preview-audit" type="button">Check every screen</button>
+      </header>
+      <p class="preview-notice">Standalone preview · Foundry window frames are approximated. Edits affect sample data only; reload to reset.</p>
+      <output id="preview-status" aria-live="polite"></output>
+      <section id="preview-stage" aria-label="Screen preview"></section>
+    </main>
+    <script type="module" src="/scripts/dev/preview/preview.js"></script>
+  </body>
+</html>

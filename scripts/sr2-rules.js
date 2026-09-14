@@ -297,6 +297,19 @@ export function sr2ComputeKarmaPoolTotal(basePool, earnedKarma) {
   return base + sr2ComputeKarmaPoolBonusFromEarned(earnedKarma);
 }
 
+// Older/imported actors may have the schema's zero base instead of their chargen pool.
+export function sr2ResolveKarmaPoolBase(system, options = {}) {
+  const pool = system?.pools?.karma ?? {};
+  const starting = sr2ComputeStartingKarmaPool(system?.details?.metatype, options);
+  const base = Number(pool.base);
+  if (Number.isFinite(base) && base > 0) return Math.floor(base);
+  const legacyBase =
+    pool.base == null
+      ? (Number(pool.total) || 0) - sr2ComputeKarmaPoolBonusFromEarned(system?.karma?.earned)
+      : 0;
+  return Math.max(starting, Math.floor(legacyBase));
+}
+
 export function sr2BuildCreationCompletionSummary({
   system,
   items,

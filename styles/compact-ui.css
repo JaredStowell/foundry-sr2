@@ -1,0 +1,359 @@
+/* Shared presentation for system windows. Keep the original theme palette in shadowrun2e.css. */
+:is(
+  .shadowrun2e.window-app,
+  .shadowrun2e.application,
+  .sr2-dialog,
+  .sr2-dice-roll,
+  .window-app:has(.sr2-create-extras),
+  .application:has(.sr2-create-extras)
+) {
+  --sr2-ui-font: "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--cyber-text-primary);
+  background: var(--cyber-bg-primary);
+  font-family: var(--sr2-ui-font);
+  font-size: 13px;
+  border: 1px solid var(--cyber-border-bright);
+  border-radius: 8px !important;
+  box-shadow: 0 12px 32px #0006;
+  color-scheme: dark;
+
+  & .window-header {
+    background: linear-gradient(135deg, #2c3e50, #34495e) !important;
+    color: var(--cyber-text-primary) !important;
+    border: 0;
+    border-bottom: 1px solid var(--cyber-accent-cyan) !important;
+    text-shadow: var(--cyber-glow-cyan);
+  }
+
+  & .window-title {
+    font: 600 13px var(--sr2-ui-font);
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--cyber-text-primary);
+    text-shadow: none;
+  }
+
+  & .window-content {
+    background: var(--cyber-bg-primary);
+    color: var(--cyber-text-primary);
+    padding: 10px;
+    overflow: auto;
+    border: 1px solid var(--cyber-accent-cyan);
+    box-shadow: var(--cyber-glow-cyan);
+  }
+
+  & :is(h1, h2, h3, h4, h5, h6, label, button, input, select, textarea, p, th, td) {
+    font-family: var(--sr2-ui-font) !important;
+    letter-spacing: normal;
+  }
+
+  & :is(h2, h3, h4, h5, h6) {
+    color: var(--cyber-accent-cyan);
+    text-shadow: var(--cyber-glow-cyan);
+    text-transform: none;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  & h2 { font-size: 18px; }
+  & h3 { font-size: 14px; }
+  & :is(h4, h5, h6) { font-size: 13px; }
+  & label { color: var(--cyber-text-secondary); text-transform: none; }
+
+  & :is(input:where(:not([type="checkbox"]):not([type="radio"]):not([type="range"])), select, textarea) {
+    color: var(--cyber-text-primary) !important;
+    background: var(--cyber-bg-primary) !important;
+    border: 1px solid var(--cyber-border) !important;
+    border-radius: 4px !important;
+    box-shadow: none;
+    min-height: 28px;
+    padding: 3px 7px;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+    max-width: 100%;
+  }
+
+  & :is(input[type="checkbox"], input[type="radio"]) {
+    accent-color: var(--cyber-accent-cyan);
+    transform: none;
+    flex: 0 0 auto;
+  }
+
+  & input::placeholder, & textarea::placeholder { color: var(--cyber-text-muted); }
+  & option { background: var(--cyber-bg-secondary); color: var(--cyber-text-primary); }
+  & textarea { line-height: 1.5; }
+
+  & :is(button, .button, .item-create, .buy-item, .add-item) {
+    background: linear-gradient(135deg, var(--cyber-bg-secondary), var(--cyber-bg-tertiary));
+    color: var(--cyber-accent-cyan);
+    border: 1px solid var(--cyber-accent-cyan);
+    border-radius: 4px !important;
+    box-shadow: none;
+    text-shadow: none;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    line-height: 1.4;
+    padding: 5px 9px;
+    transition: background-color 120ms, border-color 120ms, color 120ms;
+  }
+
+  & :is(button, a, .item-card, .item-row):hover {
+    transform: none !important;
+  }
+
+  & :is(button, .button, .item-create):hover:not(:disabled) {
+    background: linear-gradient(135deg, var(--cyber-bg-tertiary), var(--cyber-bg-secondary));
+    border-color: var(--cyber-accent-magenta);
+    color: var(--cyber-accent-magenta);
+    box-shadow: var(--cyber-glow-magenta);
+  }
+
+  & :is(button, input, select, textarea, a):focus-visible {
+    outline: 2px solid var(--cyber-accent-cyan) !important;
+    outline-offset: 2px;
+  }
+  & :is(input, select, textarea):focus {
+    border-color: var(--cyber-accent-cyan) !important;
+    box-shadow: var(--cyber-glow-cyan);
+  }
+
+  & :is(button, input, select):disabled { opacity: .55; cursor: default; }
+  & :is(.sr2-small-action, .sr2-qa-icon-btn) { min-height: 24px; padding: 3px 6px; }
+  & :is(.item-delete, .clear-data) { color: var(--cyber-accent-red); }
+
+  & .sr2-lifestyle-row { grid-template-columns: minmax(0, 1fr) 24px; }
+  & :is(.sr2-lifestyle-add, .sr2-lifestyle-delete) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 24px;
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    min-height: 24px;
+    padding: 0;
+    line-height: 1;
+  }
+  & :is(.sr2-lifestyle-add, .sr2-lifestyle-delete) > i { margin: 0; font-size: 12px; line-height: 1; }
+
+  & :is(.sheet-header, .sheet-tabs .item, .item-card, .totem-section, button, .button)::before,
+  & :is(.sheet-header, .sheet-tabs .item, .item-card, .totem-section)::after {
+    content: none !important;
+  }
+
+  & .sheet-header {
+    background: linear-gradient(135deg, var(--cyber-bg-secondary), var(--cyber-bg-primary));
+    border: 1px solid var(--cyber-accent-cyan);
+    border-radius: 6px !important;
+    box-shadow: none;
+    padding: 10px;
+    margin-bottom: 10px;
+    gap: 8px;
+  }
+
+  & .sheet-header .profile-img {
+    width: 56px;
+    height: 56px;
+    flex-basis: 56px;
+    border: 1px solid var(--cyber-accent-cyan);
+    border-radius: 5px !important;
+    box-shadow: var(--cyber-glow-cyan);
+    margin: 0;
+  }
+
+  & .sheet-header .header-fields { min-width: 0; }
+  & .sheet-header h1.charname { height: 32px; margin: 0 0 6px; }
+  & .sheet-header h1.charname input {
+    width: 100%;
+    min-width: 0;
+    font-size: 19px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--cyber-accent-cyan) !important;
+    text-shadow: var(--cyber-glow-cyan);
+  }
+
+  & .sheet-header :is(.resource-label, .sr2-sheet-badge) { font-size: 12px; }
+  & .sheet-header .sr2-header-resources { gap: 8px 12px; }
+
+  /* All sheets use the compact navigation, including the older entity/item sheets. */
+  & .window-content .sheet-tabs.tabs {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 4px !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 0 10px !important;
+  }
+
+  & .window-content .sheet-tabs.tabs .item {
+    flex: 0 0 auto;
+    background: transparent !important;
+    color: var(--cyber-text-secondary);
+    border: 0 !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+    font: 600 12px/28px var(--sr2-ui-font) !important;
+    text-transform: none;
+    text-decoration: none;
+    letter-spacing: 0;
+    text-shadow: none;
+    min-height: 0 !important;
+    padding: 0 10px !important;
+    margin: 0 !important;
+    transform: none !important;
+  }
+
+  & .window-content .sheet-tabs.tabs .item.active {
+    background: linear-gradient(135deg, var(--cyber-accent-cyan), var(--cyber-accent-magenta)) !important;
+    color: var(--cyber-bg-primary) !important;
+  }
+  & .window-content .sheet-tabs.tabs .item:hover { background: var(--cyber-bg-tertiary) !important; }
+  & .sheet-body { padding: 0; background: transparent; }
+
+  & :is(.sr2-main-panel, .sr2-sheet-panel, .totem-section, .adept-powers, .import-info, .import-details, .gear-purchase-summary) {
+    background: var(--cyber-bg-secondary);
+    color: var(--cyber-text-primary);
+    border: 1px solid var(--cyber-border);
+    border-radius: 6px !important;
+    padding: 10px;
+    box-shadow: none;
+  }
+
+  & :is(.sr2-main-panel, .sr2-sheet-panel) h3 {
+    color: var(--cyber-accent-cyan);
+    font-size: 12px;
+    margin: 0 0 8px;
+    border-bottom: 1px solid var(--cyber-border);
+    padding-bottom: 7px;
+  }
+  & :is(.sr2-sheet-badge, .sr2-readonly-number, .sr2-sheet-preview) {
+    background: var(--cyber-bg-tertiary);
+    color: var(--cyber-text-primary);
+    border-color: var(--cyber-border);
+    text-shadow: none;
+    font-family: var(--sr2-ui-font);
+  }
+
+  &.item .form-group { margin: 6px 0; min-height: 28px; }
+  &.item .form-group > label { font-size: 12px; font-weight: 500; }
+  &.item .sheet-header { align-items: center; }
+
+  /* Program lists use the same original theme colors as the other sheets. */
+  & :is(.programs-header, .program-summary, .program-name) { color: var(--cyber-text-primary); }
+  & :is(.programs-table-header, .skills-table-header) {
+    background: var(--cyber-bg-tertiary);
+    border-color: var(--cyber-border);
+    color: var(--cyber-text-secondary);
+  }
+  & :is(.program-row, .item-row, .skill-item) { border-color: var(--cyber-border); }
+  & .program-row { background: var(--cyber-bg-secondary); }
+  & .program-toggle.loaded { background: var(--cyber-bg-secondary); border-color: var(--cyber-accent-green); color: var(--cyber-accent-green); }
+  & .program-toggle.active { background: var(--cyber-bg-secondary); border-color: var(--cyber-accent-cyan); color: var(--cyber-accent-cyan); }
+
+  & .totem-section { margin: 0 0 12px; background: linear-gradient(135deg, var(--cyber-bg-secondary), var(--cyber-bg-primary)); border-color: var(--cyber-accent-magenta); box-shadow: var(--cyber-glow-magenta); }
+  & .totem-section :is(h4, h5) { color: var(--cyber-accent-magenta); text-shadow: var(--cyber-glow-magenta); }
+  & .totem-section h4 { margin: 0 0 10px; font-size: 13px; padding-bottom: 7px; border-color: var(--cyber-accent-magenta); }
+  & .change-totem { color: var(--cyber-accent-magenta); border-color: var(--cyber-accent-magenta); }
+  & .totem-display { background: transparent; border: 0; padding: 0; }
+  & .totem-header { padding: 0; margin-bottom: 10px; border: 0; }
+  & .totem-header h5 { font-size: 16px; margin: 0; }
+  & .totem-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  & :is(.totem-environment, .totem-advantages, .totem-disadvantages) { padding: 8px 10px; font-size: 12px; line-height: 1.45; box-shadow: none; }
+  & .adept-section { padding: 0; margin-bottom: 12px; border: 0; background: transparent; }
+  & .adept-section h3 { margin: 0 0 8px; }
+  & .adept-info { padding: 0; border: 0; background: transparent; }
+  & .power-points { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px 24px; padding: 8px 10px; border: 1px solid var(--cyber-border); border-radius: 4px !important; }
+  & .power-point-stat span { color: var(--cyber-accent-cyan); }
+  & .power-point-warning { background: var(--cyber-bg-secondary); color: var(--cyber-accent-red); border-color: var(--cyber-accent-red); }
+
+  & .item-card { background: var(--cyber-bg-secondary); border: 1px solid var(--cyber-border); border-radius: 5px !important; box-shadow: none; }
+  & .item-card .item-name { font-size: 13px; text-transform: none; letter-spacing: 0; }
+  & .item-card .item-stat { font-size: 12px; }
+  & :is(.item-browser, .gear-purchase, .data-import, .character-import) { background: transparent; color: var(--cyber-text-primary); padding: 0; }
+  & .browser-header { background: transparent; padding: 0; margin-bottom: 12px; border-bottom: 1px solid var(--cyber-border); }
+  & .browser-header::after { content: none; }
+  & .browser-controls { padding: 10px 0; margin-bottom: 10px; border-bottom: 1px solid var(--cyber-border); }
+  & .browser-header .browser-controls { width: 100%; margin: 0; border: 0; }
+  & .browser-header .search-section { width: 100%; justify-content: flex-start; }
+  & .browser-header .item-search { flex: 1; width: auto; }
+  & .import-header { background: transparent; padding: 0; border: 0; margin: 0 0 14px; }
+  & .import-header p { color: var(--cyber-text-secondary); line-height: 1.5; }
+  & :is(.import-header, .gear-purchase-header) h2 { margin: 0 0 8px; }
+  & :is(.import-status, .import-info, .import-details) { padding: 12px; margin: 12px 0; }
+  & .import-status > i { font-size: 24px; }
+  & .import-status.pending { background: var(--cyber-bg-secondary); border-color: var(--cyber-accent-yellow); color: var(--cyber-accent-yellow); }
+  & .import-status.success { background: var(--cyber-bg-secondary); border-color: var(--cyber-accent-green); color: var(--cyber-accent-green); }
+  & .import-footer { border-color: var(--cyber-border); }
+  & :is(.import-actions, .gear-purchase-actions) { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  & :is(.import-actions, .gear-purchase-actions) button { flex: 1 1 auto; width: auto; padding: 7px 10px; }
+  & :is(.import-footer, .gear-purchase-header p) { font-size: 12px; color: var(--cyber-text-secondary); }
+
+  /* The same form treatment applies to SR2's dialogs, outside actor sheets. */
+  & :is(.target-number-dialog, .melee-combat-dialog) { background: transparent; color: var(--cyber-text-primary); font-family: var(--sr2-ui-font); padding: 0; }
+  & :is(.roll-info, .target-number-section, .pool-dice-section, .modifier-section, .ranged-modifiers-section) {
+    background: var(--cyber-bg-secondary);
+    border: 1px solid var(--cyber-border);
+    border-radius: 5px !important;
+    padding: 10px;
+    margin: 0 0 10px;
+    box-shadow: none;
+  }
+  & .roll-info { display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: left; }
+  & .roll-info h3 { margin: 0; padding: 0; border: 0; font-size: 14px; }
+  & .roll-info p { margin: 0; white-space: nowrap; font-size: 12px; }
+  & .target-number-section > label { display: block; margin: 0 0 6px; font-size: 12px; }
+  & :is(.pool-dice-section, .target-number-section) label { text-transform: none; font-size: 12px; }
+  & .pool-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; padding: 3px 7px; margin: 4px 0; background: var(--cyber-bg-primary); border: 1px solid var(--cyber-border); border-radius: 4px !important; }
+  & .pool-option label { display: flex; align-items: center; gap: 8px; color: var(--cyber-text-primary); font-weight: 400; min-width: 0; }
+  & .pool-option .pool-dice-input { flex: 0 0 56px; width: 56px; text-align: right; }
+  & .pool-dice-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  & .modifier-section h4 { margin: 0 0 8px; }
+  & .modifier-row { margin: 5px 0; padding: 5px 8px; background: var(--cyber-bg-primary); border: 1px solid var(--cyber-border); }
+  & .modifier-summary { margin-top: 10px; padding: 8px; background: var(--cyber-bg-tertiary); border: 1px solid var(--cyber-border); }
+  & :is(.modifier-summary strong, #total-modifier) { font-size: 13px; }
+  & .dialog-buttons { background: transparent; padding-top: 10px; border-top: 1px solid var(--cyber-border); gap: 8px; }
+  & .dialog-buttons button { text-transform: none; }
+  & .sr2-create-extras { border-top: 1px solid var(--cyber-border); margin-top: 12px; padding-top: 8px; }
+  & .sr2-create-extras hr { display: none; }
+  & .sr2-create-extras h3 { margin: 6px 0 12px; }
+
+  /* Chat cards carry their own system class because they live outside sheets. */
+  &.sr2-dice-roll {
+    padding: 10px;
+    margin: 0;
+    background: var(--cyber-bg-secondary);
+    border: 1px solid var(--cyber-border);
+    border-radius: 6px !important;
+    box-shadow: none;
+
+    &::before, &::after { content: none; }
+    & h3 { margin: 0 0 8px; padding-bottom: 7px; border-color: var(--cyber-border); }
+    & .roll-summary { background: var(--cyber-bg-tertiary); border-radius: 4px !important; }
+    & :is(.pool-size, .target-number) { color: var(--cyber-accent-cyan); }
+    & .successes { color: var(--cyber-accent-green); }
+    & :is(.ones-rolled, .critical-failure) { color: var(--cyber-accent-red); animation: none; }
+    & .dice-details { gap: 6px; }
+    & .die-result { background: var(--cyber-bg-primary); border: 1px solid var(--cyber-border-bright); border-radius: 4px !important; }
+    & .die-result.success { background: var(--cyber-bg-secondary); border-color: var(--cyber-accent-green); }
+    & .die-result.one { background: var(--cyber-bg-secondary); border-color: var(--cyber-accent-red); }
+    & .die-face { color: var(--cyber-text-primary); background: var(--cyber-bg-tertiary); border-color: var(--cyber-border-bright); }
+    & .die-face.exploded { color: var(--cyber-accent-yellow); background: var(--cyber-bg-secondary); border-color: var(--cyber-accent-yellow); }
+    & .die-total { color: var(--cyber-text-secondary); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    & *, & *::before, & *::after { animation: none !important; transition: none !important; }
+  }
+}

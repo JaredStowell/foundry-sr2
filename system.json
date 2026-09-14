@@ -17,7 +17,7 @@
     }
   ],
   "esmodules": ["scripts/shadowrun2e.js"],
-  "styles": ["styles/shadowrun2e.css"],
+  "styles": ["styles/shadowrun2e.css", "styles/compact-ui.css"],
   "languages": [
     {
       "lang": "en",
